@@ -167,6 +167,9 @@ model Message {
   subject           String?
   text              String   @db.Text
   html              String?  @db.Text
+  /// [{filename, mimeType, size, attachmentId}] — metadata only; bytes are
+  /// streamed on demand from the mailbox (Gmail stays the source of truth).
+  attachments       Json?
   sentAt            DateTime
 
   @@unique([tenantId, providerMessageId])

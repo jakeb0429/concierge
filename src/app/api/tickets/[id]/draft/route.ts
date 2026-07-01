@@ -22,7 +22,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     },
   });
 
-  const ticketText = ticket.messages.map((m) => cleanEmailText(m.text)).join("\n\n");
+  const ticketText = ticket.messages
+    .map((m) => {
+      const atts = (m.attachments as { filename: string }[] | null) ?? [];
+      const note = atts.length ? `\n[customer attached: ${atts.map((a) => a.filename).join(", ")}]` : "";
+      return cleanEmailText(m.text) + note;
+    })
+    .join("\n\n");
   const prior = regenOfDraftId
     ? await prisma.draft.findUnique({ where: { id: regenOfDraftId } })
     : null;

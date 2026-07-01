@@ -1,6 +1,7 @@
 import { PrismaClient } from "@prisma/client";
-import { google, gmail_v1 } from "googleapis";
+import { gmail_v1 } from "googleapis";
 import { triage } from "../src/lib/triage";
+import { gmailFor, extractAttachments } from "../src/lib/gmail-client";
 
 /**
  * Live Gmail intake — pulls recent INBOX messages into real tickets, for every
@@ -14,16 +15,6 @@ import { triage } from "../src/lib/triage";
 const prisma = new PrismaClient();
 const MAX = Number(process.argv[2] ?? 15);
 const ONLY_MAILBOX = process.argv[3];
-
-function client(subject: string): gmail_v1.Gmail {
-  const jwt = new google.auth.JWT({
-    email: process.env.RHEOS_GMAIL_CLIENT_EMAIL,
-    key: (process.env.RHEOS_GMAIL_PRIVATE_KEY ?? "").replace(/\\n/g, "\n"),
-    scopes: ["https://www.googleapis.com/auth/gmail.modify"],
-    subject,
-  });
-  return google.gmail({ version: "v1", auth: jwt });
-}
 
 function header(headers: gmail_v1.Schema$MessagePartHeader[], n: string): string | null {
   return headers.find((h) => h.name?.toLowerCase() === n)?.value ?? null;
@@ -44,44 +35,72 @@ function decode(part: gmail_v1.Schema$MessagePart | undefined, mime = "text/plai
   return null;
 }
 
+/** Import one full Gmail message (either direction) onto a ticket. */
+async function importMessage(tenantId: string, ticketId: string, mailbox: string, full: gmail_v1.Schema$Message) {
+  const headers = full.payload?.headers ?? [];
+  const from = parseAddr(header(headers, "from"));
+  const attachments = extractAttachments(full.payload);
+  await prisma.message.upsert({
+    where: { tenantId_providerMessageId: { tenantId, providerMessageId: full.id! } },
+    // Attachments are re-stamped on upsert so re-runs backfill older rows too.
+    update: { attachments: attachments.length ? attachments : undefined },
+    create: {
+      tenantId,
+      ticketId,
+      providerMessageId: full.id!,
+      direction: from.email === mailbox ? "outbound" : "inbound",
+      fromEmail: from.email,
+      subject: header(headers, "subject"),
+      text: (decode(full.payload) ?? full.snippet ?? "").slice(0, 8000),
+      attachments: attachments.length ? attachments : undefined,
+      sentAt: new Date(Number(full.internalDate ?? Date.now())),
+    },
+  });
+  return attachments.length;
+}
+
 async function intakeMailbox(tenantId: string, channelId: string, mailbox: string) {
-  const gmail = client(mailbox);
+  const gmail = gmailFor(mailbox);
   const list = await gmail.users.messages.list({ userId: "me", labelIds: ["INBOX"], maxResults: MAX });
-  const refs = list.data.messages ?? [];
+  const threadIds = [...new Set((list.data.messages ?? []).map((m) => m.threadId!))];
 
   let imported = 0;
-  let skipped = 0;
+  let attachmentsFound = 0;
   const skippedNoise: string[] = [];
-  for (const ref of refs) {
-    const full = (await gmail.users.messages.get({ userId: "me", id: ref.id!, format: "full" })).data;
-    const headers = full.payload?.headers ?? [];
-    const from = parseAddr(header(headers, "from"));
-    if (!from.email || from.email === mailbox) {
-      skipped++; // our own outbound or unparseable sender
-      continue;
-    }
-    const subject = header(headers, "subject");
-    const text = (decode(full.payload) ?? full.snippet ?? "").slice(0, 8000);
-    const sentAt = new Date(Number(full.internalDate ?? Date.now()));
+  for (const threadId of threadIds) {
+    // Full thread — prior customer messages AND our replies, so the ticket
+    // carries complete history (and every message's attachments).
+    const thread = (await gmail.users.threads.get({ userId: "me", id: threadId, format: "full" })).data;
+    const msgs = thread.messages ?? [];
+    const firstInbound = msgs.find((m) => {
+      const from = parseAddr(header(m.payload?.headers ?? [], "from"));
+      return from.email && from.email !== mailbox;
+    });
+    if (!firstInbound) continue; // outbound-only thread — nothing to ticket
+
+    const from = parseAddr(header(firstInbound.payload?.headers ?? [], "from"));
+    const subject = header(firstInbound.payload?.headers ?? [], "subject");
+    const text = (decode(firstInbound.payload) ?? firstInbound.snippet ?? "").slice(0, 8000);
 
     const customer = await prisma.customer.upsert({
-      where: { tenantId_email: { tenantId, email: from.email } },
+      where: { tenantId_email: { tenantId, email: from.email! } },
       update: { displayName: from.name ?? undefined },
-      create: { tenantId, email: from.email, displayName: from.name },
+      create: { tenantId, email: from.email!, displayName: from.name },
     });
 
     // Triage NEW threads only — an existing ticket keeps its state and just
-    // gains the message. Noise is archived with its category tag, never drafted.
+    // gains messages. Noise is archived with its category tag, never drafted.
     const existing = await prisma.ticket.findUnique({
-      where: { tenantId_providerThreadId: { tenantId, providerThreadId: full.threadId! } },
+      where: { tenantId_providerThreadId: { tenantId, providerThreadId: threadId } },
       select: { id: true },
     });
-    let ticket;
+    let ticketId: string;
     if (existing) {
-      ticket = await prisma.ticket.update({ where: { id: existing.id }, data: { channelId } });
+      await prisma.ticket.update({ where: { id: existing.id }, data: { channelId } });
+      ticketId = existing.id;
     } else {
-      const t = await triage(from.email, subject, text);
-      ticket = await prisma.ticket.create({
+      const t = await triage(from.email!, subject, text);
+      const created = await prisma.ticket.create({
         data: {
           tenantId,
           customerId: customer.id,
@@ -91,29 +110,20 @@ async function intakeMailbox(tenantId: string, channelId: string, mailbox: strin
           status: t.isNoise ? "archived" : "new",
           priority: t.priority,
           tags: [t.category],
-          providerThreadId: full.threadId!,
+          providerThreadId: threadId,
         },
       });
+      ticketId = created.id;
       if (t.isNoise) skippedNoise.push(`${from.email} (${t.category})`);
     }
-    await prisma.message.upsert({
-      where: { tenantId_providerMessageId: { tenantId, providerMessageId: full.id! } },
-      update: {},
-      create: {
-        tenantId,
-        ticketId: ticket.id,
-        providerMessageId: full.id!,
-        direction: "inbound",
-        fromEmail: from.email,
-        subject,
-        text,
-        sentAt,
-      },
-    });
-    imported++;
+
+    for (const m of msgs) {
+      attachmentsFound += await importMessage(tenantId, ticketId, mailbox, m);
+      imported++;
+    }
   }
   console.log(
-    `  ${mailbox}: fetched ${refs.length}, imported ${imported}, skipped ${skipped}` +
+    `  ${mailbox}: ${threadIds.length} threads, ${imported} messages, ${attachmentsFound} attachments` +
       (skippedNoise.length ? ` | auto-archived noise: ${skippedNoise.join(", ")}` : "")
   );
 }

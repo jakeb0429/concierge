@@ -56,10 +56,14 @@ export default async function TicketDetail({ params }: { params: Promise<{ id: s
           mailbox: ticket.channelRef?.supportAddress ?? "hello@rheosgear.com",
         }}
         messages={ticket.messages.map((m) => ({
+          id: m.id,
           direction: m.direction,
           subject: m.subject,
           text: cleanEmailText(m.text),
           sentAt: m.sentAt.toISOString(),
+          attachments: ((m.attachments as { filename: string; mimeType: string }[] | null) ?? []).map(
+            (a, i) => ({ index: i, filename: a.filename, isImage: a.mimeType.startsWith("image/") })
+          ),
         }))}
         initialDraft={initialDraft}
       />

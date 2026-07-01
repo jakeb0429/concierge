@@ -8,6 +8,10 @@
 
 const QUOTE_HEADER_PATTERNS: RegExp[] = [
   /^On .{5,200}(wrote|écrit):\s*$/im, // "On Tue, Jul 1, 2026 at 9:14 AM Jane <j@x.com> wrote:"
+  /^On [A-Z][a-z]{2},? .{5,120}[\s\S]{0,160}?wrote:\s*$/m, // same, wrapped across lines
+  // Apple Mail / flowed plain-text collapses the header mid-line — match only
+  // the full dated form ("On Jun 30, 2026, at 11:16 AM, … wrote:") to stay safe.
+  /On (?:[A-Z][a-z]{2},? )?[A-Z][a-z]{2,8}\.? \d{1,2},? \d{4},? at \d{1,2}:\d{2}\s?[AP]M[\s\S]{0,200}?wrote:/,
   /^-{2,}\s*Original Message\s*-{2,}/im,
   /^-{2,}\s*Forwarded message\s*-{2,}/im,
   /^From:\s.+$\n^(Sent|Date):\s.+$/im, // Outlook-style quoted header block
@@ -17,6 +21,7 @@ const QUOTE_HEADER_PATTERNS: RegExp[] = [
 
 const SIGNATURE_PATTERNS: RegExp[] = [
   /^--\s*$/m, // RFC signature delimiter
+  /^\*--+\*\s*$/m, // markdown-mangled delimiter ("*--*") from Gmail plain-text
   /^Sent from my (iPhone|iPad|Android|Galaxy|mobile device).*$/im,
   /^Get Outlook for (iOS|Android).*$/im,
 ];
@@ -55,6 +60,10 @@ export function cleanEmailText(raw: string): string {
     .replace(/[ \t]+$/gm, "")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
+
+  // A dangling mobile signature at the very end (mid-line, so the anchored
+  // patterns missed it) — trim it.
+  text = text.replace(/\s*Sent from my (iPhone|iPad|Android|Galaxy)\s*$/i, "").trim();
 
   // If cleaning nuked everything (e.g. the whole message was a forward),
   // fall back to a trimmed slice of the raw so the rep still sees content.

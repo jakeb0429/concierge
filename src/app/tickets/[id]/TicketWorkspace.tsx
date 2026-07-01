@@ -11,7 +11,15 @@ type Draft = {
   policyFlags: string[];
   citations: { id: string; title: string; score: number }[];
 };
-type Msg = { direction: string; subject: string | null; text: string; sentAt: string };
+type Attachment = { index: number; filename: string; isImage: boolean };
+type Msg = {
+  id: string;
+  direction: string;
+  subject: string | null;
+  text: string;
+  sentAt: string;
+  attachments: Attachment[];
+};
 type Ticket = {
   id: string;
   subject: string;
@@ -137,6 +145,7 @@ export default function TicketWorkspace({
                     <span className="text-[11px] text-neutral-400">{fmtTime(m.sentAt)}</span>
                   </div>
                   <p className="whitespace-pre-wrap text-neutral-800">{m.text}</p>
+                  <AttachmentStrip msg={m} />
                 </div>
               ) : (
                 <div key={i} className="rounded-lg bg-green-50 p-3 text-sm leading-relaxed">
@@ -145,6 +154,7 @@ export default function TicketWorkspace({
                     <span className="text-[11px] text-green-700/70">{fmtTime(m.sentAt)}</span>
                   </div>
                   <p className="whitespace-pre-wrap text-neutral-800">{m.text}</p>
+                  <AttachmentStrip msg={m} />
                 </div>
               )
             )}
@@ -338,6 +348,43 @@ function Assist() {
             </div>
           )}
         </div>
+      )}
+    </div>
+  );
+}
+
+function AttachmentStrip({ msg }: { msg: Msg }) {
+  if (!msg.attachments.length) return null;
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-2">
+      {msg.attachments.map((a) =>
+        a.isImage ? (
+          <a
+            key={a.index}
+            href={`/api/attachments/${msg.id}/${a.index}`}
+            target="_blank"
+            rel="noreferrer"
+            title={a.filename}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={`/api/attachments/${msg.id}/${a.index}`}
+              alt={a.filename}
+              className="h-24 w-24 rounded-lg border border-neutral-200 object-cover hover:opacity-90"
+              loading="lazy"
+            />
+          </a>
+        ) : (
+          <a
+            key={a.index}
+            href={`/api/attachments/${msg.id}/${a.index}`}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-neutral-200 bg-white px-2.5 py-1.5 text-xs text-neutral-600 hover:bg-neutral-50"
+          >
+            📎 {a.filename}
+          </a>
+        )
       )}
     </div>
   );
