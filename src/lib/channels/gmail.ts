@@ -96,11 +96,21 @@ export class GmailAdapter implements ChannelAdapter {
       .toString("base64")
       .replace(/\+/g, "-")
       .replace(/\//g, "_");
-    const sent = await gmail.users.messages.send({
-      userId: "me",
-      requestBody: { raw, threadId: reply.providerThreadId },
-    });
-    return { providerMessageId: sent.data.id! };
+    try {
+      const sent = await gmail.users.messages.send({
+        userId: "me",
+        requestBody: { raw, threadId: reply.providerThreadId },
+      });
+      return { providerMessageId: sent.data.id! };
+    } catch (e) {
+      // Tickets that didn't originate in Gmail (web form, pasted note, tests)
+      // carry a thread id Gmail doesn't recognize — send as a new thread.
+      if (String(e).includes("Invalid thread_id")) {
+        const sent = await gmail.users.messages.send({ userId: "me", requestBody: { raw } });
+        return { providerMessageId: sent.data.id! };
+      }
+      throw e;
+    }
   }
 
   async applyTag(id: string, tag: string): Promise<void> {
