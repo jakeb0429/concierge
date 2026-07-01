@@ -87,16 +87,17 @@ export async function retrieve(tenantId: string, query: string, k = 6): Promise<
     const rows = await prisma.$queryRawUnsafe<
       { id: string; title: string; answer: string; score: number }[]
     >(
-      `SELECT id, title, answer, 1 - (embedding <=> $1::extensions.vector) AS score
+      `SELECT id, title, answer, 1 - (embedding OPERATOR(extensions.<=>) $1::extensions.vector) AS score
        FROM concierge."KnowledgeItem"
        WHERE "tenantId" = $2 AND status = 'approved' AND embedding IS NOT NULL
-       ORDER BY embedding <=> $1::extensions.vector
+       ORDER BY embedding OPERATOR(extensions.<=>) $1::extensions.vector
        LIMIT $3`,
       `[${vec.join(",")}]`,
       tenantId,
       k - items.length
     );
-    for (const r of rows) items.push({ ...r, via: "semantic" });
+    const seen = new Set(items.map((i) => i.id));
+    for (const r of rows) if (!seen.has(r.id)) items.push({ ...r, via: "semantic" });
   }
 
   return items;
