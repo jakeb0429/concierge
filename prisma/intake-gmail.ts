@@ -2,23 +2,24 @@ import { PrismaClient } from "@prisma/client";
 import { google, gmail_v1 } from "googleapis";
 
 /**
- * Live Gmail intake — pulls recent hello@ INBOX messages into real tickets.
+ * Live Gmail intake — pulls recent INBOX messages into real tickets, for every
+ * active Gmail channel (hello@, wholesale@, …) or a single specified mailbox.
  * Bounded, idempotent (upserts by thread + message id), keeps existing tickets.
  * Read-only against the mailbox; nothing is sent.
  *
- * Usage: tsx prisma/intake-gmail.ts [max=15]
+ * Usage: tsx prisma/intake-gmail.ts [max=15] [mailbox]
  */
 
 const prisma = new PrismaClient();
 const MAX = Number(process.argv[2] ?? 15);
-const SUBJECT = "hello@rheosgear.com";
+const ONLY_MAILBOX = process.argv[3];
 
-function client(): gmail_v1.Gmail {
+function client(subject: string): gmail_v1.Gmail {
   const jwt = new google.auth.JWT({
     email: process.env.RHEOS_GMAIL_CLIENT_EMAIL,
     key: (process.env.RHEOS_GMAIL_PRIVATE_KEY ?? "").replace(/\\n/g, "\n"),
     scopes: ["https://www.googleapis.com/auth/gmail.modify"],
-    subject: SUBJECT,
+    subject,
   });
   return google.gmail({ version: "v1", auth: jwt });
 }
@@ -42,9 +43,8 @@ function decode(part: gmail_v1.Schema$MessagePart | undefined, mime = "text/plai
   return null;
 }
 
-async function main() {
-  const rheos = await prisma.tenant.findUniqueOrThrow({ where: { slug: "rheos" } });
-  const gmail = client();
+async function intakeMailbox(tenantId: string, channelId: string, mailbox: string) {
+  const gmail = client(mailbox);
   const list = await gmail.users.messages.list({ userId: "me", labelIds: ["INBOX"], maxResults: MAX });
   const refs = list.data.messages ?? [];
 
@@ -54,7 +54,7 @@ async function main() {
     const full = (await gmail.users.messages.get({ userId: "me", id: ref.id!, format: "full" })).data;
     const headers = full.payload?.headers ?? [];
     const from = parseAddr(header(headers, "from"));
-    if (!from.email || from.email === SUBJECT) {
+    if (!from.email || from.email === mailbox) {
       skipped++; // our own outbound or unparseable sender
       continue;
     }
@@ -63,27 +63,28 @@ async function main() {
     const sentAt = new Date(Number(full.internalDate ?? Date.now()));
 
     const customer = await prisma.customer.upsert({
-      where: { tenantId_email: { tenantId: rheos.id, email: from.email } },
+      where: { tenantId_email: { tenantId, email: from.email } },
       update: { displayName: from.name ?? undefined },
-      create: { tenantId: rheos.id, email: from.email, displayName: from.name },
+      create: { tenantId, email: from.email, displayName: from.name },
     });
     const ticket = await prisma.ticket.upsert({
-      where: { tenantId_providerThreadId: { tenantId: rheos.id, providerThreadId: full.threadId! } },
-      update: {},
+      where: { tenantId_providerThreadId: { tenantId, providerThreadId: full.threadId! } },
+      update: { channelId },
       create: {
-        tenantId: rheos.id,
+        tenantId,
         customerId: customer.id,
         channel: "gmail",
+        channelId,
         subject,
         status: "new",
         providerThreadId: full.threadId!,
       },
     });
     await prisma.message.upsert({
-      where: { tenantId_providerMessageId: { tenantId: rheos.id, providerMessageId: full.id! } },
+      where: { tenantId_providerMessageId: { tenantId, providerMessageId: full.id! } },
       update: {},
       create: {
-        tenantId: rheos.id,
+        tenantId,
         ticketId: ticket.id,
         providerMessageId: full.id!,
         direction: "inbound",
@@ -95,11 +96,24 @@ async function main() {
     });
     imported++;
   }
+  console.log(`  ${mailbox}: fetched ${refs.length}, imported ${imported}, skipped ${skipped}`);
+}
 
-  const gmailTickets = await prisma.ticket.count({ where: { tenantId: rheos.id, channel: "gmail" } });
-  console.log(
-    `Live intake: fetched ${refs.length}, imported ${imported} real inbound, skipped ${skipped}. Rheos gmail tickets now: ${gmailTickets}.`
-  );
+async function main() {
+  const rheos = await prisma.tenant.findUniqueOrThrow({ where: { slug: "rheos" } });
+  const channels = await prisma.channel.findMany({
+    where: {
+      tenantId: rheos.id,
+      provider: "gmail",
+      active: true,
+      ...(ONLY_MAILBOX ? { supportAddress: ONLY_MAILBOX } : {}),
+    },
+  });
+  console.log(`Live intake across ${channels.length} Gmail channel(s):`);
+  for (const ch of channels) await intakeMailbox(rheos.id, ch.id, ch.supportAddress);
+
+  const total = await prisma.ticket.count({ where: { tenantId: rheos.id, channel: "gmail" } });
+  console.log(`Rheos gmail tickets now: ${total}.`);
 }
 
 main()

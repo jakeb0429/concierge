@@ -47,6 +47,7 @@ export interface OutboundReply {
   providerThreadId: string;
   inReplyToMessageId: string;
   from: string; // e.g. hello@rheosgear.com or support@stingrayboats.com
+  to: string; // the customer being replied to — always explicit, always shown to the rep
   subject: string;
   html: string;
 }

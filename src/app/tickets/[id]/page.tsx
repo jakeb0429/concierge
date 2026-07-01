@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
+import { cleanEmailText } from "@/lib/email-clean";
 import TicketWorkspace from "./TicketWorkspace";
 
 export const dynamic = "force-dynamic";
@@ -11,6 +12,7 @@ export default async function TicketDetail({ params }: { params: Promise<{ id: s
     where: { id },
     include: {
       customer: true,
+      channelRef: true,
       messages: { orderBy: { sentAt: "asc" } },
       drafts: {
         orderBy: { createdAt: "desc" },
@@ -51,11 +53,12 @@ export default async function TicketDetail({ params }: { params: Promise<{ id: s
           priority: ticket.priority,
           customerName: ticket.customer.displayName ?? "Customer",
           customerEmail: ticket.customer.email ?? "",
+          mailbox: ticket.channelRef?.supportAddress ?? "hello@rheosgear.com",
         }}
         messages={ticket.messages.map((m) => ({
           direction: m.direction,
           subject: m.subject,
-          text: m.text,
+          text: cleanEmailText(m.text),
           sentAt: m.sentAt.toISOString(),
         }))}
         initialDraft={initialDraft}

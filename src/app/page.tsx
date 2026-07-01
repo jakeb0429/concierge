@@ -11,6 +11,7 @@ export default async function Inbox() {
     where: { tenantId: tenant.id },
     include: {
       customer: true,
+      channelRef: true,
       messages: { where: { direction: "inbound" }, orderBy: { sentAt: "asc" }, take: 1 },
     },
     orderBy: { createdAt: "desc" },
@@ -44,6 +45,9 @@ export default async function Inbox() {
                   <span className="truncate text-sm font-medium">{t.customer.displayName}</span>
                   {t.priority === "high" && (
                     <span className="rounded-full bg-red-50 px-2 py-0.5 text-[11px] text-red-700">high</span>
+                  )}
+                  {t.channelRef?.supportAddress?.startsWith("wholesale") && (
+                    <span className="rounded-full bg-purple-50 px-2 py-0.5 text-[11px] text-purple-700">wholesale</span>
                   )}
                 </div>
                 <div className="truncate text-sm text-neutral-700">{t.subject}</div>

@@ -15,7 +15,8 @@
     "db:seed-inquiries": "tsx prisma/seed-inquiries.ts",
     "db:mine-hubspot": "tsx prisma/mine-hubspot.ts",
     "db:studio": "prisma studio",
-    "db:intake-gmail": "tsx prisma/intake-gmail.ts"
+    "db:intake-gmail": "tsx prisma/intake-gmail.ts",
+    "db:import-products": "tsx prisma/import-products.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

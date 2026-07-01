@@ -43,6 +43,8 @@ model Channel {
   watchExpiresAt DateTime?
   active         Boolean @default(true)
 
+  tickets Ticket[]
+
   @@unique([tenantId, provider, supportAddress])
   @@index([tenantId])
   @@schema("concierge")
@@ -130,6 +132,8 @@ model Ticket {
   customerId    String
   customer      Customer @relation(fields: [customerId], references: [id])
   channel       String   // provider the ticket arrived on
+  channelId     String?  // WHICH mailbox (hello@ vs wholesale@) — replies go from here
+  channelRef    Channel? @relation(fields: [channelId], references: [id])
   subject       String?
   status        String   @default("new") // new|drafted|in_review|replied|resolved|archived
   priority      String   @default("normal") // low|normal|high|vip

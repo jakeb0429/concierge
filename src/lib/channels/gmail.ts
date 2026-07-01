@@ -60,16 +60,39 @@ export class GmailAdapter implements ChannelAdapter {
 
   async send(reply: OutboundReply): Promise<{ providerMessageId: string }> {
     const gmail = await this.client();
-    const raw = Buffer.from(
-      [
-        `From: ${reply.from}`,
-        `Subject: ${reply.subject}`,
-        `In-Reply-To: ${reply.inReplyToMessageId}`,
-        "Content-Type: text/html; charset=UTF-8",
-        "",
-        reply.html,
-      ].join("\r\n")
-    )
+
+    // Resolve the RFC Message-ID of the message we're replying to, so the reply
+    // threads correctly in the CUSTOMER's mail client (Gmail's threadId only
+    // threads it on our side). inReplyToMessageId is Gmail's internal id.
+    let rfcMessageId: string | null = null;
+    let references: string | null = null;
+    if (reply.inReplyToMessageId) {
+      try {
+        const orig = await gmail.users.messages.get({
+          userId: "me",
+          id: reply.inReplyToMessageId,
+          format: "metadata",
+          metadataHeaders: ["Message-ID", "References"],
+        });
+        const h = (n: string) =>
+          orig.data.payload?.headers?.find((x) => x.name?.toLowerCase() === n.toLowerCase())?.value ?? null;
+        rfcMessageId = h("Message-ID");
+        references = [h("References"), rfcMessageId].filter(Boolean).join(" ") || null;
+      } catch {
+        /* threading headers are best-effort; send still goes out addressed */
+      }
+    }
+
+    const headers = [
+      `From: ${reply.from}`,
+      `To: ${reply.to}`,
+      `Subject: ${reply.subject}`,
+      ...(rfcMessageId ? [`In-Reply-To: ${rfcMessageId}`] : []),
+      ...(references ? [`References: ${references}`] : []),
+      "Content-Type: text/html; charset=UTF-8",
+      "MIME-Version: 1.0",
+    ];
+    const raw = Buffer.from([...headers, "", reply.html].join("\r\n"))
       .toString("base64")
       .replace(/\+/g, "-")
       .replace(/\//g, "_");

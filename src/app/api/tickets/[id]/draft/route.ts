@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { generateDraft } from "@/lib/brain/draft";
+import { cleanEmailText } from "@/lib/email-clean";
 
 /**
  * Prepare (or regenerate) a first draft for a ticket. Grounded, cited, scored.
@@ -21,7 +22,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     },
   });
 
-  const ticketText = ticket.messages.map((m) => m.text).join("\n\n");
+  const ticketText = ticket.messages.map((m) => cleanEmailText(m.text)).join("\n\n");
   const prior = regenOfDraftId
     ? await prisma.draft.findUnique({ where: { id: regenOfDraftId } })
     : null;

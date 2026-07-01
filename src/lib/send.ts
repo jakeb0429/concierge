@@ -14,16 +14,20 @@ export async function sendReply(args: {
   channel: Channel;
   providerThreadId: string;
   inReplyToMessageId: string;
+  to: string;
   html: string;
   subject: string;
 }): Promise<{ providerMessageId: string; live: boolean }> {
+  // Mock/seed tickets NEVER transmit, even with live send on — their addresses
+  // are fabricated and could belong to real strangers.
+  const isMock = args.providerThreadId.startsWith("mock-");
   // Safety gate: even with live credentials present, DO NOT transmit unless
-  // CONCIERGE_LIVE_SEND is explicitly "true". This prevents an accidental real
-  // email to a mock/test recipient while we're still working against seed data.
-  const creds = process.env.CONCIERGE_LIVE_SEND === "true" ? credentialsFor(args.channel.provider) : null;
+  // CONCIERGE_LIVE_SEND is explicitly "true".
+  const creds =
+    !isMock && process.env.CONCIERGE_LIVE_SEND === "true" ? credentialsFor(args.channel.provider) : null;
   if (!creds) {
     console.log(
-      `[send:stub] would send via ${args.channel.provider} from ${args.channel.supportAddress} — "${args.subject}"`
+      `[send:${isMock ? "mock" : "stub"}] would send via ${args.channel.provider} from ${args.channel.supportAddress} to ${args.to} — "${args.subject}"`
     );
     return { providerMessageId: `stub-${Date.now()}`, live: false };
   }
@@ -38,6 +42,7 @@ export async function sendReply(args: {
     providerThreadId: args.providerThreadId,
     inReplyToMessageId: args.inReplyToMessageId,
     from: args.channel.supportAddress,
+    to: args.to,
     subject: args.subject,
     html: args.html,
   });

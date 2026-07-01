@@ -19,6 +19,7 @@ type Ticket = {
   priority: string;
   customerName: string;
   customerEmail: string;
+  mailbox: string;
 };
 
 const STEER_CHIPS = ["Warmer", "Shorter", "More detail", "Add next steps", "More formal"];
@@ -68,15 +69,23 @@ export default function TicketWorkspace({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const [sentInfo, setSentInfo] = useState<{ to: string; live: boolean } | null>(null);
+
   async function confirm() {
     if (!draft) return;
     setSending(true);
     try {
-      await fetch(`/api/tickets/${ticket.id}/confirm`, {
+      const res = await fetch(`/api/tickets/${ticket.id}/confirm`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ draftId: draft.draftId, finalBody: body }),
       });
+      const d = await res.json();
+      if (!res.ok) {
+        alert(d.error ?? "Send failed");
+        return;
+      }
+      setSentInfo({ to: d.to, live: d.live });
       setSent(true);
       setStatus("replied");
     } finally {
@@ -84,8 +93,10 @@ export default function TicketWorkspace({
     }
   }
 
-  const inbound = messages.filter((m) => m.direction === "inbound");
-  const outbound = messages.filter((m) => m.direction === "outbound");
+  // Chronological thread — newest last, like a mail client.
+  const thread = [...messages].sort((a, b) => a.sentAt.localeCompare(b.sentAt));
+  const fmtTime = (iso: string) =>
+    new Date(iso).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 
   return (
     <div className="mt-3">
@@ -98,7 +109,7 @@ export default function TicketWorkspace({
           <div>
             <div className="text-sm font-medium">{ticket.customerName}</div>
             <div className="text-xs text-neutral-400">
-              {ticket.customerEmail} · via hello@rheosgear.com
+              {ticket.customerEmail} · via {ticket.mailbox}
             </div>
           </div>
         </div>
@@ -117,18 +128,25 @@ export default function TicketWorkspace({
         <div className="rounded-xl border border-neutral-200 bg-white p-4">
           <div className="mb-2 text-xs text-neutral-400">Conversation</div>
           <div className="space-y-3">
-            {inbound.map((m, i) => (
-              <div key={i} className="text-sm leading-relaxed">
-                <div className="mb-1 text-xs text-neutral-400">{ticket.customerName}</div>
-                <p className="whitespace-pre-wrap text-neutral-800">{m.text}</p>
-              </div>
-            ))}
-            {outbound.map((m, i) => (
-              <div key={`o${i}`} className="rounded-lg bg-green-50 p-3 text-sm leading-relaxed">
-                <div className="mb-1 text-xs text-green-700">Sent reply</div>
-                <p className="whitespace-pre-wrap text-neutral-800">{m.text}</p>
-              </div>
-            ))}
+            {thread.map((m, i) =>
+              m.direction === "inbound" ? (
+                <div key={i} className="rounded-lg bg-neutral-50 p-3 text-sm leading-relaxed">
+                  <div className="mb-1 flex items-baseline justify-between">
+                    <span className="text-xs font-medium text-neutral-500">{ticket.customerName}</span>
+                    <span className="text-[11px] text-neutral-400">{fmtTime(m.sentAt)}</span>
+                  </div>
+                  <p className="whitespace-pre-wrap text-neutral-800">{m.text}</p>
+                </div>
+              ) : (
+                <div key={i} className="rounded-lg bg-green-50 p-3 text-sm leading-relaxed">
+                  <div className="mb-1 flex items-baseline justify-between">
+                    <span className="text-xs font-medium text-green-700">Rheos support</span>
+                    <span className="text-[11px] text-green-700/70">{fmtTime(m.sentAt)}</span>
+                  </div>
+                  <p className="whitespace-pre-wrap text-neutral-800">{m.text}</p>
+                </div>
+              )
+            )}
           </div>
         </div>
 
@@ -230,13 +248,19 @@ export default function TicketWorkspace({
             disabled={sending || generating || !draft}
             className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
           >
-            {sending ? "Sending…" : "Confirm and send"}
+            {sending ? "Sending…" : `Confirm and send → ${ticket.customerEmail || "no address"}`}
           </button>
-          <span className="text-xs text-neutral-400">Send is the only outbound action — logged until live send is enabled.</span>
+          <span className="text-xs text-neutral-400">
+            Replies go from {ticket.mailbox}. Send is the only outbound action.
+          </span>
         </div>
       ) : (
         <div className="mt-3 rounded-lg bg-green-50 px-4 py-2 text-sm text-green-700">
-          Reply sent. This ticket is now marked replied.
+          {sentInfo
+            ? sentInfo.live
+              ? `Reply sent to ${sentInfo.to} from ${ticket.mailbox}.`
+              : `Reply logged (not transmitted — ${sentInfo.to} is a test/mock recipient or live send is off).`
+            : "Reply sent. This ticket is now marked replied."}
         </div>
       )}
 

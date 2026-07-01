@@ -14,12 +14,15 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     where: { id },
     include: {
       customer: true,
+      channelRef: true,
       tenant: { include: { channels: true } },
       messages: { where: { direction: "inbound" }, orderBy: { sentAt: "desc" }, take: 1 },
     },
   });
   const draft = await prisma.draft.findUniqueOrThrow({ where: { id: draftId } });
-  const channel = ticket.tenant.channels.find((c) => c.provider === ticket.channel);
+  // Reply from the mailbox the ticket arrived on; legacy tickets without a
+  // channelId fall back to the tenant's first channel of that provider.
+  const channel = ticket.channelRef ?? ticket.tenant.channels.find((c) => c.provider === ticket.channel);
   const lastInbound = ticket.messages[0];
 
   // Capture the rep's edit as Ledger signal (never mutates the Brain directly).
@@ -35,12 +38,18 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     });
   }
 
+  const to = ticket.customer.email;
+  if (!to) {
+    return NextResponse.json({ error: "This customer has no email address to reply to." }, { status: 400 });
+  }
+
   let sent = { providerMessageId: `stub-${Date.now()}`, live: false };
   if (channel) {
     sent = await sendReply({
       channel,
       providerThreadId: ticket.providerThreadId,
       inReplyToMessageId: lastInbound?.providerMessageId ?? "",
+      to,
       subject: `Re: ${ticket.subject ?? ""}`,
       html: finalBody.replace(/\n/g, "<br>"),
     });
@@ -72,5 +81,5 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     },
   });
 
-  return NextResponse.json({ ok: true, live: sent.live });
+  return NextResponse.json({ ok: true, live: sent.live, to });
 }
