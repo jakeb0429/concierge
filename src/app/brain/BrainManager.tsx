@@ -14,7 +14,33 @@ type Item = {
   sourceRef?: string | null;
 };
 
-export default function BrainManager({ initialItems }: { initialItems: Item[] }) {
+type Signal = {
+  id: string;
+  kind: string;
+  target: string;
+  itemTitle: string | null;
+  proposedText: string | null;
+  occurrences: number;
+};
+
+export default function BrainManager({
+  initialItems,
+  initialSignals = [],
+}: {
+  initialItems: Item[];
+  initialSignals?: Signal[];
+}) {
+  const [signals, setSignals] = useState(initialSignals);
+
+  async function resolveSignal(id: string, action: "approve" | "dismiss") {
+    await fetch(`/api/signals/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action }),
+    });
+    setSignals((xs) => xs.filter((s) => s.id !== id));
+    if (action === "approve") window.location.reload(); // the Brain changed — refetch entries
+  }
   // Draft candidates (e.g. mined from HubSpot) surface first, awaiting approval.
   const [items, setItems] = useState(
     [...initialItems].sort((a, b) => (a.status === "draft" ? -1 : 0) - (b.status === "draft" ? -1 : 0))
@@ -72,6 +98,42 @@ export default function BrainManager({ initialItems }: { initialItems: Item[] })
           + Add entry
         </button>
       </div>
+
+      {signals.length > 0 && (
+        <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50/50 p-4">
+          <div className="mb-2 text-xs font-medium text-amber-800">
+            The Brain has learned something — {signals.length} proposal{signals.length > 1 ? "s" : ""} from real rep behavior
+          </div>
+          <div className="space-y-3">
+            {signals.map((s) => (
+              <div key={s.id} className="rounded-lg border border-amber-200 bg-white p-3">
+                <div className="mb-1 flex items-center gap-2 text-xs text-neutral-500">
+                  <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] text-amber-800">
+                    {s.kind.replace(/_/g, " ")} · seen {s.occurrences}×
+                  </span>
+                  {s.itemTitle && <span>on “{s.itemTitle}”</span>}
+                  <span className="text-neutral-400">→ {s.target.replace(/_/g, " ")}</span>
+                </div>
+                <p className="text-sm leading-relaxed text-neutral-800">{s.proposedText}</p>
+                <div className="mt-2 flex gap-2">
+                  <button
+                    onClick={() => resolveSignal(s.id, "approve")}
+                    className="rounded-lg bg-green-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-700"
+                  >
+                    Approve — update the Brain
+                  </button>
+                  <button
+                    onClick={() => resolveSignal(s.id, "dismiss")}
+                    className="rounded-lg border border-neutral-200 px-3 py-1.5 text-xs hover:bg-neutral-50"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {adding && (
         <div className="mb-4 rounded-xl border border-neutral-300 bg-white p-4">

@@ -1,5 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import { google, gmail_v1 } from "googleapis";
+import { triage } from "../src/lib/triage";
 
 /**
  * Live Gmail intake — pulls recent INBOX messages into real tickets, for every
@@ -50,6 +51,7 @@ async function intakeMailbox(tenantId: string, channelId: string, mailbox: strin
 
   let imported = 0;
   let skipped = 0;
+  const skippedNoise: string[] = [];
   for (const ref of refs) {
     const full = (await gmail.users.messages.get({ userId: "me", id: ref.id!, format: "full" })).data;
     const headers = full.payload?.headers ?? [];
@@ -67,19 +69,33 @@ async function intakeMailbox(tenantId: string, channelId: string, mailbox: strin
       update: { displayName: from.name ?? undefined },
       create: { tenantId, email: from.email, displayName: from.name },
     });
-    const ticket = await prisma.ticket.upsert({
+
+    // Triage NEW threads only — an existing ticket keeps its state and just
+    // gains the message. Noise is archived with its category tag, never drafted.
+    const existing = await prisma.ticket.findUnique({
       where: { tenantId_providerThreadId: { tenantId, providerThreadId: full.threadId! } },
-      update: { channelId },
-      create: {
-        tenantId,
-        customerId: customer.id,
-        channel: "gmail",
-        channelId,
-        subject,
-        status: "new",
-        providerThreadId: full.threadId!,
-      },
+      select: { id: true },
     });
+    let ticket;
+    if (existing) {
+      ticket = await prisma.ticket.update({ where: { id: existing.id }, data: { channelId } });
+    } else {
+      const t = await triage(from.email, subject, text);
+      ticket = await prisma.ticket.create({
+        data: {
+          tenantId,
+          customerId: customer.id,
+          channel: "gmail",
+          channelId,
+          subject,
+          status: t.isNoise ? "archived" : "new",
+          priority: t.priority,
+          tags: [t.category],
+          providerThreadId: full.threadId!,
+        },
+      });
+      if (t.isNoise) skippedNoise.push(`${from.email} (${t.category})`);
+    }
     await prisma.message.upsert({
       where: { tenantId_providerMessageId: { tenantId, providerMessageId: full.id! } },
       update: {},
@@ -96,7 +112,10 @@ async function intakeMailbox(tenantId: string, channelId: string, mailbox: strin
     });
     imported++;
   }
-  console.log(`  ${mailbox}: fetched ${refs.length}, imported ${imported}, skipped ${skipped}`);
+  console.log(
+    `  ${mailbox}: fetched ${refs.length}, imported ${imported}, skipped ${skipped}` +
+      (skippedNoise.length ? ` | auto-archived noise: ${skippedNoise.join(", ")}` : "")
+  );
 }
 
 async function main() {

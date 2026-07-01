@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --turbopack -p 3013",
+    "dev": "next dev --turbopack -p 3014",
     "build": "next build",
-    "start": "next start -p 3013",
+    "start": "next start -p 3014",
     "lint": "next lint",
     "db:setup": "node scripts/db-setup.cjs",
     "db:generate": "prisma generate",
@@ -16,7 +16,9 @@
     "db:mine-hubspot": "tsx prisma/mine-hubspot.ts",
     "db:studio": "prisma studio",
     "db:intake-gmail": "tsx prisma/intake-gmail.ts",
-    "db:import-products": "tsx prisma/import-products.ts"
+    "db:import-products": "tsx prisma/import-products.ts",
+    "db:detect-learning": "tsx prisma/detect-learning.ts",
+    "db:embed": "tsx prisma/embed-knowledge.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

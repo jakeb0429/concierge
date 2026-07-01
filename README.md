@@ -15,7 +15,7 @@ one shared codebase.
 |---|---|
 | First tenant | **Rheos** (dogfood) — Google Workspace, `hello@rheosgear.com` |
 | Scope | **Full Phase 1**: live email read + send, with tag/folder/archive sync |
-| Infra | **Birdseye** box; shared Postgres, own `concierge` schema + `pgvector`; separate Next app + PM2 (port 3013) |
+| Infra | **Birdseye** box; shared Postgres, own `concierge` schema + `pgvector`; separate Next app + PM2 (port 3014) |
 | AI | Anthropic, model centralized in `src/lib/anthropic.ts` (`claude-opus-4-8`) |
 | Seed | Mine HubSpot `hello@` tickets → FAQ candidates; crawl rheosgear.com; brand guidelines → voice guide |
 | Second tenant | **Stingray** — Microsoft 365 (`support@stingrayboats.com`), via the Graph adapter |
@@ -66,7 +66,7 @@ npm install
 cp .env.example .env          # fill DATABASE_URL, ANTHROPIC_API_KEY, Rheos Gmail creds
 npm run db:push               # creates the concierge schema + pgvector
 npm run db:seed               # Rheos Brand Brain + both tenants
-npm run dev                   # http://localhost:3013
+npm run dev                   # http://localhost:3014
 ```
 
 ## Roadmap

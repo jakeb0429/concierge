@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentTenant } from "@/lib/tenant";
+import { reindexKnowledgeItem } from "@/lib/brain/index-write";
 
 export async function GET() {
   const tenant = await getCurrentTenant();
@@ -35,5 +36,6 @@ export async function POST(req: Request) {
   await prisma.auditEvent.create({
     data: { tenantId: tenant.id, action: "answer_promoted", entity: `knowledge:${item.id}` },
   });
+  await reindexKnowledgeItem(item.id, item.title, item.answer);
   return NextResponse.json({ item });
 }

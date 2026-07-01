@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentTenant } from "@/lib/tenant";
+import { reindexKnowledgeItem } from "@/lib/brain/index-write";
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -20,5 +21,6 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       version: b.answer && b.answer !== existing.answer ? existing.version + 1 : existing.version,
     },
   });
+  if (b.answer && b.answer !== existing.answer) await reindexKnowledgeItem(item.id, item.title, item.answer);
   return NextResponse.json({ item });
 }

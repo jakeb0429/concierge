@@ -60,9 +60,10 @@ export default function TicketWorkspace({
     }
   }
 
-  // Auto-prepare a first draft on open when none exists and it's not already sent.
+  // Auto-prepare a first draft on open — but never for archived/noise tickets;
+  // those get a manual button instead so a stray open doesn't burn a model call.
   useEffect(() => {
-    if (!started.current && !initialDraft && !sent) {
+    if (!started.current && !initialDraft && !sent && ticket.status !== "archived") {
       started.current = true;
       generate();
     }
@@ -161,7 +162,19 @@ export default function TicketWorkspace({
             )}
           </div>
 
-          {generating && !draft ? (
+          {!draft && !generating && ticket.status === "archived" ? (
+            <div className="py-8 text-center">
+              <p className="mb-3 text-sm text-neutral-400">
+                Archived as noise — no draft was prepared automatically.
+              </p>
+              <button
+                onClick={() => generate()}
+                className="rounded-lg border border-neutral-300 px-3 py-2 text-sm hover:bg-neutral-50"
+              >
+                Prepare a draft anyway
+              </button>
+            </div>
+          ) : generating && !draft ? (
             <div className="py-10 text-center text-sm text-neutral-400">Preparing draft…</div>
           ) : (
             <textarea
