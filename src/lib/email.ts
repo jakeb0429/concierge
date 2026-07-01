@@ -12,8 +12,10 @@ export async function sendMagicLink({ email, url }: { email: string; url: string
   const text = `Sign in to Concierge:\n\n${url}\n\nThis link expires in 1 hour. If you didn't request it, ignore this email.`;
   const html = `<p>Sign in to Concierge:</p><p><a href="${url}">Sign in</a></p><p style="color:#888;font-size:12px">This link expires in 1 hour. If you didn't request it, ignore this email.</p>`;
 
-  if (!apiKey || !domain) {
-    console.log(`[email:stub] magic link for ${email} (no MAILGUN creds): ${url}`);
+  // In development, never transmit — the link is logged to the console instead.
+  // Prevents real emails with localhost URLs landing in inboxes during dev/testing.
+  if (process.env.NODE_ENV !== "production" || !apiKey || !domain) {
+    console.log(`[email:${process.env.NODE_ENV !== "production" ? "dev" : "stub"}] magic link for ${email}: ${url}`);
     return;
   }
 
