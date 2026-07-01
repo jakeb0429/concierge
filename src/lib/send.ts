@@ -17,7 +17,10 @@ export async function sendReply(args: {
   html: string;
   subject: string;
 }): Promise<{ providerMessageId: string; live: boolean }> {
-  const creds = credentialsFor(args.channel.provider);
+  // Safety gate: even with live credentials present, DO NOT transmit unless
+  // CONCIERGE_LIVE_SEND is explicitly "true". This prevents an accidental real
+  // email to a mock/test recipient while we're still working against seed data.
+  const creds = process.env.CONCIERGE_LIVE_SEND === "true" ? credentialsFor(args.channel.provider) : null;
   if (!creds) {
     console.log(
       `[send:stub] would send via ${args.channel.provider} from ${args.channel.supportAddress} — "${args.subject}"`

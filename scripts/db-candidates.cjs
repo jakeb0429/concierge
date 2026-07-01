@@ -1,0 +1,10 @@
+const fs=require("fs");const {Client}=require("pg");
+const env=fs.readFileSync(__dirname+"/../.env","utf8");
+const url=env.match(/^DATABASE_URL="(.+)"/m)[1].replace(/[?&]schema=concierge/,"");
+(async()=>{const c=new Client({connectionString:url});await c.connect();
+const rows=(await c.query(`select title,category,status,"triggerPhrases","sourceRef",answer from concierge."KnowledgeItem" where status='draft' order by category`)).rows;
+console.log("DRAFT candidates:",rows.length);
+rows.forEach(r=>{console.log("\n• ["+r.category+"] "+r.title);console.log("  triggers:",r.triggerPhrases.join(", "));console.log("  source:",r.sourceRef);});
+console.log("\n=== sample synthesized answer ===");
+console.log(rows.find(r=>r.title.toLowerCase().includes("broke"))?.answer || rows[0].answer);
+await c.end();})().catch(e=>{console.error(e.message);process.exit(1);});

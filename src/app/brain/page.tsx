@@ -22,6 +22,7 @@ export default async function BrainPage() {
         status: i.status,
         version: i.version,
         timesCited: i.timesCited,
+        sourceRef: i.sourceRef,
       }))}
     />
   );

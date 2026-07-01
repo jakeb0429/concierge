@@ -232,7 +232,7 @@ export default function TicketWorkspace({
           >
             {sending ? "Sending…" : "Confirm and send"}
           </button>
-          <span className="text-xs text-neutral-400">Send is the only outbound action — logged until Gmail is wired.</span>
+          <span className="text-xs text-neutral-400">Send is the only outbound action — logged until live send is enabled.</span>
         </div>
       ) : (
         <div className="mt-3 rounded-lg bg-green-50 px-4 py-2 text-sm text-green-700">

@@ -13,7 +13,9 @@
     "db:migrate": "prisma migrate dev",
     "db:seed": "tsx prisma/seed.ts",
     "db:seed-inquiries": "tsx prisma/seed-inquiries.ts",
-    "db:studio": "prisma studio"
+    "db:mine-hubspot": "tsx prisma/mine-hubspot.ts",
+    "db:studio": "prisma studio",
+    "db:intake-gmail": "tsx prisma/intake-gmail.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

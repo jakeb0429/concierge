@@ -222,17 +222,21 @@ model Rule {
 
 /// Agents and admins, per tenant, tied to the platform RBAC model.
 model User {
-  id             String   @id @default(cuid())
-  tenantId       String
-  tenant         Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  email          String
-  name           String?
-  role           String   @default("agent") // agent|team_lead|brand_admin|super_admin
-  createdAt      DateTime @default(now())
+  id               String    @id @default(cuid())
+  tenantId         String
+  tenant           Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  email            String
+  name             String?
+  role             String    @default("agent") // agent|team_lead|brand_admin|super_admin
+  magicLinkToken   String? // sha256 hash of the current magic-link/one-time token
+  magicLinkExpires DateTime?
+  lastLogin        DateTime?
+  createdAt        DateTime  @default(now())
 
   assignedTickets Ticket[] @relation("Assignee")
 
   @@unique([tenantId, email])
+  @@index([magicLinkToken])
   @@schema("concierge")
 }
 

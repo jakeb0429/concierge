@@ -11,10 +11,14 @@ type Item = {
   status: string;
   version: number;
   timesCited: number;
+  sourceRef?: string | null;
 };
 
 export default function BrainManager({ initialItems }: { initialItems: Item[] }) {
-  const [items, setItems] = useState(initialItems);
+  // Draft candidates (e.g. mined from HubSpot) surface first, awaiting approval.
+  const [items, setItems] = useState(
+    [...initialItems].sort((a, b) => (a.status === "draft" ? -1 : 0) - (b.status === "draft" ? -1 : 0))
+  );
   const [editing, setEditing] = useState<string | null>(null);
   const [draftTitle, setDraftTitle] = useState("");
   const [draftAnswer, setDraftAnswer] = useState("");
@@ -30,6 +34,16 @@ export default function BrainManager({ initialItems }: { initialItems: Item[] })
     const { item } = await res.json();
     setItems((xs) => xs.map((x) => (x.id === id ? { ...x, ...item } : x)));
     setEditing(null);
+  }
+
+  async function approve(id: string) {
+    const res = await fetch(`/api/knowledge/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "approved" }),
+    });
+    const { item } = await res.json();
+    setItems((xs) => xs.map((x) => (x.id === id ? { ...x, ...item } : x)));
   }
 
   async function create() {
@@ -127,6 +141,11 @@ export default function BrainManager({ initialItems }: { initialItems: Item[] })
               <div>
                 <div className="mb-1 flex items-center gap-2">
                   <span className="text-sm font-medium">{it.title}</span>
+                  {it.status === "draft" && (
+                    <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[11px] text-amber-700">
+                      pending approval
+                    </span>
+                  )}
                   {it.category && (
                     <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] text-neutral-500">
                       {it.category}
@@ -135,18 +154,31 @@ export default function BrainManager({ initialItems }: { initialItems: Item[] })
                   <span className="text-[11px] text-neutral-400">
                     v{it.version} · cited {it.timesCited}×
                   </span>
-                  <button
-                    onClick={() => {
-                      setEditing(it.id);
-                      setDraftTitle(it.title);
-                      setDraftAnswer(it.answer);
-                    }}
-                    className="ml-auto text-xs text-neutral-400 hover:text-neutral-900"
-                  >
-                    Edit
-                  </button>
+                  <div className="ml-auto flex items-center gap-3">
+                    {it.status === "draft" && (
+                      <button
+                        onClick={() => approve(it.id)}
+                        className="rounded-lg bg-green-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-green-700"
+                      >
+                        Approve
+                      </button>
+                    )}
+                    <button
+                      onClick={() => {
+                        setEditing(it.id);
+                        setDraftTitle(it.title);
+                        setDraftAnswer(it.answer);
+                      }}
+                      className="text-xs text-neutral-400 hover:text-neutral-900"
+                    >
+                      Edit
+                    </button>
+                  </div>
                 </div>
                 <p className="text-sm leading-relaxed text-neutral-700">{it.answer}</p>
+                {it.sourceRef?.startsWith("hubspot") && (
+                  <p className="mt-1 text-[11px] text-neutral-400">mined from {it.sourceRef}</p>
+                )}
               </div>
             )}
           </div>
