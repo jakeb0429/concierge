@@ -1,0 +1,252 @@
+// Concierge — knowledge-grounded, AI-drafted, human-confirmed service platform.
+// Multi-tenant with strict row-level isolation. Every row carries tenantId.
+// Runs in its own `concierge` schema on the shared birdseye Postgres, with pgvector.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  schemas  = ["concierge"]
+}
+
+/// A brand instance: its settings, voice, and mailbox/channel connections.
+model Tenant {
+  id        String   @id @default(cuid())
+  slug      String   @unique // "rheos", "stingray"
+  name      String
+  voiceGuide String? @db.Text // brand voice rules the drafts follow
+  createdAt DateTime @default(now())
+
+  channels        Channel[]
+  knowledge       KnowledgeItem[]
+  customers       Customer[]
+  tickets         Ticket[]
+  rules           Rule[]
+  users           User[]
+  auditEvents     AuditEvent[]
+  learningSignals LearningSignal[]
+
+  @@schema("concierge")
+}
+
+/// A connected intake source: a mailbox (gmail|graph), a social account, a form.
+model Channel {
+  id             String  @id @default(cuid())
+  tenantId       String
+  tenant         Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  provider       String  // "gmail" | "graph" | "instagram" | "web"
+  supportAddress String  // hello@rheosgear.com, support@stingrayboats.com
+  cursor         String? // Gmail historyId / Graph deltaLink for incremental sync
+  watchExpiresAt DateTime?
+  active         Boolean @default(true)
+
+  @@unique([tenantId, provider, supportAddress])
+  @@index([tenantId])
+  @@schema("concierge")
+}
+
+/// An FAQ entry, reply script, policy, or product reference — with its index metadata.
+model KnowledgeItem {
+  id            String   @id @default(cuid())
+  tenantId      String
+  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  kind          String   // "faq" | "script" | "policy" | "product" | "voice"
+  title         String
+  answer        String   @db.Text // canonical, approved answer
+  triggerPhrases String[] // recognized-intent variations (fast path)
+  tags          String[]
+  category      String?
+  conditions    String?  @db.Text // applicable conditions
+  status        String   @default("draft") // "draft" | "approved"
+  version       Int      @default(1)
+  ownerId       String?
+  sourceRef     String?  // provenance: hubspot ticket id, crawled url, doc name
+  embedding     Unsupported("extensions.vector(1024)")? // semantic index (Voyage AI, 1024-dim)
+  // --- learning + anti-bloat metadata ---
+  avoidNotes    String[] // short phrasings reps flagged as do-not-use (a sentence, not a doc)
+  exemplar      Boolean  @default(false) // curated gold example for few-shot tone (capped per category)
+  timesCited    Int      @default(0) // usage stat — drives decay + consolidation
+  lastCitedAt   DateTime? // last time retrieved into a draft (archive if it goes cold)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  citedBy DraftCitation[]
+
+  @@index([tenantId, status])
+  @@index([tenantId, category])
+  @@index([tenantId, exemplar])
+  @@schema("concierge")
+}
+
+/// The consolidation detector's output: a proposed change to the Brain, mined from
+/// the Ledger (recurring edits/steers, coverage gaps, avoid flags). Gated by a human.
+/// The Ledger stays complete + never-prompted; only APPROVED signals mutate the Brain,
+/// almost always as an UPDATE to an existing entry — that's what keeps the Brain lean.
+model LearningSignal {
+  id              String   @id @default(cuid())
+  tenantId        String
+  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  kind            String   // "recurring_edit" | "recurring_steer" | "coverage_gap" | "avoid"
+  // Loose reference (not a FK): a signal can outlive an entry that gets merged/archived.
+  knowledgeItemId String?  // target entry to update; null for a coverage_gap (net-new)
+  proposedText    String?  @db.Text // revised canonical answer, new voice rule, or avoid note
+  proposedTarget  String   @default("answer") // "answer" | "voice_guide" | "avoid_note" | "new_entry"
+  occurrences     Int      @default(1) // how many Ledger events support this
+  evidence        Json?    // draft/edit/steer ids + diffs backing the proposal
+  status          String   @default("open") // "open" | "approved" | "dismissed"
+  createdAt       DateTime @default(now())
+  resolvedAt      DateTime?
+
+  @@index([tenantId, status])
+  @@index([tenantId, kind])
+  @@schema("concierge")
+}
+
+/// A person, merged across channels by email or handle.
+model Customer {
+  id          String   @id @default(cuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  email       String?
+  handle      String?
+  displayName String?
+  createdAt   DateTime @default(now())
+
+  tickets Ticket[]
+
+  @@unique([tenantId, email])
+  @@index([tenantId, handle])
+  @@schema("concierge")
+}
+
+/// The core object: a conversation and its state.
+model Ticket {
+  id            String   @id @default(cuid())
+  tenantId      String
+  tenant        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customerId    String
+  customer      Customer @relation(fields: [customerId], references: [id])
+  channel       String   // provider the ticket arrived on
+  subject       String?
+  status        String   @default("new") // new|drafted|in_review|replied|resolved|archived
+  priority      String   @default("normal") // low|normal|high|vip
+  assigneeId    String?
+  assignee      User?    @relation("Assignee", fields: [assigneeId], references: [id])
+  tags          String[]
+  folder        String?
+  providerThreadId String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  messages Message[]
+  drafts   Draft[]
+
+  @@unique([tenantId, providerThreadId])
+  @@index([tenantId, status])
+  @@index([tenantId, assigneeId])
+  @@schema("concierge")
+}
+
+/// A single inbound or outbound message on a ticket.
+model Message {
+  id                String   @id @default(cuid())
+  tenantId          String
+  ticketId          String
+  ticket            Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  providerMessageId String
+  direction         String   // "inbound" | "outbound"
+  fromEmail         String?
+  fromHandle        String?
+  subject           String?
+  text              String   @db.Text
+  html              String?  @db.Text
+  sentAt            DateTime
+
+  @@unique([tenantId, providerMessageId])
+  @@index([ticketId])
+  @@schema("concierge")
+}
+
+/// A prepared reply: its cited knowledge, coverage score, and the rep's edits.
+model Draft {
+  id           String   @id @default(cuid())
+  tenantId     String
+  ticketId     String
+  ticket       Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  body         String   @db.Text // AI-generated draft
+  editedBody   String?  @db.Text // rep's inline-edited version, if any
+  coverage     String   // "full" | "partial" | "none"
+  coverageNote String?  @db.Text // what to verify (partial), or gap (none)
+  steerNotes   String?  @db.Text // rep's guidance for this regeneration (chips + freeform)
+  regenOf      String?  // prior Draft id this was regenerated from (steer lineage)
+  status       String   @default("prepared") // prepared|edited|regenerated|sent|discarded
+  sentMessageId String? // provider id once a rep confirms + sends
+  createdAt    DateTime @default(now())
+
+  citations DraftCitation[]
+
+  @@index([ticketId])
+  @@schema("concierge")
+}
+
+/// Which KnowledgeItems grounded a draft (the citations shown to the rep).
+model DraftCitation {
+  id              String        @id @default(cuid())
+  draftId         String
+  draft           Draft         @relation(fields: [draftId], references: [id], onDelete: Cascade)
+  knowledgeItemId String
+  knowledgeItem   KnowledgeItem @relation(fields: [knowledgeItemId], references: [id])
+  score           Float // retrieval similarity
+
+  @@index([draftId])
+  @@schema("concierge")
+}
+
+/// Conditions + actions for organization and routing (the rules engine).
+model Rule {
+  id         String  @id @default(cuid())
+  tenantId   String
+  tenant     Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name       String
+  priority   Int     @default(100) // run order
+  conditions Json    // channel, keywords/intent, VIP, product, sentiment, hours
+  actions    Json    // assign, tag, folder, priority, SLA, template, archive, escalate
+  active     Boolean @default(true)
+
+  @@index([tenantId, priority])
+  @@schema("concierge")
+}
+
+/// Agents and admins, per tenant, tied to the platform RBAC model.
+model User {
+  id             String   @id @default(cuid())
+  tenantId       String
+  tenant         Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  email          String
+  name           String?
+  role           String   @default("agent") // agent|team_lead|brand_admin|super_admin
+  createdAt      DateTime @default(now())
+
+  assignedTickets Ticket[] @relation("Assignee")
+
+  @@unique([tenantId, email])
+  @@schema("concierge")
+}
+
+/// Who did what and when (drafts, edits, sends, promotions, rule actions).
+model AuditEvent {
+  id        String   @id @default(cuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  actorId   String?
+  action    String   // draft_generated|draft_edited|reply_sent|answer_promoted|rule_fired|...
+  entity    String   // "ticket:<id>", "knowledge:<id>"
+  meta      Json?
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+  @@schema("concierge")
+}

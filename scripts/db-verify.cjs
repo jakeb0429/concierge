@@ -1,0 +1,15 @@
+const fs=require("fs");const {Client}=require("pg");
+const env=fs.readFileSync(__dirname+"/../.env","utf8");
+const url=env.match(/^DATABASE_URL="(.+)"/m)[1].replace(/[?&]schema=concierge/,"");
+(async()=>{const c=new Client({connectionString:url});await c.connect();
+const tables=(await c.query("select table_name from information_schema.tables where table_schema='concierge' order by 1")).rows.map(r=>r.table_name);
+const tenants=(await c.query('select slug,name from concierge."Tenant" order by slug')).rows;
+const ki=(await c.query('select count(*)::int n from concierge."KnowledgeItem"')).rows[0].n;
+const ch=(await c.query('select provider,"supportAddress" from concierge."Channel" order by provider')).rows;
+const sig=(await c.query('select count(*)::int n from concierge."LearningSignal"')).rows[0].n;
+console.log("concierge tables ("+tables.length+"):",tables.join(", "));
+console.log("tenants:",tenants.map(t=>t.slug+" ("+t.name+")").join(" | "));
+console.log("knowledge items:",ki);
+console.log("channels:",ch.map(c=>c.provider+"→"+c.supportAddress).join(" | "));
+console.log("LearningSignal table present, rows:",sig);
+await c.end();})().catch(e=>{console.error("FAIL:",e.message);process.exit(1);});
