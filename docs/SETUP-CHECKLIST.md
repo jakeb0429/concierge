@@ -5,19 +5,11 @@
 
 ---
 
-## 1. DNS record — unblocks the public URL 🔴 (2 minutes)
+## 1. DNS record — ✅ DONE (2026-07-01)
 
-The app is deployed on the birdseye server, but `concierge.scribechs.com` doesn't
-resolve yet, so there's no public HTTPS access.
-
-1. Open the DNS manager for **scribechs.com** (wherever clients./firstdraft./justforfun. are managed — likely the registrar or Cloudflare).
-2. Add an **A record**:
-   - **Name / host:** `concierge`
-   - **Value:** `72.61.177.29`
-   - **TTL:** default is fine
-3. Tell Claude "DNS is in" — the SSL certificate (certbot) and final URL check take one command from there.
-
-**Done when:** `https://concierge.scribechs.com` loads the login page.
+A record added, certbot issued the certificate, and **https://concierge.scribechs.com
+is live** (HTTP redirects to HTTPS; cert auto-renews). A sign-in email was sent to
+jacob.berton@gmail.com — check your inbox to log in.
 
 ---
 
@@ -91,6 +83,6 @@ it, tell Claude to flip it back — it's one env var.
 | Gmail hello@ + wholesale@ | ✅ live intake; live send ON with recipient display |
 | Brand Brain (81 entries: brand docs, mined FAQ, 69 product families, inventory snapshot) | ✅ |
 | Magic-link auth + allowlist | ✅ |
-| Triage (noise vs customer), scheduled intake, learning detector, deploy | 🔨 Claude executing now |
-| Public URL + SSL | ⬜ blocked on **your DNS record (item 1)** |
+| Triage, scheduled intake (every 10 min), learning detector, deploy | ✅ live on birdseye |
+| Public URL + SSL | ✅ https://concierge.scribechs.com live (2026-07-01) |
 | Semantic search | ⬜ blocked on **your Voyage key (item 2)** |
