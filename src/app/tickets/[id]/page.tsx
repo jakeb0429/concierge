@@ -51,6 +51,7 @@ export default async function TicketDetail({ params }: { params: Promise<{ id: s
           subject: ticket.subject ?? "",
           status: ticket.status,
           priority: ticket.priority,
+          customerId: ticket.customer.id,
           customerName: ticket.customer.displayName ?? "Customer",
           customerEmail: ticket.customer.email ?? "",
           mailbox: ticket.channelRef?.supportAddress ?? "hello@rheosgear.com",

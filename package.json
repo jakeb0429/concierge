@@ -18,7 +18,8 @@
     "db:intake-gmail": "tsx prisma/intake-gmail.ts",
     "db:import-products": "tsx prisma/import-products.ts",
     "db:detect-learning": "tsx prisma/detect-learning.ts",
-    "db:embed": "tsx prisma/embed-knowledge.ts"
+    "db:embed": "tsx prisma/embed-knowledge.ts",
+    "db:analytics-backfill": "tsx prisma/analytics-backfill.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

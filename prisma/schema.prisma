@@ -247,6 +247,51 @@ model User {
   @@schema("concierge")
 }
 
+/// One historical support inquiry (mined from HubSpot for analytics — the
+/// 365-day view predates Concierge tickets). Classified once at backfill.
+model AnalyticsInquiry {
+  id                String   @id @default(cuid())
+  tenantId          String
+  source            String   // "hubspot"
+  threadId          String   @unique
+  fromEmail         String?
+  subject           String?
+  category          String   // warranty | replacement_parts | shipping_order_status | ...
+  endSentiment      String   // positive | neutral | negative | unresolved
+  threadCreatedAt   DateTime
+  daysSincePurchase Int? // inquiry date minus customer's most recent prior order
+
+  @@index([tenantId, threadCreatedAt])
+  @@index([tenantId, category])
+  @@index([fromEmail])
+  @@schema("concierge")
+}
+
+/// A customer's order (imported from the Shopify warehouse for emails that have
+/// contacted support) — powers time-since-purchase and the customer profile.
+model CustomerOrder {
+  id          String   @id @default(cuid())
+  email       String
+  orderedAt   DateTime
+  totalAmount Decimal  @db.Decimal(12, 2)
+  orderRef    String
+  source      String   // "shopify-warehouse"
+
+  @@unique([source, orderRef])
+  @@index([email])
+  @@schema("concierge")
+}
+
+/// Monthly sales aggregates for the inquiries-vs-sales chart.
+model SalesMonthly {
+  month   DateTime @id
+  orders  Int
+  revenue Decimal  @db.Decimal(14, 2)
+  source  String
+
+  @@schema("concierge")
+}
+
 /// Who did what and when (drafts, edits, sends, promotions, rule actions).
 model AuditEvent {
   id        String   @id @default(cuid())

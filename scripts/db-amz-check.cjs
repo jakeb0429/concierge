@@ -1,0 +1,11 @@
+const fs=require("fs");const {Client}=require("pg");
+const env=fs.readFileSync(__dirname+"/../.env","utf8");
+const url=env.match(/^DATABASE_URL="(.+)"/m)[1].replace(/[?&]schema=concierge/,"");
+(async()=>{const c=new Client({connectionString:url});await c.connect();
+const cols=(await c.query(`select column_name from information_schema.columns where table_schema='public' and table_name='AmazonOrder' order by ordinal_position limit 16`)).rows.map(r=>r.column_name);
+console.log("AmazonOrder cols:",cols.join(", "));
+const stats=(await c.query(`select count(*)::int n, min("purchaseDate")::date mn, max("purchaseDate")::date mx from public."AmazonOrder"`)).rows[0];
+console.log("rows:",stats.n,"| purchase range:",stats.mn,"→",stats.mx);
+const monthly=(await c.query(`select date_trunc('month',"purchaseDate")::date m, count(*)::int n, round(sum("orderTotal")::numeric,0) rev from public."AmazonOrder" where "purchaseDate" > now() - interval '400 days' group by 1 order by 1 limit 15`)).rows;
+monthly.forEach(r=>console.log(`  ${String(r.m).slice(0,10)}: ${r.n} orders, $${r.rev}`));
+await c.end();})().catch(e=>{console.error(e.message);process.exit(1);});

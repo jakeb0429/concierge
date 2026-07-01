@@ -25,6 +25,7 @@ type Ticket = {
   subject: string;
   status: string;
   priority: string;
+  customerId: string;
   customerName: string;
   customerEmail: string;
   mailbox: string;
@@ -116,7 +117,9 @@ export default function TicketWorkspace({
             {ticket.customerName.split(" ").map((s) => s[0]).slice(0, 2).join("")}
           </div>
           <div>
-            <div className="text-sm font-medium">{ticket.customerName}</div>
+            <a href={`/customers/${ticket.customerId}`} className="text-sm font-medium hover:underline">
+              {ticket.customerName}
+            </a>
             <div className="text-xs text-neutral-400">
               {ticket.customerEmail} · via {ticket.mailbox}
             </div>
