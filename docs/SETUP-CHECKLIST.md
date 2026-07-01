@@ -13,24 +13,15 @@ jacob.berton@gmail.com — check your inbox to log in.
 
 ---
 
-## 2. Voyage AI key — turns on semantic search 🟡 (10 minutes)
+## 2. Voyage AI key — ✅ DONE (2026-07-01)
 
-Everything currently retrieves via keyword matching. The Voyage key activates the
-semantic index so questions like "which frames fit a narrow face?" find the right
-product entries even with zero keyword overlap.
+All 81 Brand Brain entries embedded; semantic retrieval verified live
+("my shades got scraped up at the beach" → Saltwater Promise, zero keyword overlap).
 
-1. Go to **https://www.voyageai.com** → sign up (Google login works).
-2. Dashboard → **API Keys** → **Create new key** (name it `concierge`).
-3. Send Claude the key (starts with `pa-…`).
-
-Claude then adds it to the env and runs the already-built backfill
-(`npm run db:embed`) — all 81+ Brand Brain entries get embedded, and every new
-entry embeds automatically from then on.
-
-**Cost note:** Voyage has a generous free tier; this workload is tiny (a few
-hundred embeddings + one per new knowledge entry / draft query).
-
-**Done when:** drafts cite product entries for paraphrased questions.
+**One small follow-up:** the Voyage account has no payment method, so it runs at
+reduced rate limits (3 requests/min). Fine for current volume, but add a card at
+https://dashboard.voyageai.com → Billing when convenient — the 200M free tokens
+still apply, so cost stays ~$0; it just lifts the throttle.
 
 ---
 
@@ -85,4 +76,4 @@ it, tell Claude to flip it back — it's one env var.
 | Magic-link auth + allowlist | ✅ |
 | Triage, scheduled intake (every 10 min), learning detector, deploy | ✅ live on birdseye |
 | Public URL + SSL | ✅ https://concierge.scribechs.com live (2026-07-01) |
-| Semantic search | ⬜ blocked on **your Voyage key (item 2)** |
+| Semantic search | ✅ live, 81 entries embedded (2026-07-01) |
