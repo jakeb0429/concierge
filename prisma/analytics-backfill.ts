@@ -12,7 +12,7 @@ import Anthropic from "@anthropic-ai/sdk";
  */
 
 const prisma = new PrismaClient();
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, timeout: 120_000, maxRetries: 2 });
 const HS = process.env.HUBSPOT_TOKEN!;
 const TRIAGE_MODEL = "claude-haiku-4-5-20251001";
 const MAX = Number(process.argv[2] ?? 10_000);
@@ -142,17 +142,29 @@ async function main() {
 
   // 1. Page all threads, keep those in the last 365 days and not yet imported.
   const threads: Thread[] = [];
+  const seen = new Set<string>();
+  let pages = 0;
+  let noNew = 0;
   let after = "";
   while (threads.length < MAX) {
     const page = await hs<{ results: Thread[]; paging?: { next?: { after: string } } }>(
       `/conversations/v3/conversations/threads?limit=100${after ? `&after=${after}` : ""}`
     );
+    let added = 0;
     for (const t of page.results) {
+      if (seen.has(t.id)) continue;
+      seen.add(t.id);
+      added++;
       if (new Date(t.createdAt) >= CUTOFF && !have.has(t.id)) threads.push(t);
     }
+    // HubSpot keeps issuing next-cursors past the real end — break when pages
+    // stop contributing unseen threads.
+    noNew = added === 0 ? noNew + 1 : 0;
+    if (noNew >= 3 || pages > 120) break;
     if (!page.paging?.next?.after) break;
     after = page.paging.next.after;
-    if (threads.length % 500 < 100) console.log(`  paging… ${threads.length} in-window so far`);
+    pages++;
+    if (pages % 10 === 0) console.log(`  [${new Date().toISOString().slice(11, 19)}] page ${pages} — ${threads.length} in-window`);
   }
   console.log(`Threads to process: ${threads.length}`);
 
@@ -181,7 +193,7 @@ async function main() {
       });
       imported++;
     }
-    console.log(`  imported ${imported}/${threads.length}`);
+    console.log(`  [${new Date().toISOString().slice(11, 19)}] imported ${imported}/${threads.length}`);
     pending = [];
   };
 

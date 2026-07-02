@@ -282,13 +282,15 @@ model CustomerOrder {
   @@schema("concierge")
 }
 
-/// Monthly sales aggregates for the inquiries-vs-sales chart.
+/// Monthly sales aggregates for the inquiries-vs-sales chart, per source
+/// (shopify-live, amazon) — the chart sums sources per month.
 model SalesMonthly {
-  month   DateTime @id
+  month   DateTime
+  source  String
   orders  Int
   revenue Decimal  @db.Decimal(14, 2)
-  source  String
 
+  @@id([month, source])
   @@schema("concierge")
 }
 

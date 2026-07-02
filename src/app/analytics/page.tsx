@@ -66,7 +66,9 @@ export default async function Analytics() {
   }
   const salesByMonth = new Map<string, { orders: number; revenue: number }>();
   for (const s of sales) {
-    salesByMonth.set(monthKey(s.month), { orders: s.orders, revenue: Number(s.revenue) });
+    const k = monthKey(s.month);
+    const cur = salesByMonth.get(k) ?? { orders: 0, revenue: 0 };
+    salesByMonth.set(k, { orders: cur.orders + s.orders, revenue: cur.revenue + Number(s.revenue) });
   }
   const maxInq = Math.max(1, ...months.map((m) => byMonth.get(m) ?? 0));
   const maxRev = Math.max(1, ...months.map((m) => salesByMonth.get(m)?.revenue ?? 0));
@@ -166,8 +168,7 @@ export default async function Analytics() {
       <div className="mt-4 rounded-xl border border-neutral-200 bg-white p-4">
         <div className="mb-1 text-sm font-medium">Inquiries vs sales, by month</div>
         <div className="mb-3 text-xs text-neutral-400">
-          Sales sources: Shopify warehouse (through Aug 2025) + Amazon (live, 2026). D2C Shopify since Sep 2025
-          needs a fresh Shopify token — the gap is real data absence, not zero sales.
+          Sales sources: Shopify (live, full history) + Amazon (live, 2026).
         </div>
         <div className="flex items-end gap-1" style={{ height: 180 }}>
           {months.map((m) => {

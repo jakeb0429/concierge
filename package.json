@@ -19,7 +19,8 @@
     "db:import-products": "tsx prisma/import-products.ts",
     "db:detect-learning": "tsx prisma/detect-learning.ts",
     "db:embed": "tsx prisma/embed-knowledge.ts",
-    "db:analytics-backfill": "tsx prisma/analytics-backfill.ts"
+    "db:analytics-backfill": "tsx prisma/analytics-backfill.ts",
+    "db:import-shopify-orders": "tsx prisma/import-shopify-orders.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
