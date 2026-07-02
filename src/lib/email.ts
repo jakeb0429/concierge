@@ -10,7 +10,8 @@ export async function sendMagicLink({ email, url }: { email: string; url: string
   const from = process.env.EMAIL_FROM || `Concierge <no-reply@${domain}>`;
   const subject = "Your Concierge sign-in link";
   const text = `Sign in to Concierge:\n\n${url}\n\nThis link expires in 1 hour. If you didn't request it, ignore this email.`;
-  const html = `<p>Sign in to Concierge:</p><p><a href="${url}">Sign in</a></p><p style="color:#888;font-size:12px">This link expires in 1 hour. If you didn't request it, ignore this email.</p>`;
+  // Show the full URL as the link text so a stale/dev link is visually obvious.
+  const html = `<p>Sign in to Concierge:</p><p><a href="${url}">${url.split("?")[0]}</a></p><p style="color:#888;font-size:12px">This link expires in 1 hour and only the newest one works. If you didn't request it, ignore this email.</p>`;
 
   // In development, never transmit — the link is logged to the console instead.
   // Prevents real emails with localhost URLs landing in inboxes during dev/testing.
