@@ -119,6 +119,15 @@ RFC In-Reply-To fetched at send time, invalid-thread fallback to new thread). Th
 `providerThreadId` starting `mock-` never transmits. Every send needs a rep click; there is no
 auto-send path anywhere.
 
+**"Page couldn't load" / DB unreachable** → the Supabase pooler sits behind an AWS NLB that
+intermittently refuses connects for a few seconds (observed 2026-07-02 on both 5432 and 6543,
+then 8/8 successes moments later). Two layers of defense are in place: the app runtime uses the
+transaction pooler (6543, `pgbouncer=true&connection_limit=10&pool_timeout=20`; session 5432
+stays as `DIRECT_URL` for migrations), and `src/lib/db.ts` retries connection-class errors 3×
+with backoff on EVERY query. If outages exceed ~2s the page still errors — check
+`/root/.pm2/logs/concierge-error.log` and the Supabase status page. Note: rheos-inventory shares
+this database project WITHOUT these defenses (59+ PM2 restarts historically) — same fix applies.
+
 **DB inspection** → `npm run db:studio`, or the kept scripts: `scripts/db-setup.cjs`
 (provisioning), `scripts/db-sales-load.cjs` (Amazon monthly reload), `scripts/dsp-update.cjs`,
 `scripts/db-product-findings.cjs` (cross-tab report in terminal).
