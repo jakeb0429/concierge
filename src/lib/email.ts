@@ -8,7 +8,10 @@ export async function sendMagicLink({ email, url }: { email: string; url: string
   const apiKey = process.env.MAILGUN_API_KEY;
   const domain = process.env.MAILGUN_DOMAIN;
   const from = process.env.EMAIL_FROM || `Concierge <no-reply@${domain}>`;
-  const subject = "Your Concierge sign-in link";
+  const stamp = new Date().toLocaleTimeString("en-US", { timeZone: "America/New_York", hour: "numeric", minute: "2-digit" });
+  // Unique subject per email — prevents Gmail from threading sign-in emails
+  // together (which is how stale links kept getting clicked).
+  const subject = `Concierge sign-in — ${stamp} ET`;
   const text = `Sign in to Concierge:\n\n${url}\n\nThis link expires in 1 hour. If you didn't request it, ignore this email.`;
   // Show the full URL as the link text so a stale/dev link is visually obvious.
   const html = `<p>Sign in to Concierge:</p><p><a href="${url}">${url.split("?")[0]}</a></p><p style="color:#888;font-size:12px">This link expires in 1 hour and only the newest one works. If you didn't request it, ignore this email.</p>`;
