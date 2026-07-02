@@ -95,7 +95,7 @@ embeddings for entries created outside the app).
 | `SHOPIFY_SHOP/CLIENT_ID/CLIENT_SECRET/API_VERSION` | **Dev Dashboard client credentials** — tokens minted per call, 24 h expiry, `read_all_orders` granted | THIS is why old `shpat_` tokens kept "dying"; there is nothing static to rotate anymore |
 | `VOYAGE_API_KEY` | embeddings (voyage-3-large, 1024-dim) | account has NO billing card → 3 req/min throttle |
 | `MAILGUN_API_KEY/DOMAIN`, `EMAIL_FROM` | magic-link sign-in email | domain justforfun.scribechs.com |
-| `AUTH_SECRET`, `AUTH_URL`, `AUTH_ALLOWLIST` | auth | **`AUTH_URL` must stay set** — Auth.js under Next 16 ignores proxy Host headers; losing it regresses sign-in redirects to localhost |
+| `AUTH_SECRET`, `AUTH_URL`, `AUTH_ALLOWLIST` | auth (allowlist gates magic-link; now incl. dev@scribechs.com) | **`AUTH_URL` must stay set** — Auth.js under Next 16 ignores proxy Host headers; losing it regresses sign-in redirects to localhost |
 | `CONCIERGE_LIVE_SEND` | `"true"` = replies actually transmit | flip to anything else for log-only soft mode |
 
 ## 5. Runbooks
@@ -112,6 +112,12 @@ ssh root@72.61.177.29 'bash /opt/concierge/scripts/deploy-birdseye.sh'
 — the `callbackUrl` in the response must be the live domain. If it says localhost, check
 `AUTH_URL` in the server env, `pm2 restart concierge --update-env`.
 Full login proof: `node scripts/e2e-login-test.cjs` (drives a real production login via hello@).
+
+**Password logins** (added 2026-07-02) → second auth path alongside magic-link: PBKDF2 via Web
+Crypto (Edge-safe), constant-time compare. Provision/update: `tsx prisma/set-password.ts
+<email> [role] [password]` (password generated + printed once if omitted; having a hash IS the
+grant, no signup path). dev@scribechs.com = super_admin with a saved password. NOTE: roles are
+still soft — super_admin is stored on the session but nothing role-gates yet (limitation #6).
 
 **Gmail intake stopped** → `tail /root/concierge-intake.log`. Test auth:
 `node scripts/gmail-test.cjs` (impersonation + mailbox read). Common cause: someone touched the

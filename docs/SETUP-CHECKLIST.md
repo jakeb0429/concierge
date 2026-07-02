@@ -60,7 +60,7 @@ it, tell Claude to flip it back — it's one env var.
 | Item | Why | Effort |
 |---|---|---|
 | Rotate the **Rheos Shopify admin token** | The one in rheos-inventory/.env returns 401 — that app's syncs may be limping. Not needed by Concierge. | Shopify admin → Apps → regenerate |
-| **AUTH_ALLOWLIST** additions | Currently jacob.berton@gmail.com, jake@scribechs.com, hello@rheosgear.com. Add reps' emails when they onboard. | Tell Claude |
+| **AUTH_ALLOWLIST** additions | Currently jacob.berton@gmail.com, jake@scribechs.com, hello@rheosgear.com, dev@scribechs.com (super_admin, password login). Add reps' emails when they onboard. | Tell Claude |
 | **Stingray / Microsoft 365** onboarding | The Graph adapter is scaffolded; needs an Azure app registration when Stingray is ready. | ~30 min in Azure portal, Claude guides |
 | **claude-opus-4-8 → newer model** | Model id is centralized in `src/lib/anthropic.ts`; one-line change whenever. | — |
 
