@@ -241,6 +241,7 @@ model User {
   role             String    @default("agent") // agent|team_lead|brand_admin|super_admin
   magicLinkToken   String? // sha256 hash of the current magic-link/one-time token
   magicLinkExpires DateTime?
+  passwordHash     String? // PBKDF2 (pbkdf2$iter$salt$hash); null = magic-link only
   lastLogin        DateTime?
   createdAt        DateTime  @default(now())
 
