@@ -23,6 +23,36 @@ export default async function TicketDetail({ params }: { params: Promise<{ id: s
   });
   if (!ticket) notFound();
 
+  // Customer key stats — orders, spend, returns, and support history at a glance.
+  const email = ticket.customer.email?.toLowerCase();
+  const [orderAgg, refundCount, inquiryCounts, ticketCount] = await Promise.all([
+    email
+      ? prisma.customerOrder.aggregate({
+          where: { email },
+          _count: true,
+          _sum: { totalAmount: true },
+          _min: { orderedAt: true },
+          _max: { orderedAt: true },
+        })
+      : Promise.resolve(null),
+    email ? prisma.customerOrder.count({ where: { email, refunded: true } }) : Promise.resolve(0),
+    email
+      ? prisma.analyticsInquiry.groupBy({ by: ["category"], where: { fromEmail: email }, _count: true })
+      : Promise.resolve([]),
+    prisma.ticket.count({ where: { customerId: ticket.customer.id } }),
+  ]);
+  const inqTotal = inquiryCounts.reduce((s, c) => s + c._count, 0) + ticketCount;
+  const customerStats = {
+    orders: orderAgg?._count ?? 0,
+    totalSpend: Number(orderAgg?._sum.totalAmount ?? 0),
+    firstSale: orderAgg?._min.orderedAt?.toISOString() ?? null,
+    lastSale: orderAgg?._max.orderedAt?.toISOString() ?? null,
+    returns: refundCount,
+    warrantyContacts: inquiryCounts.find((c) => c.category === "warranty")?._count ?? 0,
+    returnContacts: inquiryCounts.find((c) => c.category === "returns_exchange")?._count ?? 0,
+    totalInquiries: inqTotal,
+  };
+
   const latest = ticket.drafts[0];
   const initialDraft =
     latest && latest.status !== "sent"
@@ -67,6 +97,7 @@ export default async function TicketDetail({ params }: { params: Promise<{ id: s
           ),
         }))}
         initialDraft={initialDraft}
+        customerStats={customerStats}
       />
     </div>
   );

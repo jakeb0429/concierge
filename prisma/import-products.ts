@@ -59,22 +59,30 @@ async function hubspotCatalog(): Promise<Map<string, { name: string; price: numb
 async function shopifyCatalog(): Promise<{
   bySku: Map<string, { type: string; price: number }>;
   titles: string[];
+  attrs: Map<string, { style: string | null; gender: string | null }>;
 }> {
   const bySku = new Map<string, { type: string; price: number }>();
   const titles: string[] = [];
+  const attrs = new Map<string, { style: string | null; gender: string | null }>();
   for (let page = 1; page <= 5; page++) {
     const res = await fetch(`https://rheosgear.com/products.json?limit=250&page=${page}`);
     if (!res.ok) break;
     const json = (await res.json()) as {
-      products: { title: string; product_type: string; variants: { sku: string | null; price: string }[] }[];
+      products: { title: string; product_type: string; tags: string[]; variants: { sku: string | null; price: string }[] }[];
     };
     if (!json.products.length) break;
     for (const p of json.products) {
       titles.push(p.title);
+      const tags = (p.tags ?? []).map((t) => t.toLowerCase());
+      attrs.set(p.title, {
+        // Shopify shape tags: "wrap" = wrap; "rectangle"/"other" = lifestyle frames
+        style: tags.includes("wrap") ? "wrap" : tags.includes("rectangle") || tags.includes("other") ? "lifestyle" : null,
+        gender: tags.includes("unisex") ? "unisex" : tags.includes("womens") ? "womens" : tags.includes("mens") ? "mens" : null,
+      });
       for (const v of p.variants) if (v.sku) bySku.set(v.sku, { type: p.product_type, price: Number(v.price) });
     }
   }
-  return { bySku, titles };
+  return { bySku, titles, attrs };
 }
 
 /**
@@ -110,6 +118,8 @@ function parseName(name: string): { family: string; frameColor: string | null; l
 const money = (n: number | null) => (n == null ? null : `$${n.toFixed(2).replace(/\.00$/, "")}`);
 
 /** Upsert a Brand Brain entry by (tenant, title) — update in place, never accumulate. */
+let _written: string[] | null = null;
+export function _trackWrites(list: string[]) { _written = list; }
 async function upsertEntry(args: {
   tenantId: string;
   title: string;
@@ -119,6 +129,7 @@ async function upsertEntry(args: {
   category: string;
   sourceRef: string;
 }) {
+  if (_written) _written.push(args.title);
   const existing = await prisma.knowledgeItem.findFirst({
     where: { tenantId: args.tenantId, title: args.title },
     select: { id: true, version: true, answer: true },
@@ -150,11 +161,11 @@ async function main() {
   const dbBySku = new Map(dbProducts.map((p) => [p.sku, p]));
   console.log(`Sources: HubSpot ${catalog.size} SKUs · public.Product ${dbProducts.length} · Shopify ${shopTypes.size}`);
 
-  // The import owns its categories — wipe and rebuild so runs converge.
-  await prisma.knowledgeItem.deleteMany({
-    where: { tenantId: rheos.id, category: { in: ["Product Catalog", "Inventory", "Wholesale"] } },
-  });
+  // The import owns its categories, but entries may be cited by drafts —
+  // so upsert in place and only sweep stale UNCITED leftovers at the end.
+  const writtenTitles: string[] = [];
 
+  _trackWrites(writtenTitles);
   const records: SkuRecord[] = [];
   for (const [sku, hs] of catalog) {
     // HubSpot catalog junk — test rows, dupes, placeholder items.
@@ -205,6 +216,30 @@ async function main() {
 
   let productEntries = 0;
   const discontinued: string[] = [];
+  // Product-attribute master — one row per silhouette; read by the mention extractor.
+  for (const [family, skus] of families) {
+    const isSunglasses = skus.some((s) => s.frameColor || (s.type ?? "").toLowerCase().includes("sunglass"));
+    const a = shopify.attrs.get(family) ?? { style: null, gender: null };
+    await prisma.productFamily.upsert({
+      where: { name: family },
+      update: {
+        frameColors: [...new Set(skus.map((s) => s.frameColor).filter(Boolean))] as string[],
+        lensColors: [...new Set(skus.map((s) => s.lens).filter(Boolean))] as string[],
+        style: a.style,
+        gender: a.gender,
+        isSunglasses,
+      },
+      create: {
+        name: family,
+        frameColors: [...new Set(skus.map((s) => s.frameColor).filter(Boolean))] as string[],
+        lensColors: [...new Set(skus.map((s) => s.lens).filter(Boolean))] as string[],
+        style: a.style,
+        gender: a.gender,
+        isSunglasses,
+      },
+    });
+  }
+
   for (const [family, skus] of families) {
     const isSunglasses = skus.some((s) => s.frameColor || (s.type ?? "").toLowerCase().includes("sunglass"));
     const frameColors = [...new Set(skus.map((s) => s.frameColor).filter(Boolean))] as string[];
@@ -298,7 +333,16 @@ async function main() {
     sourceRef: `product-import: public.Product + FbaRestockRecommendation`,
   });
 
-  console.log(`Upserted ${productEntries} product-family entries + 1 inventory snapshot. Discontinued families: ${discontinued.length}.`);
+  // Sweep stale entries that weren't re-written this run and aren't cited.
+  const swept = await prisma.knowledgeItem.deleteMany({
+    where: {
+      tenantId: rheos.id,
+      category: { in: ["Product Catalog", "Inventory", "Wholesale"] },
+      title: { notIn: writtenTitles },
+      citedBy: { none: {} },
+    },
+  });
+  console.log(`Upserted ${productEntries} product-family entries + 1 inventory snapshot. Discontinued: ${discontinued.length}. Swept ${swept.count} stale uncited entries.`);
 }
 
 main()

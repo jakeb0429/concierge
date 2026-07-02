@@ -32,7 +32,7 @@ async function mintToken(): Promise<string> {
   return ((await res.json()) as { access_token: string }).access_token;
 }
 
-type Order = { id: number; email: string | null; created_at: string; total_price: string; order_number: number; cancelled_at: string | null };
+type Order = { id: number; email: string | null; created_at: string; total_price: string; order_number: number; cancelled_at: string | null; financial_status: string | null };
 
 async function main() {
   const token = await mintToken();
@@ -40,7 +40,7 @@ async function main() {
 
   let url: string | null =
     `https://${SHOP}/admin/api/${VERSION}/orders.json?status=any&limit=250&created_at_min=${encodeURIComponent(SINCE)}` +
-    `&fields=id,email,created_at,total_price,order_number,cancelled_at`;
+    `&fields=id,email,created_at,total_price,order_number,cancelled_at,financial_status`;
   let fetched = 0;
   let withEmail = 0;
   const monthly = new Map<string, { orders: number; revenue: number }>();
@@ -71,13 +71,14 @@ async function main() {
       const values: string[] = [];
       const params: unknown[] = [];
       emailRows.forEach((o, i) => {
-        const b = i * 4;
-        values.push(`('co_' || md5($${b + 1} || $${b + 2}), $${b + 1}, $${b + 3}::timestamptz, $${b + 4}::numeric, $${b + 2}, 'shopify-live')`);
-        params.push(o.email!.toLowerCase(), String(o.order_number), o.created_at, o.total_price);
+        const b = i * 5;
+        values.push(`('co_' || md5($${b + 1} || $${b + 2}), $${b + 1}, $${b + 3}::timestamptz, $${b + 4}::numeric, $${b + 2}, 'shopify-live', $${b + 5}::boolean)`);
+        params.push(o.email!.toLowerCase(), String(o.order_number), o.created_at, o.total_price,
+          ["refunded", "partially_refunded"].includes(o.financial_status ?? ""));
       });
       await prisma.$executeRawUnsafe(
-        `INSERT INTO concierge."CustomerOrder" (id, email, "orderedAt", "totalAmount", "orderRef", source)
-         VALUES ${values.join(",")} ON CONFLICT (source, "orderRef") DO NOTHING`,
+        `INSERT INTO concierge."CustomerOrder" (id, email, "orderedAt", "totalAmount", "orderRef", source, refunded)
+         VALUES ${values.join(",")} ON CONFLICT (source, "orderRef") DO UPDATE SET refunded = EXCLUDED.refunded`,
         ...params
       );
       withEmail += emailRows.length;

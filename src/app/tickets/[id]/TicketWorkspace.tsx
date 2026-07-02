@@ -31,16 +31,29 @@ type Ticket = {
   mailbox: string;
 };
 
+type CustomerStats = {
+  orders: number;
+  totalSpend: number;
+  firstSale: string | null;
+  lastSale: string | null;
+  returns: number;
+  warrantyContacts: number;
+  returnContacts: number;
+  totalInquiries: number;
+};
+
 const STEER_CHIPS = ["Warmer", "Shorter", "More detail", "Add next steps", "More formal"];
 
 export default function TicketWorkspace({
   ticket,
   messages,
   initialDraft,
+  customerStats,
 }: {
   ticket: Ticket;
   messages: Msg[];
   initialDraft: Draft | null;
+  customerStats: CustomerStats;
 }) {
   const [draft, setDraft] = useState<Draft | null>(initialDraft);
   const [body, setBody] = useState(initialDraft?.body ?? "");
@@ -133,6 +146,47 @@ export default function TicketWorkspace({
             {statusLabel(status)}
           </span>
         </div>
+      </div>
+
+      {/* customer key stats — what the rep should know before replying */}
+      <div className="mb-3 flex flex-wrap items-center gap-x-5 gap-y-1 rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-xs">
+        {customerStats.orders > 0 ? (
+          <>
+            <span className="text-neutral-600">
+              <span className="font-semibold text-neutral-900">{customerStats.orders}</span> order{customerStats.orders !== 1 ? "s" : ""}
+            </span>
+            <span className="text-neutral-600">
+              <span className="font-semibold text-neutral-900">
+                ${customerStats.totalSpend.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+              </span>{" "}
+              lifetime
+            </span>
+            {customerStats.firstSale && (
+              <span className="text-neutral-500">
+                customer since{" "}
+                {new Date(customerStats.firstSale).toLocaleDateString("en-US", { month: "short", year: "numeric" })}
+              </span>
+            )}
+            {customerStats.lastSale && (
+              <span className="text-neutral-500">
+                last order{" "}
+                {new Date(customerStats.lastSale).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+              </span>
+            )}
+            <span className={customerStats.returns > 0 ? "text-amber-700" : "text-neutral-500"}>
+              {customerStats.returns} return{customerStats.returns !== 1 ? "s" : ""}
+            </span>
+          </>
+        ) : (
+          <span className="text-neutral-400">No purchase history under this email</span>
+        )}
+        <span className={customerStats.warrantyContacts > 0 ? "text-amber-700" : "text-neutral-500"}>
+          {customerStats.warrantyContacts} warranty contact{customerStats.warrantyContacts !== 1 ? "s" : ""}
+        </span>
+        <span className="text-neutral-500">{customerStats.totalInquiries} total inquiries</span>
+        <a href={`/customers/${ticket.customerId}`} className="ml-auto text-blue-600 hover:underline">
+          full profile →
+        </a>
       </div>
 
       <div className="grid grid-cols-1 items-start gap-3 md:grid-cols-2">

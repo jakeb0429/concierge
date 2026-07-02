@@ -2,6 +2,7 @@ import { PrismaClient } from "@prisma/client";
 import { gmail_v1 } from "googleapis";
 import { triage } from "../src/lib/triage";
 import { gmailFor, extractAttachments } from "../src/lib/gmail-client";
+import { extractProductMention } from "../src/lib/product-extract";
 
 /**
  * Live Gmail intake — pulls recent INBOX messages into real tickets, for every
@@ -100,6 +101,9 @@ async function intakeMailbox(tenantId: string, channelId: string, mailbox: strin
       ticketId = existing.id;
     } else {
       const t = await triage(from.email!, subject, text);
+      // Tag detected product mentions so the queue shows what the ticket is about.
+      const pm = await extractProductMention(`${subject ?? ""}\n${text}`);
+      const tags = [t.category, ...(pm.productFamily ? [`product:${pm.productFamily}`] : [])];
       const created = await prisma.ticket.create({
         data: {
           tenantId,
@@ -109,7 +113,7 @@ async function intakeMailbox(tenantId: string, channelId: string, mailbox: strin
           subject,
           status: t.isNoise ? "archived" : "new",
           priority: t.priority,
-          tags: [t.category],
+          tags,
           providerThreadId: threadId,
         },
       });

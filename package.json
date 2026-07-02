@@ -21,7 +21,8 @@
     "db:embed": "tsx prisma/embed-knowledge.ts",
     "db:analytics-backfill": "tsx prisma/analytics-backfill.ts",
     "db:import-shopify-orders": "tsx prisma/import-shopify-orders.ts",
-    "db:mine-playbooks": "tsx prisma/mine-reply-playbooks.ts"
+    "db:mine-playbooks": "tsx prisma/mine-reply-playbooks.ts",
+    "db:enrich-inquiries": "tsx prisma/enrich-inquiries.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

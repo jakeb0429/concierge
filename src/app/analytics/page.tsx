@@ -48,6 +48,11 @@ type Inq = {
   threadCreatedAt: Date;
   daysSincePurchase: number | null;
   fromEmail: string | null;
+  productFamily: string | null;
+  frameColor: string | null;
+  lensColor: string | null;
+  productStyle: string | null;
+  productGender: string | null;
 };
 
 const DIMS: Record<string, { label: string; of: (q: Inq) => string | null; values: (qs: Inq[]) => string[] }> = {
@@ -65,6 +70,32 @@ const DIMS: Record<string, { label: string; of: (q: Inq) => string | null; value
     label: "Outcome sentiment",
     of: (q) => q.endSentiment,
     values: () => ["positive", "neutral", "unresolved", "negative"],
+  },
+  silhouette: {
+    label: "Silhouette",
+    of: (q) => q.productFamily,
+    values: (qs) => [...new Set(qs.map((q) => q.productFamily).filter(Boolean) as string[])].sort(
+      (a, b) => qs.filter((x) => x.productFamily === b).length - qs.filter((x) => x.productFamily === a).length
+    ).slice(0, 12),
+  },
+  style: {
+    label: "Frame style",
+    of: (q) => q.productStyle,
+    values: () => ["wrap", "lifestyle"],
+  },
+  framecolor: {
+    label: "Frame color",
+    of: (q) => q.frameColor,
+    values: (qs) => [...new Set(qs.map((q) => q.frameColor).filter(Boolean) as string[])].sort(
+      (a, b) => qs.filter((x) => x.frameColor === b).length - qs.filter((x) => x.frameColor === a).length
+    ).slice(0, 10),
+  },
+  lenscolor: {
+    label: "Lens color",
+    of: (q) => q.lensColor,
+    values: (qs) => [...new Set(qs.map((q) => q.lensColor).filter(Boolean) as string[])].sort(
+      (a, b) => qs.filter((x) => x.lensColor === b).length - qs.filter((x) => x.lensColor === a).length
+    ).slice(0, 10),
   },
 };
 
@@ -91,7 +122,7 @@ export default async function Analytics({
   const [inquiriesAll, sales] = await Promise.all([
     prisma.analyticsInquiry.findMany({
       where: { tenantId: tenant.id, threadCreatedAt: { gte: since } },
-      select: { id: true, category: true, endSentiment: true, threadCreatedAt: true, daysSincePurchase: true, fromEmail: true },
+      select: { id: true, category: true, endSentiment: true, threadCreatedAt: true, daysSincePurchase: true, fromEmail: true, productFamily: true, frameColor: true, lensColor: true, productStyle: true, productGender: true },
       orderBy: { threadCreatedAt: "desc" },
     }),
     prisma.salesMonthly.findMany({ orderBy: { month: "asc" } }),
@@ -277,6 +308,10 @@ export default async function Analytics({
               ["bucket", "category"],
               ["bucket", "sentiment"],
               ["category", "sentiment"],
+              ["silhouette", "category"],
+              ["silhouette", "sentiment"],
+              ["style", "category"],
+              ["framecolor", "category"],
             ].map(([x, y]) => (
               <Link key={`${x}${y}`} href={explore(x, y)} className={`rounded-full px-3 py-1 ${xDim === x && yDim === y ? "bg-neutral-900 text-white" : "text-neutral-500 hover:bg-neutral-100"}`}>
                 {DIMS[x].label.split(" ")[0]} × {DIMS[y].label.split(" ")[0]}
