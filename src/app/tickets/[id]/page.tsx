@@ -17,7 +17,11 @@ export default async function TicketDetail({ params }: { params: Promise<{ id: s
       drafts: {
         orderBy: { createdAt: "desc" },
         take: 1,
-        include: { citations: { include: { knowledgeItem: { select: { id: true, title: true } } } } },
+        include: {
+          citations: {
+            include: { knowledgeItem: { select: { id: true, title: true, sourceRef: true, version: true } } },
+          },
+        },
       },
     },
   });
@@ -69,6 +73,8 @@ export default async function TicketDetail({ params }: { params: Promise<{ id: s
             id: c.knowledgeItem.id,
             title: c.knowledgeItem.title,
             score: c.score,
+            sourceRef: c.knowledgeItem.sourceRef,
+            version: c.knowledgeItem.version,
           })),
         }
       : null;

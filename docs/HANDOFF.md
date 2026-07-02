@@ -140,6 +140,14 @@ this database project WITHOUT these defenses (59+ PM2 restarts historically) —
   contacts), grounded draft with coverage + citations + policy flags, steer chips + freeform
   regenerate, **submit-for-manager-review**, confirm-and-send (recipient on the button),
   Resolve/Archive, post-send **Save answer to Brand Brain**
+- **Teach the Brain** (on the ticket workspace, shipped 2026-07-02) — citations show version +
+  provenance (`sourceRef`) so out-of-date sources are identifiable; ✎ on a citation submits a
+  correction ("that PO has arrived — no longer in process"), the freeform box submits a net-new
+  learning. Claude synthesizes the revised canonical answer (correction) or a titled entry
+  (learning); both land as open `LearningSignal`s (`rep_correction` / `rep_learning`) in the
+  Brain manager — same human gate as the nightly detector, nothing mutates the Brain directly.
+  Repeat corrections on one entry fold into a single open proposal. Approving a `new_entry`
+  signal creates an approved KnowledgeItem with `taught on ticket:<id>` provenance.
 - **Reviews** (`/reviews`) — manager queue: approve (unlocks send) or return with a note
 - **Brand Brain** (`/brain`) — entries with version + citation counts, pending-approval queue
   (mined FAQ + promoted answers), learning-signal proposals panel
@@ -154,9 +162,13 @@ this database project WITHOUT these defenses (59+ PM2 restarts historically) —
 
 1. **"Unresolved" sentiment is inferred from the customer's last message** — threads where the
    rep answered last can look unresolved. Treat it as an upper bound / trend metric.
+   *Jake 260702: in these scenarios, review the thread in whole to see where the sentiment ended
+   by the customer's last reply or multiple last replies.* (Backlog: reclassify on full thread.)
 2. **Product-mention coverage ≈ 20%** of real inquiries (explicit mentions only, by design).
 3. **Style/gender attributes** exist only for the ~13 frames currently tagged on the Shopify
    site; older silhouettes show null.
+   *Jake 260702: in all scenarios, use HubSpot product SKU to match as much information as is
+   possible.* (Backlog: SKU-level enrichment from the HubSpot catalog.)
 4. **Amazon buyer emails are anonymized** → Amazon orders can't match to support emails;
    time-since-purchase only sees Shopify orders.
 5. **Reply playbooks missing** for replacement_parts / returns_exchange / sizing_fit (too few

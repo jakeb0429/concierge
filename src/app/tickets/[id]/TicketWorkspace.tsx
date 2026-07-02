@@ -3,13 +3,20 @@
 import { useEffect, useRef, useState } from "react";
 import { coverageChip, statusChip, statusLabel } from "@/lib/ui";
 
+type Citation = {
+  id: string;
+  title: string;
+  score: number;
+  sourceRef?: string | null;
+  version?: number;
+};
 type Draft = {
   draftId: string;
   body: string;
   coverage: string;
   coverageNote: string | null;
   policyFlags: string[];
-  citations: { id: string; title: string; score: number }[];
+  citations: Citation[];
   status?: string;
   reviewNote?: string | null;
 };
@@ -340,23 +347,8 @@ export default function TicketWorkspace({
         </div>
       )}
 
-      {/* citations */}
-      {draft && draft.citations.length > 0 && (
-        <div className="mt-3 rounded-xl border border-neutral-200 bg-white p-4">
-          <div className="mb-2 text-xs text-neutral-400">Grounded in Brand Brain</div>
-          <div className="flex flex-wrap gap-2">
-            {draft.citations.map((c) => (
-              <span
-                key={c.id}
-                className="inline-flex items-center gap-2 rounded-lg bg-blue-50 px-3 py-1.5 text-xs text-blue-700"
-              >
-                {c.title}
-                <span className="opacity-60">{c.score.toFixed(2)}</span>
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
+      {/* citations + teach the Brain */}
+      <TeachBrain ticketId={ticket.id} draftId={draft?.draftId ?? null} citations={draft?.citations ?? []} />
 
       {/* review state banners */}
       {!sent && reviewState.status === "pending_review" && (
@@ -423,6 +415,137 @@ export default function TicketWorkspace({
       )}
 
       <Assist />
+    </div>
+  );
+}
+
+/**
+ * Grounding sources + the rep's channel back into the Brain: correct a cited
+ * entry that's wrong/out of date, or teach a learning the Brain doesn't have.
+ * Submissions become LearningSignals — the Brain manager approves, nothing
+ * mutates the Brain from here directly.
+ */
+function TeachBrain({
+  ticketId,
+  draftId,
+  citations,
+}: {
+  ticketId: string;
+  draftId: string | null;
+  citations: Citation[];
+}) {
+  const [target, setTarget] = useState<Citation | null>(null);
+  const [note, setNote] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [confirmation, setConfirmation] = useState<string | null>(null);
+
+  async function submit() {
+    if (!note.trim()) return;
+    setSubmitting(true);
+    try {
+      const res = await fetch(`/api/tickets/${ticketId}/teach`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ note, knowledgeItemId: target?.id, draftId }),
+      });
+      const d = await res.json();
+      if (!res.ok) {
+        alert(d.error ?? "Couldn't submit");
+        return;
+      }
+      setConfirmation(
+        d.kind === "rep_correction"
+          ? `Correction to “${d.itemTitle}” sent to the Brain manager for approval.`
+          : `New learning “${d.itemTitle}” sent to the Brain manager for approval.`
+      );
+      setNote("");
+      setTarget(null);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  const provenance = (c: Citation) =>
+    `v${c.version ?? 1}${c.sourceRef ? ` · ${c.sourceRef}` : ""}`;
+
+  return (
+    <div className="mt-3 rounded-xl border border-neutral-200 bg-white p-4">
+      {citations.length > 0 && (
+        <>
+          <div className="mb-2 text-xs text-neutral-400">
+            Grounded in Brand Brain — click ✎ if a source is wrong or out of date
+          </div>
+          <div className="mb-3 flex flex-wrap gap-2">
+            {citations.map((c) => (
+              <span
+                key={c.id}
+                title={provenance(c)}
+                className={`inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs ${
+                  target?.id === c.id ? "bg-amber-100 text-amber-800" : "bg-blue-50 text-blue-700"
+                }`}
+              >
+                <span>
+                  {c.title}
+                  <span className="ml-1.5 opacity-60">{c.score.toFixed(2)}</span>
+                  <span className="ml-1.5 opacity-50">{provenance(c)}</span>
+                </span>
+                <button
+                  onClick={() => setTarget(target?.id === c.id ? null : c)}
+                  title={`Correct “${c.title}”`}
+                  className="opacity-60 hover:opacity-100"
+                >
+                  ✎
+                </button>
+              </span>
+            ))}
+          </div>
+        </>
+      )}
+
+      <div className="mb-2 text-xs text-neutral-400">
+        {target ? (
+          <>
+            Correcting{" "}
+            <span className="font-medium text-amber-700">
+              “{target.title}” ({provenance(target)})
+            </span>{" "}
+            —{" "}
+            <button onClick={() => setTarget(null)} className="text-blue-600 hover:underline">
+              switch to a general learning
+            </button>
+          </>
+        ) : (
+          "Teach the Brain — add a learning or correction; a manager approves before it grounds drafts"
+        )}
+      </div>
+      <div className="flex gap-2">
+        <input
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && submit()}
+          placeholder={
+            target
+              ? "What's wrong or out of date? e.g. that PO has arrived — no longer in process"
+              : "e.g. new warranty policy: lenses now covered for 2 years"
+          }
+          className="flex-1 rounded-lg border border-neutral-200 px-3 py-2 text-sm outline-none focus:border-neutral-300"
+        />
+        <button
+          onClick={submit}
+          disabled={submitting || !note.trim()}
+          className="whitespace-nowrap rounded-lg border border-neutral-300 px-3 py-2 text-sm hover:bg-neutral-50 disabled:opacity-50"
+        >
+          {submitting ? "Submitting…" : target ? "Submit correction" : "Submit learning"}
+        </button>
+      </div>
+      {confirmation && (
+        <div className="mt-2 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          {confirmation}{" "}
+          <a href="/brain" className="text-blue-600 hover:underline">
+            Review in the Brain manager →
+          </a>
+        </div>
+      )}
     </div>
   );
 }

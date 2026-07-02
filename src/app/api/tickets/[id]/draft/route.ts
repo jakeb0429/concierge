@@ -45,10 +45,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const citedIds = result.citations.map((c) => c.knowledgeItemId);
   const validItems = await prisma.knowledgeItem.findMany({
     where: { id: { in: citedIds }, tenantId: ticket.tenantId },
-    select: { id: true, title: true },
+    select: { id: true, title: true, sourceRef: true, version: true },
   });
   const validIds = new Set(validItems.map((i) => i.id));
-  const titleById = new Map(validItems.map((i) => [i.id, i.title]));
+  const itemById = new Map(validItems.map((i) => [i.id, i]));
 
   const draft = await prisma.draft.create({
     data: {
@@ -96,6 +96,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     suggested: result.suggested,
     citations: result.citations
       .filter((c) => validIds.has(c.knowledgeItemId))
-      .map((c) => ({ id: c.knowledgeItemId, title: titleById.get(c.knowledgeItemId)!, score: c.score })),
+      .map((c) => {
+        const item = itemById.get(c.knowledgeItemId)!;
+        return { id: c.knowledgeItemId, title: item.title, score: c.score, sourceRef: item.sourceRef, version: item.version };
+      }),
   });
 }

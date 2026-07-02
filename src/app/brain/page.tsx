@@ -20,14 +20,18 @@ export default async function BrainPage() {
 
   return (
     <BrainManager
-      initialSignals={signals.map((s) => ({
-        id: s.id,
-        kind: s.kind,
-        target: s.proposedTarget,
-        itemTitle: s.knowledgeItemId ? (titleById.get(s.knowledgeItemId) ?? null) : null,
-        proposedText: s.proposedText,
-        occurrences: s.occurrences,
-      }))}
+      initialSignals={signals.map((s) => {
+        const ev = (s.evidence as { title?: string; notes?: string[] } | null) ?? {};
+        return {
+          id: s.id,
+          kind: s.kind,
+          target: s.proposedTarget,
+          itemTitle: s.knowledgeItemId ? (titleById.get(s.knowledgeItemId) ?? null) : (ev.title ?? null),
+          proposedText: s.proposedText,
+          occurrences: s.occurrences,
+          repNote: ev.notes?.length ? ev.notes[ev.notes.length - 1] : null,
+        };
+      })}
       initialItems={items.map((i) => ({
         id: i.id,
         title: i.title,

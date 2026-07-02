@@ -8,6 +8,7 @@ import { reindexKnowledgeItem } from "@/lib/brain/index-write";
  *   answer      -> revise the KnowledgeItem's canonical answer (version bump)
  *   voice_guide -> append the rule to the tenant's voice guide
  *   avoid_note  -> add to the item's avoidNotes
+ *   new_entry   -> create a new approved KnowledgeItem (rep-taught learning)
  * Body: { action: "approve" | "dismiss" }
  */
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -40,6 +41,20 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         where: { id: signal.knowledgeItemId },
         data: { avoidNotes: { push: signal.proposedText } },
       });
+    } else if (signal.proposedTarget === "new_entry") {
+      const ev = (signal.evidence as { title?: string; category?: string; ticketId?: string } | null) ?? {};
+      const item = await prisma.knowledgeItem.create({
+        data: {
+          tenantId: tenant.id,
+          kind: "faq",
+          title: ev.title ?? "Learning from a live ticket",
+          answer: signal.proposedText,
+          category: ev.category ?? null,
+          status: "approved",
+          sourceRef: ev.ticketId ? `taught on ticket:${ev.ticketId}` : "taught from a ticket",
+        },
+      });
+      await reindexKnowledgeItem(item.id, item.title, item.answer);
     }
   }
 

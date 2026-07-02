@@ -21,6 +21,7 @@ type Signal = {
   itemTitle: string | null;
   proposedText: string | null;
   occurrences: number;
+  repNote?: string | null;
 };
 
 export default function BrainManager({
@@ -115,6 +116,9 @@ export default function BrainManager({
                   <span className="text-neutral-400">→ {s.target.replace(/_/g, " ")}</span>
                 </div>
                 <p className="text-sm leading-relaxed text-neutral-800">{s.proposedText}</p>
+                {s.repNote && (
+                  <p className="mt-1 text-[11px] text-neutral-400">Rep&apos;s note: “{s.repNote}”</p>
+                )}
                 <div className="mt-2 flex gap-2">
                   <button
                     onClick={() => resolveSignal(s.id, "approve")}
@@ -238,8 +242,11 @@ export default function BrainManager({
                   </div>
                 </div>
                 <p className="text-sm leading-relaxed text-neutral-700">{it.answer}</p>
-                {it.sourceRef?.startsWith("hubspot") && (
-                  <p className="mt-1 text-[11px] text-neutral-400">mined from {it.sourceRef}</p>
+                {it.sourceRef && (
+                  <p className="mt-1 text-[11px] text-neutral-400">
+                    {it.sourceRef.startsWith("hubspot") ? "mined from " : "source: "}
+                    {it.sourceRef}
+                  </p>
                 )}
               </div>
             )}
