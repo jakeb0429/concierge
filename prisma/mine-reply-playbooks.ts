@@ -1,5 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import Anthropic from "@anthropic-ai/sdk";
+import { hubspot as hs } from "../src/lib/hubspot";
 
 /**
  * Reply-playbook miner — studies HOW the team actually replied across the past
@@ -21,7 +22,7 @@ import Anthropic from "@anthropic-ai/sdk";
 const CLAUDE_MODEL = "claude-opus-4-8";
 const prisma = new PrismaClient();
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, timeout: 300_000, maxRetries: 2 });
-const HS = process.env.HUBSPOT_TOKEN!;
+
 
 const CATEGORIES = [
   "warranty",
@@ -33,19 +34,6 @@ const CATEGORIES = [
   "sizing_fit",
 ] as const;
 
-async function hs<T>(path: string, attempt = 0): Promise<T> {
-  const res = await fetch(`https://api.hubapi.com${path}`, {
-    headers: { Authorization: `Bearer ${HS}` },
-    signal: AbortSignal.timeout(30_000),
-  }).catch(() => null);
-  if (!res || res.status === 429) {
-    if (attempt >= 6) throw new Error(`HubSpot unavailable for ${path}`);
-    await new Promise((r) => setTimeout(r, res ? 11_000 : 3_000));
-    return hs(path, attempt + 1);
-  }
-  if (!res.ok) throw new Error(`HubSpot ${res.status}`);
-  return res.json() as Promise<T>;
-}
 
 type Message = { type: string; direction?: string; text?: string };
 

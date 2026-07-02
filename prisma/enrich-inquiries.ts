@@ -1,5 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import { extractProductMention } from "../src/lib/product-extract";
+import { hubspotOrNull as hs } from "../src/lib/hubspot";
 
 /**
  * Product enrichment — re-reads each historical inquiry's first customer
@@ -14,22 +15,9 @@ import { extractProductMention } from "../src/lib/product-extract";
  */
 
 const prisma = new PrismaClient();
-const HS = process.env.HUBSPOT_TOKEN!;
+
 const MAX = Number(process.argv[2] ?? 5000);
 
-async function hs<T>(path: string, attempt = 0): Promise<T | null> {
-  const res = await fetch(`https://api.hubapi.com${path}`, {
-    headers: { Authorization: `Bearer ${HS}` },
-    signal: AbortSignal.timeout(30_000),
-  }).catch(() => null);
-  if (!res || res.status === 429) {
-    if (attempt >= 5) return null;
-    await new Promise((r) => setTimeout(r, res ? 11_000 : 3_000));
-    return hs(path, attempt + 1);
-  }
-  if (!res.ok) return null;
-  return res.json() as Promise<T>;
-}
 
 type Message = { type: string; direction?: string; text?: string };
 

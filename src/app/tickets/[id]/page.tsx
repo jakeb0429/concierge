@@ -54,6 +54,7 @@ export default async function TicketDetail({ params }: { params: Promise<{ id: s
   };
 
   const latest = ticket.drafts[0];
+  const sentDraftId = latest?.status === "sent" ? latest.id : null;
   const initialDraft =
     latest && latest.status !== "sent"
       ? {
@@ -61,7 +62,9 @@ export default async function TicketDetail({ params }: { params: Promise<{ id: s
           body: latest.editedBody ?? latest.body,
           coverage: latest.coverage,
           coverageNote: latest.coverageNote,
-          policyFlags: [] as string[],
+          policyFlags: latest.policyFlags,
+          status: latest.status,
+          reviewNote: latest.reviewNote,
           citations: latest.citations.map((c) => ({
             id: c.knowledgeItem.id,
             title: c.knowledgeItem.title,
@@ -97,6 +100,7 @@ export default async function TicketDetail({ params }: { params: Promise<{ id: s
           ),
         }))}
         initialDraft={initialDraft}
+        sentDraftId={sentDraftId}
         customerStats={customerStats}
       />
     </div>

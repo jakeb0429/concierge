@@ -26,6 +26,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <Link href="/analytics" className="hover:text-neutral-900">
                 Analytics
               </Link>
+              <Link href="/reviews" className="hover:text-neutral-900">
+                Reviews
+              </Link>
             </nav>
             <span className="ml-auto text-xs text-neutral-400">Rheos · hello@rheosgear.com</span>
           </div>

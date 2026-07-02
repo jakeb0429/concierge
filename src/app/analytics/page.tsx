@@ -55,6 +55,17 @@ type Inq = {
   productGender: string | null;
 };
 
+function countBy(qs: Inq[], of: (q: Inq) => string | null): Map<string, number> {
+  const m = new Map<string, number>();
+  for (const q of qs) {
+    const v = of(q);
+    if (v) m.set(v, (m.get(v) ?? 0) + 1);
+  }
+  return m;
+}
+const topValues = (qs: Inq[], of: (q: Inq) => string | null, limit: number) =>
+  [...countBy(qs, of).entries()].sort((a, b) => b[1] - a[1]).slice(0, limit).map(([v]) => v);
+
 const DIMS: Record<string, { label: string; of: (q: Inq) => string | null; values: (qs: Inq[]) => string[] }> = {
   bucket: {
     label: "Time since purchase",
@@ -64,7 +75,7 @@ const DIMS: Record<string, { label: string; of: (q: Inq) => string | null; value
   category: {
     label: "Category",
     of: (q) => q.category,
-    values: (qs) => [...new Set(qs.map((q) => q.category))].sort((a, b) => qs.filter((x) => x.category === b).length - qs.filter((x) => x.category === a).length),
+    values: (qs) => topValues(qs, (q) => q.category, 99),
   },
   sentiment: {
     label: "Outcome sentiment",
@@ -74,9 +85,7 @@ const DIMS: Record<string, { label: string; of: (q: Inq) => string | null; value
   silhouette: {
     label: "Silhouette",
     of: (q) => q.productFamily,
-    values: (qs) => [...new Set(qs.map((q) => q.productFamily).filter(Boolean) as string[])].sort(
-      (a, b) => qs.filter((x) => x.productFamily === b).length - qs.filter((x) => x.productFamily === a).length
-    ).slice(0, 12),
+    values: (qs) => topValues(qs, (q) => q.productFamily, 12),
   },
   style: {
     label: "Frame style",
@@ -86,16 +95,12 @@ const DIMS: Record<string, { label: string; of: (q: Inq) => string | null; value
   framecolor: {
     label: "Frame color",
     of: (q) => q.frameColor,
-    values: (qs) => [...new Set(qs.map((q) => q.frameColor).filter(Boolean) as string[])].sort(
-      (a, b) => qs.filter((x) => x.frameColor === b).length - qs.filter((x) => x.frameColor === a).length
-    ).slice(0, 10),
+    values: (qs) => topValues(qs, (q) => q.frameColor, 10),
   },
   lenscolor: {
     label: "Lens color",
     of: (q) => q.lensColor,
-    values: (qs) => [...new Set(qs.map((q) => q.lensColor).filter(Boolean) as string[])].sort(
-      (a, b) => qs.filter((x) => x.lensColor === b).length - qs.filter((x) => x.lensColor === a).length
-    ).slice(0, 10),
+    values: (qs) => topValues(qs, (q) => q.lensColor, 10),
   },
 };
 
@@ -119,13 +124,17 @@ export default async function Analytics({
   const yDim = DIMS[sp.y ?? ""] && sp.y !== xDim ? sp.y! : xDim === "category" ? "sentiment" : "category";
   const since = new Date(Date.now() - 365 * 24 * 3600 * 1000);
 
-  const [inquiriesAll, sales] = await Promise.all([
+  const [inquiriesAll, sales, sentDrafts] = await Promise.all([
     prisma.analyticsInquiry.findMany({
       where: { tenantId: tenant.id, threadCreatedAt: { gte: since } },
       select: { id: true, category: true, endSentiment: true, threadCreatedAt: true, daysSincePurchase: true, fromEmail: true, productFamily: true, frameColor: true, lensColor: true, productStyle: true, productGender: true },
       orderBy: { threadCreatedAt: "desc" },
     }),
     prisma.salesMonthly.findMany({ orderBy: { month: "asc" } }),
+    Promise.all([
+      prisma.draft.count({ where: { tenantId: tenant.id, status: "sent" } }),
+      prisma.draft.count({ where: { tenantId: tenant.id, status: "sent", editedBody: null } }),
+    ]).then(([total, unedited]) => ({ total, unedited })),
   ]);
   const real = inquiriesAll.filter((q) => !NOISE.includes(q.category));
 
@@ -166,10 +175,17 @@ export default async function Analytics({
   // Cross-tab over REAL inquiries
   const X = DIMS[xDim];
   const Y = DIMS[yDim];
-  const xVals = X.values(real).filter((v) => real.some((q) => X.of(q) === v));
-  const yVals = Y.values(real).filter((v) => real.some((q) => Y.of(q) === v));
-  const cell = (xv: string, yv: string) => real.filter((q) => X.of(q) === xv && Y.of(q) === yv).length;
-  const rowTotal = (xv: string) => real.filter((q) => X.of(q) === xv).length;
+  const xCounts = countBy(real, X.of);
+  const yCounts = countBy(real, Y.of);
+  const xVals = X.values(real).filter((v) => (xCounts.get(v) ?? 0) > 0);
+  const yVals = Y.values(real).filter((v) => (yCounts.get(v) ?? 0) > 0);
+  const cellCounts = countBy(real, (q) => {
+    const xv = X.of(q);
+    const yv = Y.of(q);
+    return xv && yv ? `${xv}␟${yv}` : null;
+  });
+  const cell = (xv: string, yv: string) => cellCounts.get(`${xv}␟${yv}`) ?? 0;
+  const rowTotal = (xv: string) => xCounts.get(xv) ?? 0;
   const label = (dim: string, v: string) => (dim === "category" ? (CATEGORY_LABELS[v] ?? v) : v);
 
   // Drill list
@@ -202,8 +218,11 @@ export default async function Analytics({
           </div>
         </div>
         <div className="rounded-xl border border-neutral-200 bg-white p-4">
-          <div className="text-xs text-neutral-400">Noise filtered out</div>
-          <div className="text-2xl font-semibold">{Math.round((noiseCount / Math.max(1, inquiriesAll.length)) * 100)}%</div>
+          <div className="text-xs text-neutral-400">Drafts sent unedited</div>
+          <div className="text-2xl font-semibold">
+            {sentDrafts.total ? `${Math.round((sentDrafts.unedited / sentDrafts.total) * 100)}%` : "—"}
+          </div>
+          <div className="text-[11px] text-neutral-400">{sentDrafts.total} sent · noise filtered {Math.round((noiseCount / Math.max(1, inquiriesAll.length)) * 100)}%</div>
         </div>
         <div className="rounded-xl border border-neutral-200 bg-white p-4">
           <div className="text-xs text-neutral-400">Median time since purchase</div>

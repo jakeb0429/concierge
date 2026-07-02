@@ -10,6 +10,8 @@ type Draft = {
   coverageNote: string | null;
   policyFlags: string[];
   citations: { id: string; title: string; score: number }[];
+  status?: string;
+  reviewNote?: string | null;
 };
 type Attachment = { index: number; filename: string; isImage: boolean };
 type Msg = {
@@ -48,11 +50,13 @@ export default function TicketWorkspace({
   ticket,
   messages,
   initialDraft,
+  sentDraftId,
   customerStats,
 }: {
   ticket: Ticket;
   messages: Msg[];
   initialDraft: Draft | null;
+  sentDraftId: string | null;
   customerStats: CustomerStats;
 }) {
   const [draft, setDraft] = useState<Draft | null>(initialDraft);
@@ -93,6 +97,40 @@ export default function TicketWorkspace({
   }, []);
 
   const [sentInfo, setSentInfo] = useState<{ to: string; live: boolean } | null>(null);
+  const [reviewState, setReviewState] = useState<{ status: string; note: string | null }>({
+    status: initialDraft?.status ?? "prepared",
+    note: initialDraft?.reviewNote ?? null,
+  });
+  const [promoted, setPromoted] = useState(false);
+
+  async function submitForReview() {
+    if (!draft) return;
+    const res = await fetch(`/api/drafts/${draft.draftId}/review`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "submit" }),
+    });
+    if (res.ok) setReviewState({ status: "pending_review", note: null });
+  }
+
+  async function setTicketStatus(next: string) {
+    const res = await fetch(`/api/tickets/${ticket.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: next }),
+    });
+    if (res.ok) setStatus(next);
+  }
+
+  async function promote() {
+    if (!sentDraftId) return;
+    const res = await fetch(`/api/tickets/${ticket.id}/promote`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ draftId: sentDraftId }),
+    });
+    if (res.ok) setPromoted(true);
+  }
 
   async function confirm() {
     if (!draft) return;
@@ -320,27 +358,67 @@ export default function TicketWorkspace({
         </div>
       )}
 
+      {/* review state banners */}
+      {!sent && reviewState.status === "pending_review" && (
+        <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-800">
+          Awaiting manager review — sending is locked until it&apos;s approved.
+        </div>
+      )}
+      {!sent && reviewState.status === "approved" && (
+        <div className="mt-3 rounded-lg border border-green-200 bg-green-50 px-4 py-2 text-sm text-green-700">
+          Manager approved — ready to send.
+        </div>
+      )}
+      {!sent && reviewState.note && (
+        <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-800">
+          Returned by manager: “{reviewState.note}”
+        </div>
+      )}
+
       {/* actions */}
       {!sent ? (
         <div className="mt-3 flex items-center gap-2">
           <button
             onClick={confirm}
-            disabled={sending || generating || !draft}
+            disabled={sending || generating || !draft || reviewState.status === "pending_review"}
             className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
           >
             {sending ? "Sending…" : `Confirm and send → ${ticket.customerEmail || "no address"}`}
           </button>
-          <span className="text-xs text-neutral-400">
-            Replies go from {ticket.mailbox}. Send is the only outbound action.
-          </span>
+          {reviewState.status !== "pending_review" && reviewState.status !== "approved" && (
+            <button
+              onClick={submitForReview}
+              disabled={generating || !draft}
+              className="rounded-lg border border-neutral-300 px-3 py-2 text-sm hover:bg-neutral-50 disabled:opacity-50"
+            >
+              Submit for review
+            </button>
+          )}
+          <span className="text-xs text-neutral-400">Replies go from {ticket.mailbox}.</span>
+          <div className="ml-auto flex gap-2">
+            <button onClick={() => setTicketStatus("resolved")} className="rounded-lg border border-neutral-200 px-3 py-2 text-xs text-neutral-600 hover:bg-neutral-50">
+              Resolve
+            </button>
+            <button onClick={() => setTicketStatus("archived")} className="rounded-lg border border-neutral-200 px-3 py-2 text-xs text-neutral-600 hover:bg-neutral-50">
+              Archive
+            </button>
+          </div>
         </div>
       ) : (
-        <div className="mt-3 rounded-lg bg-green-50 px-4 py-2 text-sm text-green-700">
-          {sentInfo
-            ? sentInfo.live
-              ? `Reply sent to ${sentInfo.to} from ${ticket.mailbox}.`
-              : `Reply logged (not transmitted — ${sentInfo.to} is a test/mock recipient or live send is off).`
-            : "Reply sent. This ticket is now marked replied."}
+        <div className="mt-3 flex flex-wrap items-center gap-3 rounded-lg bg-green-50 px-4 py-2 text-sm text-green-700">
+          <span>
+            {sentInfo
+              ? sentInfo.live
+                ? `Reply sent to ${sentInfo.to} from ${ticket.mailbox}.`
+                : `Reply logged (not transmitted — ${sentInfo.to} is a test/mock recipient or live send is off).`
+              : "Reply sent. This ticket is now marked replied."}
+          </span>
+          {sentDraftId && !promoted && (
+            <button onClick={promote} className="rounded-lg border border-green-300 px-3 py-1 text-xs text-green-800 hover:bg-green-100">
+              Save answer to Brand Brain
+            </button>
+          )}
+          {promoted && <span className="text-xs">Saved — pending approval in the Brain manager.</span>}
         </div>
       )}
 

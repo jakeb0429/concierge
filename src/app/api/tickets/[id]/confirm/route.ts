@@ -50,7 +50,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       providerThreadId: ticket.providerThreadId,
       inReplyToMessageId: lastInbound?.providerMessageId ?? "",
       to,
-      subject: `Re: ${ticket.subject ?? ""}`,
+      subject: /^re:/i.test(ticket.subject ?? "") ? (ticket.subject ?? "") : `Re: ${ticket.subject ?? ""}`,
       html: finalBody.replace(/\n/g, "<br>"),
     });
   }
@@ -66,7 +66,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       providerMessageId: sent.providerMessageId,
       direction: "outbound",
       fromEmail: channel?.supportAddress,
-      subject: `Re: ${ticket.subject ?? ""}`,
+      subject: /^re:/i.test(ticket.subject ?? "") ? (ticket.subject ?? "") : `Re: ${ticket.subject ?? ""}`,
       text: finalBody,
       sentAt: new Date(),
     },

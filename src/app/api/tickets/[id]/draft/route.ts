@@ -30,7 +30,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     })
     .join("\n\n");
   const prior = regenOfDraftId
-    ? await prisma.draft.findUnique({ where: { id: regenOfDraftId } })
+    ? await prisma.draft.findFirst({ where: { id: regenOfDraftId, ticketId: ticket.id } })
     : null;
 
   const result = await generateDraft({
@@ -57,6 +57,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       body: result.body,
       coverage: result.coverage,
       coverageNote: result.coverageNote,
+      policyFlags: result.policyFlags,
       steerNotes: steerNotes,
       regenOf: regenOfDraftId,
       status: regenOfDraftId ? "regenerated" : "prepared",

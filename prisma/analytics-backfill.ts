@@ -1,5 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import Anthropic from "@anthropic-ai/sdk";
+import { hubspot as hs } from "../src/lib/hubspot";
 
 /**
  * Analytics backfill — classifies the past 365 days of hello@ conversations
@@ -13,30 +14,11 @@ import Anthropic from "@anthropic-ai/sdk";
 
 const prisma = new PrismaClient();
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, timeout: 120_000, maxRetries: 2 });
-const HS = process.env.HUBSPOT_TOKEN!;
+
 const TRIAGE_MODEL = "claude-haiku-4-5-20251001";
 const MAX = Number(process.argv[2] ?? 10_000);
 const CUTOFF = new Date(Date.now() - 365 * 24 * 3600 * 1000);
 
-async function hs<T>(path: string, attempt = 0): Promise<T> {
-  const res = await fetch(`https://api.hubapi.com${path}`, {
-    headers: { Authorization: `Bearer ${HS}` },
-    signal: AbortSignal.timeout(30_000), // a hung socket must not stall the whole backfill
-  }).catch((e) => {
-    if (attempt < 6) return null;
-    throw e;
-  });
-  if (!res) {
-    await new Promise((r) => setTimeout(r, 3_000));
-    return hs(path, attempt + 1);
-  }
-  if (res.status === 429 && attempt < 6) {
-    await new Promise((r) => setTimeout(r, 11_000));
-    return hs(path, attempt + 1);
-  }
-  if (!res.ok) throw new Error(`HubSpot ${res.status} on ${path}`);
-  return res.json() as Promise<T>;
-}
 
 type Thread = { id: string; createdAt: string };
 type Message = {

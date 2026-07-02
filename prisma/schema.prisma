@@ -151,6 +151,7 @@ model Ticket {
   @@unique([tenantId, providerThreadId])
   @@index([tenantId, status])
   @@index([tenantId, assigneeId])
+  @@index([tenantId, createdAt(sort: Desc)]) // inbox ordering
   @@schema("concierge")
 }
 
@@ -173,7 +174,7 @@ model Message {
   sentAt            DateTime
 
   @@unique([tenantId, providerMessageId])
-  @@index([ticketId])
+  @@index([ticketId, sentAt]) // thread ordering
   @@schema("concierge")
 }
 
@@ -187,9 +188,11 @@ model Draft {
   editedBody   String?  @db.Text // rep's inline-edited version, if any
   coverage     String   // "full" | "partial" | "none"
   coverageNote String?  @db.Text // what to verify (partial), or gap (none)
+  policyFlags  String[] // steer asks the knowledge didn't support (needs human decision)
   steerNotes   String?  @db.Text // rep's guidance for this regeneration (chips + freeform)
   regenOf      String?  // prior Draft id this was regenerated from (steer lineage)
-  status       String   @default("prepared") // prepared|edited|regenerated|sent|discarded
+  status       String   @default("prepared") // prepared|edited|regenerated|pending_review|approved|sent|discarded
+  reviewNote   String?  @db.Text // manager's note when a draft is returned for changes
   sentMessageId String? // provider id once a rep confirms + sends
   createdAt    DateTime @default(now())
 

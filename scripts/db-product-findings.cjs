@@ -1,0 +1,23 @@
+const fs=require("fs");const {Client}=require("pg");
+const env=fs.readFileSync(__dirname+"/../.env","utf8");
+const url=env.match(/^DATABASE_URL="(.+)"/m)[1].replace(/[?&]schema=concierge/,"");
+(async()=>{const c=new Client({connectionString:url});await c.connect();
+console.log("== SILHOUETTE × CATEGORY (top mentioned) ==");
+const r1=(await c.query(`select "productFamily" f, category, count(*)::int n from concierge."AnalyticsInquiry" where "productFamily" is not null group by 1,2 order by 1`)).rows;
+const byF={};r1.forEach(r=>{(byF[r.f]=byF[r.f]||{})[r.category]=r.n});
+const totals=Object.entries(byF).map(([f,o])=>[f,Object.values(o).reduce((a,b)=>a+b,0)]).sort((a,b)=>b[1]-a[1]);
+for(const [f,t] of totals.slice(0,10)){const o=byF[f];const parts=Object.entries(o).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([k,v])=>`${k}=${v}`);console.log(`  ${f} (${t}): ${parts.join(", ")}`);}
+console.log("== STYLE (wrap vs lifestyle) × CATEGORY ==");
+const r2=(await c.query(`select "productStyle" s, category, count(*)::int n from concierge."AnalyticsInquiry" where "productStyle" is not null group by 1,2 order by 1,3 desc`)).rows;
+const byS={};r2.forEach(r=>{(byS[r.s]=byS[r.s]||[]).push(`${r.category}=${r.n}`)});
+for(const [s,l] of Object.entries(byS)) console.log(`  ${s}: ${l.slice(0,5).join(", ")}`);
+console.log("== SILHOUETTE warranty+parts share (min 8 mentions) ==");
+const r3=(await c.query(`select "productFamily" f, count(*)::int t, count(*) filter (where category in ('warranty','replacement_parts'))::int wp, count(*) filter (where category='returns_exchange')::int ret from concierge."AnalyticsInquiry" where "productFamily" is not null group by 1 having count(*)>=8 order by 2 desc`)).rows;
+r3.forEach(r=>console.log(`  ${r.f}: ${r.t} mentions | warranty+parts ${Math.round(r.wp/r.t*100)}% | returns ${Math.round(r.ret/r.t*100)}%`));
+console.log("== FRAME COLOR (top) ==");
+const r4=(await c.query(`select "frameColor" fc, count(*)::int n from concierge."AnalyticsInquiry" where "frameColor" is not null group by 1 order by 2 desc limit 6`)).rows;
+console.log("  "+r4.map(r=>`${r.fc}=${r.n}`).join(", "));
+console.log("== refunded orders (returns data) ==");
+const r5=(await c.query(`select count(*)::int total, count(*) filter (where refunded)::int ref from concierge."CustomerOrder"`)).rows[0];
+console.log(`  ${r5.ref} refunded of ${r5.total} (${(r5.ref/r5.total*100).toFixed(1)}%)`);
+await c.end();})().catch(e=>{console.error(e.message);process.exit(1);});

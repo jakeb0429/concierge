@@ -26,9 +26,13 @@ type FamilyRow = {
 
 let cache: { rows: FamilyRow[]; at: number } | null = null;
 
+/** Colorway words that leaked into HubSpot family names — never real silhouettes. */
+const NOT_FAMILIES = new Set(["tortoise", "gunmetal", "marine", "smoke", "rose", "emerald", "thermal", "gradient", "mauve", "dusty rose"]);
+
 async function families(): Promise<FamilyRow[]> {
   if (cache && Date.now() - cache.at < 10 * 60_000) return cache.rows;
-  const rows = await prisma.productFamily.findMany({ where: { isSunglasses: true } });
+  const all = await prisma.productFamily.findMany({ where: { isSunglasses: true } });
+  const rows = all.filter((r) => !NOT_FAMILIES.has(r.name.toLowerCase()));
   // Longest names first so "Biscayne XL" wins over "Biscayne".
   rows.sort((a, b) => b.name.length - a.name.length);
   cache = { rows, at: Date.now() };

@@ -4,20 +4,9 @@ import { prisma } from "@/lib/db";
 import { hashToken } from "@/lib/auth";
 import { isAllowed } from "@/lib/allowlist";
 import { sendMagicLink } from "@/lib/email";
+import { baseUrl } from "@/lib/base-url";
 import { getCurrentTenant } from "@/lib/tenant";
 
-/**
- * The link points wherever the request came from (behind nginx we get the real
- * host via headers) — no env/build dependency, so a stale build can never mint
- * a wrong-host link. Unknown hosts fall back to the canonical URL.
- */
-const KNOWN_HOSTS = new Set(["concierge.scribechs.com", "localhost:3014", "127.0.0.1:3014"]);
-function baseUrl(req: Request): string {
-  const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host") ?? "";
-  const proto = req.headers.get("x-forwarded-proto") ?? (host.startsWith("localhost") || host.startsWith("127.") ? "http" : "https");
-  if (KNOWN_HOSTS.has(host)) return `${proto}://${host}`;
-  return process.env.NEXT_PUBLIC_APP_URL || "https://concierge.scribechs.com";
-}
 
 /** Request a magic link. Only allowlisted emails get one; response never reveals which. */
 export async function POST(req: Request) {
