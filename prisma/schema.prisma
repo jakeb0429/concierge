@@ -7,9 +7,10 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
-  schemas  = ["concierge"]
+  provider  = "postgresql"
+  url       = env("DATABASE_URL") // transaction pooler (6543) — resilient app runtime
+  directUrl = env("DIRECT_URL") // session pooler (5432) — migrations/db push
+  schemas   = ["concierge"]
 }
 
 /// A brand instance: its settings, voice, and mailbox/channel connections.
