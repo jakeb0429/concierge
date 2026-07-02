@@ -29,26 +29,65 @@ type SkuRecord = {
   qty: number;
   replen: string | null;
   type: string | null;
+  // SKU-level attributes from HubSpot's rhe_* custom properties — these cover
+  // far more silhouettes than the ~13 frames tagged on the current Shopify site.
+  hubStyle: string | null; // "wrap" | "lifestyle"
+  hubGender: string | null; // "unisex" | "mens" | "womens"
+  lensSize: string | null;
+  baseCurve: string | null;
+  categoryTags: string | null; // e.g. "Best Selling Fishing"
 };
 
-async function hubspotCatalog(): Promise<Map<string, { name: string; price: number | null }>> {
-  const out = new Map<string, { name: string; price: number | null }>();
+type HubProduct = {
+  name: string;
+  price: number | null;
+  silhouette: string | null; // rhe_frame_name_silhouette — Rheos's own canonical family
+  frameColor: string | null;
+  lensColor: string | null;
+  frametype: string | null; // Wrap | Round | Rectangle | Other
+  gender: string | null; // Men's | Women's | Unisex
+  lensSize: string | null;
+  baseCurve: string | null;
+  categoryTags: string | null;
+};
+
+/** HubSpot Wrap/Round/Rectangle/Other -> the two-value style vocab Shopify tags use. */
+const styleFromFrametype = (ft: string | null) =>
+  !ft ? null : /wrap/i.test(ft) ? "wrap" : "lifestyle";
+const genderFromHub = (g: string | null) =>
+  !g ? null : /women/i.test(g) ? "womens" : /men/i.test(g) ? "mens" : "unisex";
+
+async function hubspotCatalog(): Promise<Map<string, HubProduct>> {
+  const out = new Map<string, HubProduct>();
+  const props =
+    "name,hs_sku,price,rhe_frame_name_silhouette,rhe_frame_color,lens_color," +
+    "rhe_frametype,rhe_gender,rhe_lenssize,rhe_basecurve,rhe_category_tags";
   let after: string | undefined;
   do {
     const res = await fetch(
-      `https://api.hubapi.com/crm/v3/objects/products?limit=100&properties=name,hs_sku,price${after ? `&after=${after}` : ""}`,
+      `https://api.hubapi.com/crm/v3/objects/products?limit=100&properties=${props}${after ? `&after=${after}` : ""}`,
       { headers: { Authorization: `Bearer ${HS}` } }
     );
     if (!res.ok) throw new Error(`HubSpot ${res.status}`);
     const json = (await res.json()) as {
-      results: { properties: { name: string; hs_sku: string | null; price: string | null } }[];
+      results: { properties: Record<string, string | null> }[];
       paging?: { next?: { after: string } };
     };
     for (const r of json.results) {
-      if (r.properties.hs_sku && r.properties.name)
-        out.set(r.properties.hs_sku, {
-          name: r.properties.name,
-          price: r.properties.price ? Number(r.properties.price) : null,
+      const p = r.properties;
+      const clean = (k: string) => (p[k]?.trim() ? p[k]!.trim() : null);
+      if (p.hs_sku && p.name)
+        out.set(p.hs_sku, {
+          name: p.name,
+          price: p.price ? Number(p.price) : null,
+          silhouette: clean("rhe_frame_name_silhouette"),
+          frameColor: clean("rhe_frame_color"),
+          lensColor: clean("lens_color"),
+          frametype: clean("rhe_frametype"),
+          gender: clean("rhe_gender"),
+          lensSize: clean("rhe_lenssize"),
+          baseCurve: clean("rhe_basecurve"),
+          categoryTags: clean("rhe_category_tags"),
         });
     }
     after = json.paging?.next?.after;
@@ -174,19 +213,30 @@ async function main() {
     const db = dbBySku.get(sku);
     const shop = shopTypes.get(sku);
     const isDisplay = /display|shipper box|demo add-on|cloth\b/i.test(parsed.family);
-    const family = isDisplay
-      ? "__DISPLAYS__"
-      : normalizeFamily(parsed.family.replace(/^accessories:/i, ""), shopify.titles);
+    // Rheos's own silhouette property beats parsing the messy display name.
+    const rawFamily = hs.silhouette ?? parsed.family.replace(/^accessories:/i, "");
+    const family = isDisplay ? "__DISPLAYS__" : normalizeFamily(rawFamily, shopify.titles);
+    // rhe_frame_color/lens_color carry occasional junk ("Polarized - Eddies") —
+    // strip the prefix and drop values that are really the family name.
+    const cleanColor = (c: string | null) => {
+      const v = c?.replace(/^polarized\s*-\s*/i, "").trim();
+      return v && v.toLowerCase() !== family.toLowerCase() ? v : null;
+    };
     records.push({
       sku,
       family,
-      frameColor: parsed.frameColor,
-      lens: parsed.lens,
+      frameColor: cleanColor(hs.frameColor) ?? cleanColor(parsed.frameColor),
+      lens: cleanColor(hs.lensColor) ?? cleanColor(parsed.lens),
       wholesale: hs.price,
       retail: shop?.price ?? (db ? Number(db.price) : null),
       qty: db?.quantity ?? 0,
       replen: db?.replenishment ?? null,
       type: shop?.type ?? null,
+      hubStyle: styleFromFrametype(hs.frametype),
+      hubGender: genderFromHub(hs.gender),
+      lensSize: hs.lensSize,
+      baseCurve: hs.baseCurve,
+      categoryTags: hs.categoryTags,
     });
   }
 
@@ -219,24 +269,22 @@ async function main() {
   // Product-attribute master — one row per silhouette; read by the mention extractor.
   for (const [family, skus] of families) {
     const isSunglasses = skus.some((s) => s.frameColor || (s.type ?? "").toLowerCase().includes("sunglass"));
+    // Shopify tags win where they exist (current site truth); HubSpot SKU
+    // attributes fill the gaps for everything the site no longer tags.
     const a = shopify.attrs.get(family) ?? { style: null, gender: null };
+    const style = a.style ?? skus.map((s) => s.hubStyle).find(Boolean) ?? null;
+    const gender = a.gender ?? skus.map((s) => s.hubGender).find(Boolean) ?? null;
+    const data = {
+      frameColors: [...new Set(skus.map((s) => s.frameColor).filter(Boolean))] as string[],
+      lensColors: [...new Set(skus.map((s) => s.lens).filter(Boolean))] as string[],
+      style,
+      gender,
+      isSunglasses,
+    };
     await prisma.productFamily.upsert({
       where: { name: family },
-      update: {
-        frameColors: [...new Set(skus.map((s) => s.frameColor).filter(Boolean))] as string[],
-        lensColors: [...new Set(skus.map((s) => s.lens).filter(Boolean))] as string[],
-        style: a.style,
-        gender: a.gender,
-        isSunglasses,
-      },
-      create: {
-        name: family,
-        frameColors: [...new Set(skus.map((s) => s.frameColor).filter(Boolean))] as string[],
-        lensColors: [...new Set(skus.map((s) => s.lens).filter(Boolean))] as string[],
-        style: a.style,
-        gender: a.gender,
-        isSunglasses,
-      },
+      update: data,
+      create: { name: family, ...data },
     });
   }
 
@@ -251,14 +299,29 @@ async function main() {
     if (gone) discontinued.push(family);
     const size = /\bXL\b/i.test(family)
       ? "XL (larger fit)"
-      : /\b(small|petite|slim)\b/i.test(family)
+      : /\b(small|petite|slim|narrow)\b/i.test(family)
         ? "smaller fit"
         : null;
+    const attrs = shopify.attrs.get(family) ?? { style: null, gender: null };
+    const style = attrs.style ?? skus.map((s) => s.hubStyle).find(Boolean) ?? null;
+    const gender = attrs.gender ?? skus.map((s) => s.hubGender).find(Boolean) ?? null;
+    const lensSizes = [...new Set(skus.map((s) => s.lensSize).filter(Boolean))] as string[];
+    const baseCurves = [...new Set(skus.map((s) => s.baseCurve).filter(Boolean))] as string[];
+    const bestSeller = [
+      ...new Set(skus.flatMap((s) => (s.categoryTags ?? "").split(";")).map((t) => t.trim()).filter(Boolean)),
+    ];
 
     const lines = [
       isSunglasses
         ? `${family} — floating sunglasses${size ? `, ${size}` : ""}${skus[0]?.type ? ` (${skus[0].type.replace("Sunglasses - ", "")} line)` : ""}.`
         : `${family} — ${skus[0]?.type ?? "accessory"}.`,
+      style || gender
+        ? `Style: ${[style === "wrap" ? "wrap frame" : style, gender === "womens" ? "women's" : gender === "mens" ? "men's" : gender].filter(Boolean).join(", ")}.`
+        : null,
+      lensSizes.length || baseCurves.length
+        ? `Fit: ${[lensSizes.length ? `lens ${lensSizes.join(" / ")}` : null, baseCurves.length ? `base curve ${baseCurves.join("/")}` : null].filter(Boolean).join("; ")}.`
+        : null,
+      bestSeller.length ? `${bestSeller.join("; ")}.` : null,
       frameColors.length ? `Frame colors: ${frameColors.join(", ")}.` : null,
       lenses.length ? `Lens colors: ${lenses.join(", ")}.` : null,
       retail.length ? `Retail: ${retail.map(money).join(" / ")}.` : null,
@@ -343,6 +406,18 @@ async function main() {
     },
   });
   console.log(`Upserted ${productEntries} product-family entries + 1 inventory snapshot. Discontinued: ${discontinued.length}. Swept ${swept.count} stale uncited entries.`);
+
+  // Keep analytics attributes in step with the (now richer) family master:
+  // any inquiry with a matched family inherits the family's style/gender.
+  const restamped = await prisma.$executeRawUnsafe(
+    `UPDATE concierge."AnalyticsInquiry" ai
+     SET "productStyle" = pf.style, "productGender" = pf.gender
+     FROM concierge."ProductFamily" pf
+     WHERE ai."productFamily" = pf.name
+       AND (ai."productStyle" IS DISTINCT FROM pf.style OR ai."productGender" IS DISTINCT FROM pf.gender)`
+  );
+  const attrCount = await prisma.productFamily.count({ where: { style: { not: null } } });
+  console.log(`Family style/gender coverage: ${attrCount} families. Restamped ${restamped} analytics rows.`);
 }
 
 main()

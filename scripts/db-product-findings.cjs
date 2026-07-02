@@ -1,6 +1,7 @@
 const fs=require("fs");const {Client}=require("pg");
 const env=fs.readFileSync(__dirname+"/../.env","utf8");
-const url=env.match(/^DATABASE_URL="(.+)"/m)[1].replace(/[?&]schema=concierge/,"");
+// Prefer the session pooler; strip Prisma-only query params (pg chokes on them).
+const url=(env.match(/^DIRECT_URL="(.+)"/m)??env.match(/^DATABASE_URL="(.+)"/m))[1].replace(/\?.*$/,"");
 (async()=>{const c=new Client({connectionString:url});await c.connect();
 console.log("== SILHOUETTE × CATEGORY (top mentioned) ==");
 const r1=(await c.query(`select "productFamily" f, category, count(*)::int n from concierge."AnalyticsInquiry" where "productFamily" is not null group by 1,2 order by 1`)).rows;
