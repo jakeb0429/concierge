@@ -62,6 +62,7 @@ export default function TicketWorkspace({
   customerStats,
   replyState,
   orderContext = [],
+  gmailUrl,
 }: {
   ticket: Ticket;
   messages: Msg[];
@@ -70,6 +71,7 @@ export default function TicketWorkspace({
   customerStats: CustomerStats;
   replyState?: ReplyState;
   orderContext?: { line: string; trackingUrl: string | null }[];
+  gmailUrl?: string | null;
 }) {
   const [draft, setDraft] = useState<Draft | null>(initialDraft);
   const [body, setBody] = useState(initialDraft?.body ?? "");
@@ -267,7 +269,20 @@ export default function TicketWorkspace({
       <div className="grid grid-cols-1 items-start gap-3 md:grid-cols-2">
         {/* conversation */}
         <div className="rounded-xl border border-neutral-200 bg-white p-4">
-          <div className="mb-2 text-xs text-neutral-400">Conversation</div>
+          <div className="mb-2 flex items-baseline justify-between text-xs text-neutral-400">
+            <span>Conversation</span>
+            {gmailUrl && (
+              <a
+                href={gmailUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="text-blue-600 hover:underline"
+                title="Open the original thread in Gmail for additional review"
+              >
+                View original in Gmail ↗
+              </a>
+            )}
+          </div>
           <div className="space-y-3">
             {thread.map((m, i) =>
               m.direction === "inbound" ? (
