@@ -175,11 +175,13 @@ async function reclassify(sentiment: string) {
   const shifts = new Map<string, number>();
   const flush = async () => {
     if (!pending.length) return;
+    const VALID = new Set(["positive", "neutral", "negative", "unresolved"]);
     const cls = await classifyBatch(pending.map((p) => p.ex));
     for (let i = 0; i < pending.length; i++) {
       const prev = pending[i].row.endSentiment;
       const next = cls.get(i)?.endSentiment;
-      if (next && next !== prev) {
+      // The tool enum is not enforced server-side — one sweep returned "resolved".
+      if (next && VALID.has(next) && next !== prev) {
         await prisma.analyticsInquiry.update({
           where: { id: pending[i].row.id },
           data: { endSentiment: next },
