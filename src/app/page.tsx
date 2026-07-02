@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { getCurrentTenant } from "@/lib/tenant";
-import { statusChip, statusLabel } from "@/lib/ui";
+import { computeReplyState, REPLY_STATE_LABEL, type ReplyState } from "@/lib/reply-state";
+import { NOISE_CATEGORIES } from "@/lib/triage";
+import InboxList, { type Row } from "./InboxList";
 
 export const dynamic = "force-dynamic";
 
@@ -13,11 +15,17 @@ const VIEWS: Record<string, { label: string; where: Prisma.TicketWhereInput }> =
   all: { label: "All", where: {} },
 };
 type ViewKey = "open" | "noise" | "all";
+const REPLY_FILTERS: ReplyState[] = ["first_contact", "follow_up", "waiting_customer"];
 
-export default async function Inbox({ searchParams }: { searchParams: Promise<{ view?: string }> }) {
+export default async function Inbox({
+  searchParams,
+}: {
+  searchParams: Promise<{ view?: string; reply?: string }>;
+}) {
   const tenant = await getCurrentTenant();
-  const { view: rawView } = await searchParams;
+  const { view: rawView, reply: rawReply } = await searchParams;
   const view: ViewKey = rawView === "noise" || rawView === "all" ? rawView : "open";
+  const replyFilter = REPLY_FILTERS.includes(rawReply as ReplyState) ? (rawReply as ReplyState) : null;
 
   const [tickets, counts] = await Promise.all([
     prisma.ticket.findMany({
@@ -25,7 +33,7 @@ export default async function Inbox({ searchParams }: { searchParams: Promise<{ 
       include: {
         customer: true,
         channelRef: true,
-        messages: { where: { direction: "inbound" }, orderBy: { sentAt: "asc" }, take: 1 },
+        messages: { orderBy: { sentAt: "asc" }, select: { direction: true, sentAt: true, text: true } },
       },
       orderBy: { createdAt: "desc" },
       take: 100,
@@ -35,13 +43,36 @@ export default async function Inbox({ searchParams }: { searchParams: Promise<{ 
   const noiseCount = counts.find((c) => c.status === "archived")?._count ?? 0;
   const openCount = counts.filter((c) => !["archived", "resolved"].includes(c.status)).reduce((s, c) => s + c._count, 0);
 
+  const noiseCats = new Set<string>(NOISE_CATEGORIES);
+  let rows: Row[] = tickets.map((t) => {
+    const firstInbound = t.messages.find((m) => m.direction === "inbound");
+    const replyState = computeReplyState(t.messages);
+    const category = t.tags.find((tag) => !tag.startsWith("product:")) ?? null;
+    const open = !["archived", "resolved", "replied"].includes(t.status);
+    return {
+      id: t.id,
+      name: t.customer.displayName ?? "Customer",
+      subject: t.subject ?? "",
+      snippet: firstInbound?.text.slice(0, 110) ?? "",
+      status: t.status,
+      category,
+      wholesale: t.channelRef?.supportAddress?.startsWith("wholesale") ?? false,
+      urgent: t.priority === "high" && open,
+      replyState,
+      looksNoise: category !== null && noiseCats.has(category),
+    };
+  });
+  if (replyFilter) rows = rows.filter((r) => r.replyState === replyFilter);
+  // Urgent open tickets pin to the top — they must be answered first.
+  rows.sort((a, b) => Number(b.urgent) - Number(a.urgent));
+
   return (
     <div>
-      <div className="mb-5 flex items-baseline justify-between">
+      <div className="mb-3 flex items-baseline justify-between">
         <div className="flex items-baseline gap-4">
           <h1 className="text-xl font-semibold tracking-tight">Inbox</h1>
           <nav className="flex gap-2 text-sm">
-            {(["open","noise","all"] as ViewKey[]).map((k) => (
+            {(["open", "noise", "all"] as ViewKey[]).map((k) => (
               <Link
                 key={k}
                 href={k === "open" ? "/" : `/?view=${k}`}
@@ -55,54 +86,29 @@ export default async function Inbox({ searchParams }: { searchParams: Promise<{ 
             ))}
           </nav>
         </div>
-        <span className="text-sm text-neutral-500">{tickets.length} shown</span>
+        <span className="text-sm text-neutral-500">{rows.length} shown</span>
       </div>
 
-      <div className="overflow-hidden rounded-xl border border-neutral-200 bg-white">
-        {tickets.map((t) => {
-          const snippet = t.messages[0]?.text.slice(0, 110) ?? "";
-          const category = t.tags[0]?.replace(/_/g, " ");
-          return (
-            <Link
-              key={t.id}
-              href={`/tickets/${t.id}`}
-              className="flex items-center gap-4 border-b border-neutral-100 px-4 py-3 last:border-0 hover:bg-neutral-50"
-            >
-              <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-blue-50 text-xs font-medium text-blue-700">
-                {(t.customer.displayName ?? "?")
-                  .split(" ")
-                  .map((s) => s[0])
-                  .slice(0, 2)
-                  .join("")}
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="truncate text-sm font-medium">{t.customer.displayName}</span>
-                  {t.priority === "high" && (
-                    <span className="rounded-full bg-red-50 px-2 py-0.5 text-[11px] text-red-700">high</span>
-                  )}
-                  {t.channelRef?.supportAddress?.startsWith("wholesale") && (
-                    <span className="rounded-full bg-purple-50 px-2 py-0.5 text-[11px] text-purple-700">wholesale</span>
-                  )}
-                  {category && (
-                    <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] text-neutral-500">
-                      {category}
-                    </span>
-                  )}
-                </div>
-                <div className="truncate text-sm text-neutral-700">{t.subject}</div>
-                <div className="truncate text-xs text-neutral-400">{snippet}</div>
-              </div>
-              <span className={`rounded-full px-2.5 py-1 text-[11px] ${statusChip(t.status)}`}>
-                {statusLabel(t.status)}
-              </span>
-            </Link>
-          );
-        })}
-        {tickets.length === 0 && (
-          <div className="px-4 py-10 text-center text-sm text-neutral-400">Nothing here.</div>
-        )}
+      {/* reply-state filter — automatic rules, always current */}
+      <div className="mb-3 flex items-center gap-2 text-xs">
+        <Link
+          href={view === "open" ? "/" : `/?view=${view}`}
+          className={`rounded-full px-2.5 py-1 ${!replyFilter ? "bg-neutral-200 text-neutral-800" : "text-neutral-500 hover:bg-neutral-100"}`}
+        >
+          all
+        </Link>
+        {REPLY_FILTERS.map((f) => (
+          <Link
+            key={f}
+            href={`/?${view === "open" ? "" : `view=${view}&`}reply=${f}`}
+            className={`rounded-full px-2.5 py-1 ${replyFilter === f ? "bg-neutral-200 text-neutral-800" : "text-neutral-500 hover:bg-neutral-100"}`}
+          >
+            {REPLY_STATE_LABEL[f]}
+          </Link>
+        ))}
       </div>
+
+      <InboxList rows={rows} view={view} />
     </div>
   );
 }

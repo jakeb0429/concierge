@@ -1,11 +1,15 @@
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
-import { createHash } from "crypto";
 import { prisma } from "./db";
 
-/** Magic-link tokens are stored hashed — the raw token only ever lives in the link. */
-export function hashToken(token: string): string {
-  return createHash("sha256").update(token).digest("hex");
+/**
+ * Magic-link tokens are stored hashed — the raw token only ever lives in the link.
+ * Web Crypto (not node:crypto): this module is bundled into the Edge middleware,
+ * where node builtins are a hard error.
+ */
+export async function hashToken(token: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token));
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
@@ -21,7 +25,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         const user = await prisma.user.findFirst({
           where: {
             email,
-            magicLinkToken: hashToken(token),
+            magicLinkToken: await hashToken(token),
             magicLinkExpires: { gt: new Date() },
           },
         });

@@ -73,6 +73,11 @@ export class GraphMailAdapter implements ChannelAdapter {
     return this.notYet();
   }
 
+  async archiveThread(_threadId: string): Promise<void> {
+    // GET /messages?$filter=conversationId eq '{id}' then move each to "archive"
+    return this.notYet();
+  }
+
   async watch(): Promise<{ expiresAt: Date | null }> {
     // POST /subscriptions  { resource: ".../messages", changeType: "created", notificationUrl }
     return this.notYet();

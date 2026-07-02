@@ -61,6 +61,15 @@ Azure app registration + fill in the Graph method bodies + a Channel row. Zero c
 | DB | rheos-inventory Supabase project (`xivgoqvmfmlfsedisnxf`, us-west-2), isolated **`concierge` schema**, pgvector in `extensions` schema. Connect via POOLER host (`aws-0-us-west-2.pooler.supabase.com:5432`) — direct host is dead |
 | Deploy | `rsync` source then `ssh root@72.61.177.29 'bash /opt/concierge/scripts/deploy-birdseye.sh'` (idempotent: build, PM2, nginx, crons, smoke check) |
 
+### Local dev layout (since 2026-07-02)
+All repos live in iCloud at `Claude/GitHub/`, with `~/Documents/GitHub` a symlink to it (so
+every old path still works). Per repo, `node_modules` and `.next` are symlinks to same-dir
+`*.nosync` folders — iCloud never syncs those (they'd choke sync), and keeping the real dirs
+inside the repo keeps Node/Turbopack realpath resolution happy (external dirs break Prisma's
+externals aliasing — tried, reverted). `turbopack.root` is pinned in next.config when running
+under iCloud. **Second-machine setup:** create the same `~/Documents/GitHub` symlink, then per
+repo `npm install` (the `.nosync` dir is machine-local by design) and copy `.env` securely.
+
 ### Cron jobs (root crontab on birdseye, all idempotent)
 | When | Job | Log |
 |---|---|---|
@@ -95,7 +104,7 @@ embeddings for entries created outside the app).
 ```bash
 cd ~/Documents/GitHub/concierge
 git add -A && git commit && git push
-rsync -az --delete --exclude node_modules --exclude .next --exclude .git --exclude .env ./ root@72.61.177.29:/opt/concierge/
+rsync -az --delete --exclude node_modules --exclude '*.nosync' --exclude .next --exclude .git --exclude .env ./ root@72.61.177.29:/opt/concierge/
 ssh root@72.61.177.29 'bash /opt/concierge/scripts/deploy-birdseye.sh'
 ```
 
@@ -148,6 +157,23 @@ this database project WITHOUT these defenses (59+ PM2 restarts historically) —
   Brain manager — same human gate as the nightly detector, nothing mutates the Brain directly.
   Repeat corrections on one entry fold into a single open proposal. Approving a `new_entry`
   signal creates an approved KnowledgeItem with `taught on ticket:<id>` provenance.
+- **Inbox grouping + bulk archive** (shipped 2026-07-02, Jake's §10) — open view pins an
+  "Answer first — urgent" red group; vendor-pitch/automated-looking tickets group at the bottom
+  with select-all; multi-select + "Archive selected" archives in Concierge AND drops the
+  thread's INBOX label in Gmail (`ChannelAdapter.archiveThread`; single-ticket Archive syncs
+  too; mock threads never touch the mailbox; AuditEvent `provider_archived`).
+- **Reply-state tags** (shipped 2026-07-02, Jake's §10) — every ticket carries first contact /
+  follow-up / waiting on customer, computed deterministically from message directions on read
+  (`src/lib/reply-state.ts`), shown in inbox + ticket header, filterable via chips.
+- **Urgent-first** (shipped 2026-07-02, Jake's §10) — deterministic urgency floor in triage
+  (`urgencyDeterministic`: address changes, cancel/wrong/missing order, urgent/ASAP) plus a
+  model instruction; high-priority open tickets pin to the top with an unmissable red URGENT
+  treatment. Address changes race against shipment — they surface first.
+- **Order context** (shipped 2026-07-02, Jake's §10) — `src/lib/shipstation.ts` (V1 API, same
+  creds as rheos-inventory, 10-min cache, fail-soft) pulls the customer's recent orders: placed
+  date, status, ship date, carrier, tracking (+ tracking link). Shown as an "Order status"
+  strip on the ticket and appended to draft grounding, so shipping/order drafts reference the
+  ACTUAL order state. Requires `SHIPSTATION_API_KEY` + `SHIPSTATION_API_SECRET` in `.env`.
 - **Reviews** (`/reviews`) — manager queue: approve (unlocks send) or return with a note
 - **Brand Brain** (`/brain`) — entries with version + citation counts, pending-approval queue
   (mined FAQ + promoted answers), learning-signal proposals panel

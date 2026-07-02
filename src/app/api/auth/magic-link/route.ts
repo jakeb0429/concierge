@@ -32,7 +32,7 @@ export async function POST(req: Request) {
   const token = randomBytes(32).toString("hex");
   await prisma.user.update({
     where: { id: user.id },
-    data: { magicLinkToken: hashToken(token), magicLinkExpires: new Date(Date.now() + 60 * 60 * 1000) },
+    data: { magicLinkToken: await hashToken(token), magicLinkExpires: new Date(Date.now() + 60 * 60 * 1000) },
   });
 
   const verifyUrl = new URL(`${baseUrl(req)}/api/auth/magic-link/verify`);

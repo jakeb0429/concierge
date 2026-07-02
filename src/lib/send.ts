@@ -50,7 +50,7 @@ export async function sendReply(args: {
 }
 
 /** Resolve provider credentials from env; null means "not wired — log instead". */
-function credentialsFor(provider: string): Record<string, string> | null {
+export function credentialsFor(provider: string): Record<string, string> | null {
   if (provider === "gmail" && process.env.RHEOS_GMAIL_CLIENT_EMAIL) {
     return {
       clientEmail: process.env.RHEOS_GMAIL_CLIENT_EMAIL,

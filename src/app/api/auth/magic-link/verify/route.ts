@@ -16,14 +16,14 @@ export async function GET(req: NextRequest) {
   if (!token || !email) return NextResponse.redirect(new URL(`/login?error=invalid`, baseUrl(req)));
 
   const user = await prisma.user.findFirst({
-    where: { email: email.toLowerCase(), magicLinkToken: hashToken(token), magicLinkExpires: { gt: new Date() } },
+    where: { email: email.toLowerCase(), magicLinkToken: await hashToken(token), magicLinkExpires: { gt: new Date() } },
   });
   if (!user) return NextResponse.redirect(new URL(`/login?error=expired`, baseUrl(req)));
 
   const oneTime = randomBytes(32).toString("hex");
   await prisma.user.update({
     where: { id: user.id },
-    data: { magicLinkToken: hashToken(oneTime), magicLinkExpires: new Date(Date.now() + 2 * 60 * 1000) },
+    data: { magicLinkToken: await hashToken(oneTime), magicLinkExpires: new Date(Date.now() + 2 * 60 * 1000) },
   });
 
   const params = new URLSearchParams({ magic: "verified", email: user.email, token: oneTime });

@@ -2,6 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { cleanEmailText } from "@/lib/email-clean";
+import { computeReplyState } from "@/lib/reply-state";
+import { getOrderContext, orderContextLines, trackingUrl } from "@/lib/shipstation";
 import TicketWorkspace from "./TicketWorkspace";
 
 export const dynamic = "force-dynamic";
@@ -29,7 +31,7 @@ export default async function TicketDetail({ params }: { params: Promise<{ id: s
 
   // Customer key stats — orders, spend, returns, and support history at a glance.
   const email = ticket.customer.email?.toLowerCase();
-  const [orderAgg, refundCount, inquiryCounts, ticketCount] = await Promise.all([
+  const [orderAgg, refundCount, inquiryCounts, ticketCount, shipOrders] = await Promise.all([
     email
       ? prisma.customerOrder.aggregate({
           where: { email },
@@ -44,7 +46,13 @@ export default async function TicketDetail({ params }: { params: Promise<{ id: s
       ? prisma.analyticsInquiry.groupBy({ by: ["category"], where: { fromEmail: email }, _count: true })
       : Promise.resolve([]),
     prisma.ticket.count({ where: { customerId: ticket.customer.id } }),
+    getOrderContext(email), // ShipStation: placed / shipped / carrier / tracking (cached, fail-soft)
   ]);
+  const orderContext = orderContextLines(shipOrders).map((line, i) => ({
+    line,
+    trackingUrl: trackingUrl(shipOrders[i].carrier, shipOrders[i].trackingNumber),
+  }));
+  const replyState = computeReplyState(ticket.messages);
   const inqTotal = inquiryCounts.reduce((s, c) => s + c._count, 0) + ticketCount;
   const customerStats = {
     orders: orderAgg?._count ?? 0,
@@ -108,6 +116,8 @@ export default async function TicketDetail({ params }: { params: Promise<{ id: s
         initialDraft={initialDraft}
         sentDraftId={sentDraftId}
         customerStats={customerStats}
+        replyState={replyState}
+        orderContext={orderContext}
       />
     </div>
   );

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { generateDraft } from "@/lib/brain/draft";
 import { cleanEmailText } from "@/lib/email-clean";
+import { getOrderContext, orderContextLines } from "@/lib/shipstation";
 
 /**
  * Prepare (or regenerate) a first draft for a ticket. Grounded, cited, scored.
@@ -18,17 +19,25 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     where: { id },
     include: {
       tenant: true,
+      customer: true,
       messages: { where: { direction: "inbound" }, orderBy: { sentAt: "asc" } },
     },
   });
 
-  const ticketText = ticket.messages
+  let ticketText = ticket.messages
     .map((m) => {
       const atts = (m.attachments as { filename: string }[] | null) ?? [];
       const note = atts.length ? `\n[customer attached: ${atts.map((a) => a.filename).join(", ")}]` : "";
       return cleanEmailText(m.text) + note;
     })
     .join("\n\n");
+
+  // Live order context (ShipStation, cached, fail-soft) — lets shipping/order
+  // drafts reference the customer's ACTUAL order state instead of hedging.
+  const orders = await getOrderContext(ticket.customer.email);
+  if (orders.length) {
+    ticketText += `\n\n[order context from the fulfillment system — factual, safe to reference: ${orderContextLines(orders).join(" | ")}]`;
+  }
   const prior = regenOfDraftId
     ? await prisma.draft.findFirst({ where: { id: regenOfDraftId, ticketId: ticket.id } })
     : null;
