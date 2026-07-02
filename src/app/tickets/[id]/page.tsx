@@ -55,12 +55,13 @@ export default async function TicketDetail({ params }: { params: Promise<{ id: s
   const replyState = computeReplyState(ticket.messages);
   const inqTotal = inquiryCounts.reduce((s, c) => s + c._count, 0) + ticketCount;
 
-  // Deep link to the original conversation in Gmail (u/<address> routes to the
-  // right signed-in mailbox; #all/<threadId> works with the API's thread id).
+  // Deep link to the original conversation in Gmail. NOTE: /mail/u/ takes an
+  // account INDEX, not an address (an address there 404s) — ?authuser=<email>
+  // is the form Gmail resolves to the right signed-in account.
   const mailbox = ticket.channelRef?.supportAddress ?? "hello@rheosgear.com";
   const gmailUrl =
     ticket.channel === "gmail" && !ticket.providerThreadId.startsWith("mock-")
-      ? `https://mail.google.com/mail/u/${encodeURIComponent(mailbox)}/#all/${ticket.providerThreadId}`
+      ? `https://mail.google.com/mail/?authuser=${encodeURIComponent(mailbox)}#all/${ticket.providerThreadId}`
       : null;
   const customerStats = {
     orders: orderAgg?._count ?? 0,
