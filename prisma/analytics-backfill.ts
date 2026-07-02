@@ -5,24 +5,33 @@ import { hubspot as hs } from "../src/lib/hubspot";
 /**
  * Analytics backfill — classifies the past 365 days of hello@ conversations
  * (HubSpot threads) into AnalyticsInquiry rows: category + how the exchange
- * ended (sentiment of the customer's last message).
+ * ended. End-sentiment is judged from the TAIL of the thread (both sides of
+ * the last few exchanges), not just the customer's last message — a thread
+ * where the rep answered last is resolved, not "unresolved".
  *
  * One-time and resume-safe: already-imported threadIds are skipped, so it can
  * be re-run after interruption or on a schedule to pick up new threads.
  * Usage: tsx prisma/analytics-backfill.ts [maxThreads]
+ *        tsx prisma/analytics-backfill.ts --reclassify [sentiment] [maxRows]
+ *          re-judges endSentiment on existing rows (default: unresolved —
+ *          the bucket the old last-customer-message-only prompt inflated).
+ *          Categories and product enrichment are left untouched.
  */
 
 const prisma = new PrismaClient();
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, timeout: 120_000, maxRetries: 2 });
 
 const TRIAGE_MODEL = "claude-haiku-4-5-20251001";
-const MAX = Number(process.argv[2] ?? 10_000);
+const RECLASSIFY = process.argv[2] === "--reclassify";
+const RECLASSIFY_SENTIMENT = RECLASSIFY ? (process.argv[3] ?? "unresolved") : null;
+const MAX = RECLASSIFY ? Infinity : Number(process.argv[2] ?? 10_000);
 const CUTOFF = new Date(Date.now() - 365 * 24 * 3600 * 1000);
 
 
 type Thread = { id: string; createdAt: string };
 type Message = {
   type: string;
+  createdAt?: string;
   direction?: string;
   text?: string;
   senders?: { deliveryIdentifier?: { type: string; value: string } }[];
@@ -34,7 +43,8 @@ type Extract = {
   fromEmail: string | null;
   subject: string | null;
   firstMsg: string;
-  lastMsg: string;
+  tail: string; // last few messages, BOTH directions, labeled + in order
+  lastFrom: "CUSTOMER" | "RHEOS REP";
 };
 
 const CLASSIFY_TOOL = {
@@ -69,9 +79,13 @@ const CLASSIFY_TOOL = {
               type: "string",
               enum: ["positive", "neutral", "negative", "unresolved"],
               description:
-                "How the exchange ENDED for the customer, judged from their last message: " +
-                "positive (thanked/satisfied), negative (frustrated/unhappy), neutral, " +
-                "or unresolved (question hanging with no rep resolution visible).",
+                "How the exchange ENDED for the customer, judged from the customer's final " +
+                "reply or replies IN CONTEXT of the thread tail: positive (thanked/satisfied), " +
+                "negative (frustrated/unhappy), neutral. Use unresolved ONLY when the customer's " +
+                "last message still asks for or needs something and no rep reply follows it. " +
+                "If the rep answered the customer's last message and the customer simply didn't " +
+                "reply again, that is resolved — neutral (or positive/negative if the customer's " +
+                "earlier replies expressed satisfaction/frustration), NOT unresolved.",
             },
           },
           required: ["n", "category", "endSentiment"],
@@ -88,7 +102,7 @@ async function classifyBatch(batch: Extract[]): Promise<Map<number, { category: 
       (e, i) =>
         `#${i + 1} [${e.createdAt.toISOString().slice(0, 10)}] subject: ${e.subject ?? "(none)"}\n` +
         `FIRST customer message: ${e.firstMsg.slice(0, 500)}\n` +
-        `LAST customer message: ${e.lastMsg.slice(0, 400)}`
+        `END OF THREAD (oldest first, final message last — final message is from ${e.lastFrom}):\n${e.tail}`
     )
     .join("\n\n---\n\n");
   const res = await anthropic.messages.create({
@@ -115,7 +129,90 @@ async function classifyBatch(batch: Extract[]): Promise<Map<number, { category: 
   return out;
 }
 
+/** Fetch a thread's messages and build the classifier input. Null = no usable customer message. */
+async function buildExtract(threadId: string, createdAt: Date): Promise<Extract | null> {
+  const msgs = await hs<{ results: Message[] }>(
+    `/conversations/v3/conversations/threads/${threadId}/messages?limit=100`
+  );
+  // HubSpot returns messages NEWEST-first — sort oldest-first explicitly, or the
+  // "thread tail" is actually the thread start (the bug that skewed sentiment).
+  const real = msgs.results
+    .filter((m) => m.type === "MESSAGE" && (m.text ?? "").trim())
+    .sort((a, b) => (a.createdAt ?? "").localeCompare(b.createdAt ?? ""));
+  const inbound = real.filter((m) => m.direction === "INCOMING");
+  if (!inbound.length) return null; // outbound-only thread
+  const sender = inbound[0].senders?.find((s) => s.deliveryIdentifier?.type === "HS_EMAIL_ADDRESS");
+  const tailMsgs = real.slice(-6);
+  const label = (m: Message) => (m.direction === "INCOMING" ? "CUSTOMER" : "RHEOS REP");
+  return {
+    threadId,
+    createdAt,
+    fromEmail: sender?.deliveryIdentifier?.value?.toLowerCase() ?? null,
+    subject: null,
+    firstMsg: inbound[0].text!,
+    tail: tailMsgs.map((m) => `${label(m)}: ${m.text!.slice(0, 300)}`).join("\n"),
+    lastFrom: label(tailMsgs[tailMsgs.length - 1]),
+  };
+}
+
+/**
+ * Re-judge endSentiment on already-imported rows with the tail-aware prompt.
+ * Only endSentiment is updated — category and product enrichment stay put.
+ */
+async function reclassify(sentiment: string) {
+  const maxRows = Number(process.argv[4] ?? Infinity);
+  const rows = (
+    await prisma.analyticsInquiry.findMany({
+      where: { source: "hubspot", ...(sentiment === "all" ? {} : { endSentiment: sentiment }) },
+      select: { id: true, threadId: true, threadCreatedAt: true, endSentiment: true },
+      orderBy: { threadCreatedAt: "asc" },
+    })
+  ).slice(0, maxRows);
+  console.log(`Reclassifying ${rows.length} "${sentiment}" rows with full-thread context…`);
+
+  let pending: { row: (typeof rows)[number]; ex: Extract }[] = [];
+  let done = 0;
+  const shifts = new Map<string, number>();
+  const flush = async () => {
+    if (!pending.length) return;
+    const cls = await classifyBatch(pending.map((p) => p.ex));
+    for (let i = 0; i < pending.length; i++) {
+      const prev = pending[i].row.endSentiment;
+      const next = cls.get(i)?.endSentiment;
+      if (next && next !== prev) {
+        await prisma.analyticsInquiry.update({
+          where: { id: pending[i].row.id },
+          data: { endSentiment: next },
+        });
+        shifts.set(`${prev}→${next}`, (shifts.get(`${prev}→${next}`) ?? 0) + 1);
+      }
+      done++;
+    }
+    console.log(
+      `  [${new Date().toISOString().slice(11, 19)}] ${done}/${rows.length} — moved: ` +
+        ([...shifts].map(([k, v]) => `${k} ${v}`).join(", ") || "none yet")
+    );
+    pending = [];
+  };
+
+  for (const row of rows) {
+    try {
+      const ex = await buildExtract(row.threadId, row.threadCreatedAt);
+      if (ex) pending.push({ row, ex });
+      if (pending.length >= 20) await flush();
+      await new Promise((r) => setTimeout(r, 120)); // ~8 req/s, under HubSpot burst limits
+    } catch (e) {
+      console.error(`  thread ${row.threadId} skipped:`, (e as Error).message.slice(0, 80));
+    }
+  }
+  await flush();
+  const moved = [...shifts.values()].reduce((a, b) => a + b, 0);
+  console.log(`Reclassify done. ${done} judged: unchanged ${done - moved}, moved ${moved} (` +
+    [...shifts].map(([k, v]) => `${k} ${v}`).join(", ") + ")");
+}
+
 async function main() {
+  if (RECLASSIFY) return reclassify(RECLASSIFY_SENTIMENT!);
   const rheos = await prisma.tenant.findUniqueOrThrow({ where: { slug: "rheos" } });
   const have = new Set(
     (await prisma.analyticsInquiry.findMany({ select: { threadId: true } })).map((r) => r.threadId)
@@ -181,21 +278,8 @@ async function main() {
 
   for (const t of threads) {
     try {
-      const msgs = await hs<{ results: Message[] }>(
-        `/conversations/v3/conversations/threads/${t.id}/messages?limit=100`
-      );
-      const real = msgs.results.filter((m) => m.type === "MESSAGE" && (m.text ?? "").trim());
-      const inbound = real.filter((m) => m.direction === "INCOMING");
-      if (!inbound.length) continue; // outbound-only thread
-      const sender = inbound[0].senders?.find((s) => s.deliveryIdentifier?.type === "HS_EMAIL_ADDRESS");
-      pending.push({
-        threadId: t.id,
-        createdAt: new Date(t.createdAt),
-        fromEmail: sender?.deliveryIdentifier?.value?.toLowerCase() ?? null,
-        subject: null,
-        firstMsg: inbound[0].text!,
-        lastMsg: inbound[inbound.length - 1].text!,
-      });
+      const ex = await buildExtract(t.id, new Date(t.createdAt));
+      if (ex) pending.push(ex);
       if (pending.length >= 20) await flush();
       await new Promise((r) => setTimeout(r, 120)); // ~8 req/s, under HubSpot burst limits
     } catch (e) {

@@ -253,6 +253,8 @@ export default async function Analytics({
           <div className="mb-1 text-sm font-medium">How exchanges ended</div>
           <div className="mb-3 text-xs text-neutral-400">
             Customer conversations only — automated mail and vendor pitches excluded ({noiseCount.toLocaleString()} filtered).
+            Judged from the end of the full thread, rep replies included — unresolved means the customer&apos;s
+            last message got no reply.
           </div>
           <div className="mb-3 flex h-5 w-full overflow-hidden rounded-full bg-neutral-100">
             {(["positive", "neutral", "unresolved", "negative"] as const).map((s) => {

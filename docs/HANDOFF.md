@@ -160,15 +160,20 @@ this database project WITHOUT these defenses (59+ PM2 restarts historically) —
 
 ## 7. Known limitations & honest caveats
 
-1. **"Unresolved" sentiment is inferred from the customer's last message** — threads where the
-   rep answered last can look unresolved. Treat it as an upper bound / trend metric.
-   *Jake 260702: in these scenarios, review the thread in whole to see where the sentiment ended
-   by the customer's last reply or multiple last replies.* (Backlog: reclassify on full thread.)
+1. **[FIXED 2026-07-02]** ~~"Unresolved" sentiment is inferred from the customer's last
+   message~~ — per Jake's note, sentiment is now judged from the ordered tail of the FULL
+   thread (both directions, rep replies included): unresolved only when the customer's last
+   message got no rep reply. The fix also uncovered that HubSpot returns thread messages
+   NEWEST-first — the original classifier was actually judging the opening inquiry. All
+   rows were re-judged (`tsx prisma/analytics-backfill.ts --reclassify all`); the nightly
+   cron classifies new threads the same way.
 2. **Product-mention coverage ≈ 20%** of real inquiries (explicit mentions only, by design).
-3. **Style/gender attributes** exist only for the ~13 frames currently tagged on the Shopify
-   site; older silhouettes show null.
-   *Jake 260702: in all scenarios, use HubSpot product SKU to match as much information as is
-   possible.* (Backlog: SKU-level enrichment from the HubSpot catalog.)
+3. **[IMPROVED 2026-07-02]** Style/gender attributes now come from Shopify tags PLUS HubSpot's
+   SKU-level `rhe_*` properties (silhouette, frametype→wrap/lifestyle, gender, lens size, base
+   curve, best-seller tags) per Jake's note — coverage went 13→19 families with style, 2→17
+   with gender, and product entries gained Style/Fit/best-seller lines. Still null-honest:
+   ~49 families have no attribute in either source (mostly discontinued) and stay null.
+   `import-products.ts` also restamps AnalyticsInquiry style/gender each nightly run.
 4. **Amazon buyer emails are anonymized** → Amazon orders can't match to support emails;
    time-since-purchase only sees Shopify orders.
 5. **Reply playbooks missing** for replacement_parts / returns_exchange / sizing_fit (too few
@@ -197,7 +202,9 @@ this database project WITHOUT these defenses (59+ PM2 restarts historically) —
 ## 9. Data provenance (for trust in the analytics)
 
 - Inquiries: HubSpot conversation threads, 365 days, classified by Haiku in batches
-  (category + end-of-exchange sentiment), threadId-deduped, resume-safe.
+  (category + end-of-exchange sentiment), threadId-deduped, resume-safe. Sentiment reads the
+  ordered full-thread tail. **Trap: HubSpot's thread-messages API returns NEWEST-first — always
+  sort by createdAt before treating anything as "first" or "last".**
 - Sales: Shopify Admin API full history (client-credentials mint) + Amazon from
   `public."AmazonOrder"` (rheos-inventory's 30-min sync). Refunds from `financial_status`.
 - Purchase matching: inquiry email ↔ most recent prior order, computed in SQL
