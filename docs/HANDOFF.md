@@ -164,8 +164,12 @@ this database project WITHOUT these defenses (59+ PM2 restarts historically) —
   switcher** in the header (`/api/tenant/switch` + Auth.js `unstable_update`). Rosters for
   Rheos + Stingray seeded via `npm run db:seed-users`. Intake cron is `*/5 --gated`:
   every 5 min 9am–1pm ET, half-hourly otherwise (gate is inside intake-gmail.ts, DST-safe).
-  `LearningSignal.category/assigneeId` columns exist but routing of training questions to
-  specialists is NOT wired yet (next phase).
+  **Brain training by category + user (shipped 2026-07-08, same day)**: `routeSignalAssignee`
+  sends every new LearningSignal to the least-loaded specialist for its category (teach routes
+  stamp the ticket's category; the nightly detector uses the majority category of the edited
+  drafts' tickets; no specialist → admin's Brain-manager queue). `/training` = each user's
+  personal queue (nav badge shows their open count); Brain manager shows category + assignee
+  on every signal and filters entries by category.
 - **Inbox** — My tickets/All open/Noise/All views, fine-grained category chips, wholesale chip, product tags, waiting-days chips, assign dropdowns (admin)
 - **Ticket workspace** — clean threaded conversation with image attachments (streamed on demand
   from Gmail), "View original in Gmail" deep link (account-scoped, for additional review), customer key-stats strip (orders, LTV, first/last sale, returns, warranty
