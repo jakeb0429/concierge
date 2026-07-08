@@ -6,6 +6,7 @@ import { computeReplyState, REPLY_STATE_LABEL, type ReplyState } from "@/lib/rep
 import { NOISE_CATEGORIES } from "@/lib/triage";
 import { categoryLabel } from "@/lib/categories";
 import InboxList, { type Row } from "./InboxList";
+import InboxFilters from "./InboxFilters";
 import ExpiredNotesReview from "./ExpiredNotesReview";
 
 export const dynamic = "force-dynamic";
@@ -15,20 +16,48 @@ import type { Prisma } from "@prisma/client";
 type ViewKey = "mine" | "open" | "noise" | "all";
 const REPLY_FILTERS: ReplyState[] = ["first_contact", "follow_up", "waiting_customer"];
 
+const SINCE_HOURS: Record<string, number> = { "24h": 24, "7d": 168, "30d": 720 };
+
 export default async function Inbox({
   searchParams,
 }: {
-  searchParams: Promise<{ view?: string; reply?: string }>;
+  searchParams: Promise<{
+    view?: string;
+    reply?: string;
+    cat?: string;
+    assignee?: string;
+    priority?: string;
+    since?: string;
+    needs?: string;
+    sort?: string;
+  }>;
 }) {
   const [tenant, me] = await Promise.all([getCurrentTenant(), sessionUser()]);
   const admin = isAdminRole(me?.role);
-  const { view: rawView, reply: rawReply } = await searchParams;
+  const sp = await searchParams;
+  const { view: rawView, reply: rawReply } = sp;
   // Admins (triage) land on everything; specialists land on their own queue.
   const defaultView: ViewKey = admin ? "open" : "mine";
   const view: ViewKey = (["mine", "open", "noise", "all"] as const).includes(rawView as ViewKey)
     ? (rawView as ViewKey)
     : defaultView;
   const replyFilter = REPLY_FILTERS.includes(rawReply as ReplyState) ? (rawReply as ReplyState) : null;
+
+  // Toolbar filters — every combination is a shareable saved-filter URL (the
+  // digest tiles deep-link here). Any active filter/sort flattens the list.
+  const sinceHours = SINCE_HOURS[sp.since ?? ""] ?? null;
+  const filterWhere: Prisma.TicketWhereInput = {
+    ...(sp.cat ? { category: sp.cat } : {}),
+    ...(sp.assignee === "none" ? { assigneeId: null } : sp.assignee ? { assigneeId: sp.assignee } : {}),
+    ...(sp.priority === "high" ? { priority: "high" } : {}),
+    ...(sinceHours ? { createdAt: { gte: new Date(Date.now() - sinceHours * 3_600_000) } } : {}),
+    // Time-window filters mean "real inquiries that arrived" — keep auto-
+    // archived noise out unless the Noise view is explicitly selected.
+    ...(sinceHours && view !== "noise" ? { NOT: { tags: { hasSome: [...NOISE_CATEGORIES] } } } : {}),
+  };
+  const needsFilter = sp.needs === "1" ? true : sp.needs === "0" ? false : null;
+  const sort = ["newest", "oldest", "waiting"].includes(sp.sort ?? "") ? sp.sort! : null;
+  const flat = Object.keys(filterWhere).length > 0 || needsFilter !== null || sort !== null;
 
   const VIEWS: Record<ViewKey, { label: string; where: Prisma.TicketWhereInput }> = {
     mine: {
@@ -52,17 +81,21 @@ export default async function Inbox({
     // Urgent first and UNCAPPED by the main window — an old urgent ticket
     // must never fall off the list.
     prisma.ticket.findMany({
-      where: { tenantId: tenant.id, ...VIEWS[view].where, priority: "high" },
+      where: { tenantId: tenant.id, ...VIEWS[view].where, ...filterWhere, priority: "high" },
       include: ticketInclude,
       orderBy: { createdAt: "desc" },
       take: 50,
     }),
-    prisma.ticket.findMany({
-      where: { tenantId: tenant.id, ...VIEWS[view].where, priority: { not: "high" } },
-      include: ticketInclude,
-      orderBy: { createdAt: "desc" },
-      take: 100,
-    }),
+    // With the urgent-only filter active this second query must return
+    // nothing — its { not: "high" } clause would otherwise override the filter.
+    sp.priority === "high"
+      ? Promise.resolve([])
+      : prisma.ticket.findMany({
+          where: { tenantId: tenant.id, ...VIEWS[view].where, ...filterWhere, priority: { not: "high" } },
+          include: ticketInclude,
+          orderBy: { createdAt: "desc" },
+          take: 100,
+        }),
     prisma.ticket.groupBy({ by: ["status"], where: { tenantId: tenant.id }, _count: true }),
     prisma.user.findMany({
       where: { tenantId: tenant.id },
@@ -132,14 +165,19 @@ export default async function Inbox({
     };
   });
   if (replyFilter) rows = rows.filter((r) => r.replyState === replyFilter);
+  if (needsFilter !== null) rows = rows.filter((r) => r.needsReply === needsFilter);
   // Importance order: urgent → needs a reply → been waiting longest. The
-  // triage admin works this list top to bottom.
-  rows.sort(
-    (a, b) =>
-      Number(b.urgent) - Number(a.urgent) ||
-      Number(b.needsReply) - Number(a.needsReply) ||
-      (a.needsReply ? a.createdAt - b.createdAt : b.createdAt - a.createdAt)
-  );
+  // triage admin works this list top to bottom. An explicit sort overrides.
+  if (sort === "newest") rows.sort((a, b) => b.createdAt - a.createdAt);
+  else if (sort === "oldest") rows.sort((a, b) => a.createdAt - b.createdAt);
+  else if (sort === "waiting") rows.sort((a, b) => (b.waitingDays ?? -1) - (a.waitingDays ?? -1) || a.createdAt - b.createdAt);
+  else
+    rows.sort(
+      (a, b) =>
+        Number(b.urgent) - Number(a.urgent) ||
+        Number(b.needsReply) - Number(a.needsReply) ||
+        (a.needsReply ? a.createdAt - b.createdAt : b.createdAt - a.createdAt)
+    );
 
   const visibleViews: ViewKey[] = admin ? ["open", "mine", "noise", "all"] : ["mine", "open", "noise", "all"];
   const viewHref = (k: ViewKey) => (k === defaultView ? "/" : `/?view=${k}`);
@@ -229,9 +267,12 @@ export default async function Inbox({
         ))}
       </div>
 
+      <InboxFilters users={users.map((u) => ({ id: u.id, label: u.name ?? u.email.split("@")[0] }))} />
+
       <InboxList
         rows={rows}
         view={view}
+        flat={flat}
         canAssign={admin}
         users={users.map((u) => ({ id: u.id, label: u.name ?? u.email.split("@")[0] }))}
       />

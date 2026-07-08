@@ -36,11 +36,13 @@ export type AssignableUser = { id: string; label: string };
 export default function InboxList({
   rows,
   view,
+  flat = false,
   canAssign = false,
   users = [],
 }: {
   rows: Row[];
   view: string;
+  flat?: boolean;
   canAssign?: boolean;
   users?: AssignableUser[];
 }) {
@@ -98,9 +100,12 @@ export default function InboxList({
     }
   }
 
-  // Build groups by view.
+  // Build groups by view. Filtered/sorted (flat) results skip grouping —
+  // the URL's filters define the list.
   let groups: { key: string; title: string | null; tone?: "urgent" | "noise"; rows: Row[] }[];
-  if (view === "noise") {
+  if (flat) {
+    groups = [{ key: "flat", title: null, rows }];
+  } else if (view === "noise") {
     const byCat = new Map<string, Row[]>();
     for (const r of rows) {
       const k = r.category ?? "other";

@@ -27,19 +27,34 @@ export default async function DigestPage({
   const drillHref = (key: DrillKey) =>
     show === key ? `/digest${period === "weekly" ? "?period=weekly" : ""}` : `/digest${qs}${qs.endsWith("?") ? "" : "&"}show=${key}#records`;
 
-  // Every number drills down to its records; clicking again collapses.
-  const tile = (label: string, value: string | number, key: DrillKey, tone?: "amber" | "red") => (
-    <Link
-      href={drillHref(key)}
-      className={`block rounded-xl border bg-white p-4 transition-colors hover:border-gold ${show === key ? "border-gold" : "border-neutral-200"}`}
-    >
-      <div className="text-xs text-neutral-400">{label}</div>
-      <div className={`text-2xl font-semibold ${tone === "amber" ? "text-amber-700" : tone === "red" ? "text-red-700" : ""}`}>
-        {value}
-      </div>
-      <div className="text-[10px] text-neutral-300">{show === key ? "hide records" : "view records"}</div>
-    </Link>
-  );
+  // Every number is clickable. Ticket-shaped tiles jump to the INBOX with the
+  // matching saved filter set (same filters the toolbar there offers); tiles
+  // for non-ticket records (events, training, notes) drill down inline here.
+  const window = period === "daily" ? "24h" : "7d";
+  const tile = (
+    label: string,
+    value: string | number,
+    target: { drill: DrillKey } | { inbox: string },
+    tone?: "amber" | "red"
+  ) => {
+    const isDrill = "drill" in target;
+    const href = isDrill ? drillHref(target.drill) : `/?${target.inbox}`;
+    const open = isDrill && show === target.drill;
+    return (
+      <Link
+        href={href}
+        className={`block rounded-xl border bg-white p-4 transition-colors hover:border-gold ${open ? "border-gold" : "border-neutral-200"}`}
+      >
+        <div className="text-xs text-neutral-400">{label}</div>
+        <div className={`text-2xl font-semibold ${tone === "amber" ? "text-amber-700" : tone === "red" ? "text-red-700" : ""}`}>
+          {value}
+        </div>
+        <div className="text-[10px] text-neutral-300">
+          {isDrill ? (open ? "hide records" : "view records") : "open in inbox →"}
+        </div>
+      </Link>
+    );
+  };
 
   return (
     <div>
@@ -66,10 +81,10 @@ export default async function DigestPage({
         Activity · {d.periodLabel}
       </div>
       <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-4">
-        {tile("New inquiries", d.newTickets, "new")}
-        {tile("Replies sent", d.repliesSent, "replies")}
-        {tile("Noise filtered", d.noiseFiltered, "noise")}
-        {tile("Brain changes", d.brainChanges, "brain")}
+        {tile("New inquiries", d.newTickets, { inbox: `view=all&since=${window}&sort=newest` })}
+        {tile("Replies sent", d.repliesSent, { drill: "replies" })}
+        {tile("Noise filtered", d.noiseFiltered, { inbox: `view=noise&since=${window}&sort=newest` })}
+        {tile("Brain changes", d.brainChanges, { drill: "brain" })}
       </div>
       {d.newByCategory.length > 0 && (
         <div className="mb-4 rounded-xl border border-neutral-200 bg-white p-4 text-xs">
@@ -87,11 +102,11 @@ export default async function DigestPage({
       {/* where things stand right now */}
       <div className="mb-1 text-xs font-medium uppercase tracking-wide text-neutral-400">Right now</div>
       <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-5">
-        {tile("Need a reply", d.needsReply, "needsreply", d.needsReply > 0 ? "amber" : undefined)}
-        {tile("Urgent open", d.urgentOpen, "urgent", d.urgentOpen > 0 ? "red" : undefined)}
-        {tile("Unassigned", d.unassigned, "unassigned", d.unassigned > 0 ? "amber" : undefined)}
-        {tile("Training pending", d.trainingOpen, "training")}
-        {tile("Expired notes", d.expiredNotes, "expired", d.expiredNotes > 0 ? "amber" : undefined)}
+        {tile("Need a reply", d.needsReply, { inbox: "needs=1&sort=waiting" }, d.needsReply > 0 ? "amber" : undefined)}
+        {tile("Urgent open", d.urgentOpen, { inbox: "priority=high&sort=oldest" }, d.urgentOpen > 0 ? "red" : undefined)}
+        {tile("Unassigned", d.unassigned, { inbox: "assignee=none&sort=oldest" }, d.unassigned > 0 ? "amber" : undefined)}
+        {tile("Training pending", d.trainingOpen, { drill: "training" })}
+        {tile("Expired notes", d.expiredNotes, { drill: "expired" }, d.expiredNotes > 0 ? "amber" : undefined)}
       </div>
 
       {show && records && (
