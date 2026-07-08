@@ -48,8 +48,10 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     { href: "/training", label: "Training", badge: myTraining },
     ...(isAdminRole(me?.role)
       ? [
+          { href: "/digest", label: "Digest" },
           { href: "/users", label: "Team" },
           { href: "/sources", label: "Sources" },
+          { href: "/audit", label: "Audit" },
         ]
       : []),
   ];

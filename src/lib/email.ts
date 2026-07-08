@@ -4,6 +4,42 @@
  */
 const MAILGUN_BASE = "https://api.mailgun.net";
 
+/**
+ * General sender (digests, reports). Sends whenever Mailgun creds exist —
+ * scripts run outside NODE_ENV=production, so unlike sendMagicLink this
+ * doesn't gate on env (magic links keep their stricter dev guard).
+ */
+export async function sendEmail({
+  to,
+  subject,
+  text,
+  html,
+}: {
+  to: string[];
+  subject: string;
+  text: string;
+  html: string;
+}): Promise<boolean> {
+  const apiKey = process.env.MAILGUN_API_KEY;
+  const domain = process.env.MAILGUN_DOMAIN;
+  const from = process.env.EMAIL_FROM || `Concierge <no-reply@${domain}>`;
+  if (!apiKey || !domain) {
+    console.log(`[email:stub] "${subject}" to ${to.join(", ")}\n${text.slice(0, 500)}`);
+    return false;
+  }
+  const body = new URLSearchParams({ from, to: to.join(","), subject, text, html });
+  const res = await fetch(`${MAILGUN_BASE}/v3/${domain}/messages`, {
+    method: "POST",
+    headers: {
+      Authorization: `Basic ${Buffer.from(`api:${apiKey}`).toString("base64")}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body,
+  });
+  if (!res.ok) throw new Error(`Mailgun ${res.status}: ${await res.text()}`);
+  return true;
+}
+
 export async function sendMagicLink({ email, url }: { email: string; url: string }): Promise<void> {
   const apiKey = process.env.MAILGUN_API_KEY;
   const domain = process.env.MAILGUN_DOMAIN;

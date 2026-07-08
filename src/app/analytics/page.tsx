@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { getCurrentTenant } from "@/lib/tenant";
+import { computeResponseTimes, fmtDuration } from "@/lib/response-times";
+import { categoryLabel } from "@/lib/categories";
 
 export const dynamic = "force-dynamic";
 
@@ -198,6 +200,9 @@ export default async function Analytics({
 
   const explore = (x: string, y: string, extra = "") => `/analytics?x=${x}&y=${y}${extra}#explore`;
 
+  // Response-time KPIs — Concierge-era tickets, noise excluded.
+  const rt = await computeResponseTimes(tenant.id, 30);
+
   return (
     <div>
       <div className="mb-5 flex items-baseline justify-between">
@@ -227,6 +232,71 @@ export default async function Analytics({
         <div className="rounded-xl border border-neutral-200 bg-white p-4">
           <div className="text-xs text-neutral-400">Median time since purchase</div>
           <div className="text-2xl font-semibold">{medianDsp != null ? `${medianDsp}d` : "—"}</div>
+        </div>
+      </div>
+
+      {/* Response times — how fast the team actually answers (30d) */}
+      <div className="mb-4 rounded-xl border border-neutral-200 bg-white p-4">
+        <div className="mb-1 flex items-baseline justify-between">
+          <div className="text-sm font-medium">Response times</div>
+          <span className="text-xs text-neutral-400">past {rt.sinceDays} days · noise excluded</span>
+        </div>
+        <div className="mb-3 grid grid-cols-2 gap-3 md:grid-cols-4">
+          <div>
+            <div className="text-xs text-neutral-400">Median first reply</div>
+            <div className="text-2xl font-semibold">{fmtDuration(rt.overall.medianMs)}</div>
+            <div className="text-[11px] text-neutral-400">{rt.overall.n} replied</div>
+          </div>
+          <div>
+            <div className="text-xs text-neutral-400">P90 first reply</div>
+            <div className="text-2xl font-semibold">{fmtDuration(rt.overall.p90Ms)}</div>
+          </div>
+          <div>
+            <div className="text-xs text-neutral-400">Median resolution</div>
+            <div className="text-2xl font-semibold">{fmtDuration(rt.overall.medianResolutionMs)}</div>
+            <div className="text-[11px] text-neutral-400">{rt.overall.resolvedN} resolved</div>
+          </div>
+          <div>
+            <div className="text-xs text-neutral-400">Awaiting first reply</div>
+            <div className={`text-2xl font-semibold ${rt.awaitingFirstReply.length ? "text-amber-700" : ""}`}>
+              {rt.awaitingFirstReply.length}
+            </div>
+            {rt.awaitingFirstReply[0] && (
+              <div className="text-[11px] text-amber-700">oldest waiting {fmtDuration(rt.awaitingFirstReply[0].waitingMs)}</div>
+            )}
+          </div>
+        </div>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div>
+            <div className="mb-1 text-xs font-medium uppercase tracking-wide text-neutral-400">By person</div>
+            {rt.byAssignee.length ? (
+              <div className="space-y-1 text-xs">
+                {rt.byAssignee.map((a) => (
+                  <div key={a.label} className="flex items-baseline justify-between">
+                    <span className="text-neutral-700">{a.label}</span>
+                    <span className="text-neutral-500">
+                      median {fmtDuration(a.stats.medianMs)} · {a.stats.n} repl{a.stats.n === 1 ? "y" : "ies"}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-neutral-400">No replies in the window yet.</p>
+            )}
+          </div>
+          <div>
+            <div className="mb-1 text-xs font-medium uppercase tracking-wide text-neutral-400">By category</div>
+            <div className="space-y-1 text-xs">
+              {rt.byCategory.map((c) => (
+                <div key={c.category} className="flex items-baseline justify-between">
+                  <span className="text-neutral-700">{categoryLabel(c.category)}</span>
+                  <span className="text-neutral-500">
+                    median {fmtDuration(c.stats.medianMs)} · {c.stats.n}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
 
