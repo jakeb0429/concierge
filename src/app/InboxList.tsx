@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { statusChip, statusLabel } from "@/lib/ui";
 import { REPLY_STATE_CHIP, REPLY_STATE_LABEL, type ReplyState } from "@/lib/reply-state";
 
@@ -43,6 +44,7 @@ export default function InboxList({
   canAssign?: boolean;
   users?: AssignableUser[];
 }) {
+  const router = useRouter();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -53,7 +55,7 @@ export default function InboxList({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ assigneeId: assigneeId || null }),
     });
-    if (res.ok) window.location.reload();
+    if (res.ok) router.refresh(); // soft refresh — keeps scroll position
     else alert((await res.json().catch(() => ({ error: "Reassign failed" }))).error);
   }
 

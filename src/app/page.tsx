@@ -191,12 +191,20 @@ export default async function Inbox({
             </span>
           )}
           {users
-            .map((u) => ({ u, n: assignedCounts.find((c) => c.assigneeId === u.id)?._count ?? 0 }))
+            .map((u) => ({
+              u,
+              n: assignedCounts.find((c) => c.assigneeId === u.id)?._count ?? 0,
+              pressing: rows.filter((r) => r.assigneeId === u.id && r.needsReply).length,
+            }))
             .filter(({ n }) => n > 0)
-            .sort((a, b) => b.n - a.n)
-            .map(({ u, n }) => (
-              <span key={u.id} className="rounded-full bg-neutral-100 px-2.5 py-1 text-neutral-600">
-                {u.name ?? u.email.split("@")[0]} · {n}
+            .sort((a, b) => b.pressing - a.pressing || b.n - a.n)
+            .map(({ u, n, pressing }) => (
+              <span
+                key={u.id}
+                className={`rounded-full px-2.5 py-1 ${pressing > 0 ? "bg-amber-50 text-amber-800" : "bg-neutral-100 text-neutral-600"}`}
+                title={`${n} open assigned · ${pressing} awaiting a reply`}
+              >
+                {u.name ?? u.email.split("@")[0]} · {pressing > 0 ? `${pressing} to answer / ` : ""}{n} open
               </span>
             ))}
         </div>

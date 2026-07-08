@@ -25,14 +25,19 @@ type Signal = {
   repNote?: string | null;
   category?: string | null;
   assigneeName?: string | null;
+  assigneeId?: string | null;
 };
 
 export default function BrainManager({
   initialItems,
   initialSignals = [],
+  canEdit = true,
+  meId = null,
 }: {
   initialItems: Item[];
   initialSignals?: Signal[];
+  canEdit?: boolean;
+  meId?: string | null;
 }) {
   const [signals, setSignals] = useState(initialSignals);
 
@@ -99,12 +104,14 @@ export default function BrainManager({
           <h1 className="page-title">Brand Brain</h1>
           <p className="text-sm text-neutral-500">{items.length} entries · the knowledge that grounds every draft</p>
         </div>
-        <button
-          onClick={() => setAdding((a) => !a)}
-          className="rounded-lg border border-neutral-300 px-3 py-2 text-sm hover:bg-neutral-50"
-        >
-          + Add entry
-        </button>
+        {canEdit && (
+          <button
+            onClick={() => setAdding((a) => !a)}
+            className="rounded-lg border border-neutral-300 px-3 py-2 text-sm hover:bg-neutral-50"
+          >
+            + Add entry
+          </button>
+        )}
       </div>
 
       {signals.length > 0 && (
@@ -134,20 +141,22 @@ export default function BrainManager({
                 {s.repNote && (
                   <p className="mt-1 text-[11px] text-neutral-400">Rep&apos;s note: “{s.repNote}”</p>
                 )}
-                <div className="mt-2 flex gap-2">
-                  <button
-                    onClick={() => resolveSignal(s.id, "approve")}
-                    className="rounded-lg bg-green-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-700"
-                  >
-                    Approve — update the Brain
-                  </button>
-                  <button
-                    onClick={() => resolveSignal(s.id, "dismiss")}
-                    className="rounded-lg border border-neutral-200 px-3 py-1.5 text-xs hover:bg-neutral-50"
-                  >
-                    Dismiss
-                  </button>
-                </div>
+                {(canEdit || s.assigneeId === meId) && (
+                  <div className="mt-2 flex gap-2">
+                    <button
+                      onClick={() => resolveSignal(s.id, "approve")}
+                      className="rounded-lg bg-green-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-green-700"
+                    >
+                      Approve — update the Brain
+                    </button>
+                    <button
+                      onClick={() => resolveSignal(s.id, "dismiss")}
+                      className="rounded-lg border border-neutral-200 px-3 py-1.5 text-xs hover:bg-neutral-50"
+                    >
+                      Dismiss
+                    </button>
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -255,7 +264,7 @@ export default function BrainManager({
                     v{it.version} · cited {it.timesCited}×
                   </span>
                   <div className="ml-auto flex items-center gap-3">
-                    {it.status === "draft" && (
+                    {canEdit && it.status === "draft" && (
                       <button
                         onClick={() => approve(it.id)}
                         className="rounded-lg bg-green-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-green-700"
@@ -263,16 +272,18 @@ export default function BrainManager({
                         Approve
                       </button>
                     )}
-                    <button
-                      onClick={() => {
-                        setEditing(it.id);
-                        setDraftTitle(it.title);
-                        setDraftAnswer(it.answer);
-                      }}
-                      className="text-xs text-neutral-400 hover:text-neutral-900"
-                    >
-                      Edit
-                    </button>
+                    {canEdit && (
+                      <button
+                        onClick={() => {
+                          setEditing(it.id);
+                          setDraftTitle(it.title);
+                          setDraftAnswer(it.answer);
+                        }}
+                        className="text-xs text-neutral-400 hover:text-neutral-900"
+                      >
+                        Edit
+                      </button>
+                    )}
                   </div>
                 </div>
                 <p className="text-sm leading-relaxed text-neutral-700">{it.answer}</p>
