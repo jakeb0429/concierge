@@ -1,1 +1,29 @@
 @import "tailwindcss";
+
+/* Scribe CHS basics (ops/scribe-pitch-delivery-style-guide.md): gold accent,
+   cream fills, warm grey fine print, Arial throughout. */
+@theme {
+  --color-gold: #a8882e;
+  --color-gold-dark: #8f7326;
+  --color-cream: #faf6ec;
+  --color-scribe-blue: #2e74b5;
+  --color-scribe-navy: #1f4d78;
+  --color-warm-grey: #7a7470;
+  --font-sans: Arial, "Helvetica Neue", sans-serif;
+}
+
+body {
+  font-family: var(--font-sans);
+}
+
+/* The Scribe section-heading signature: gold, ALL CAPS, hairline underline —
+   used as every page title so the product reads as a Scribe document. */
+.page-title {
+  @apply border-b border-neutral-200 pb-2 text-[13px] font-bold uppercase tracking-[0.14em] text-gold;
+}
+
+/* Primary action — Scribe gold. Semantic colors (green approve, red urgent)
+   stay; everything "the main thing to click" is gold. */
+.btn-primary {
+  @apply rounded-lg bg-gold font-medium text-white transition-colors hover:bg-gold-dark disabled:opacity-50;
+}

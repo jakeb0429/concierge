@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { statusChip, statusLabel } from "@/lib/ui";
 import { getCustomerInsight } from "@/lib/customer-insight";
 import CustomerFacts from "./CustomerFacts";
+import NotesPanel from "@/app/components/NotesPanel";
 
 export const dynamic = "force-dynamic";
 
@@ -43,6 +44,19 @@ export default async function CustomerProfile({ params }: { params: Promise<{ id
   const lastOrder = orders[0];
   const negatives = inquiries.filter((q) => q.endSentiment === "negative").length;
   const insight = await getCustomerInsight(customer.id).catch(() => null);
+  const now = Date.now();
+  const notes = (
+    await prisma.contextNote.findMany({
+      where: { tenantId: customer.tenantId, customerId: customer.id },
+      orderBy: { createdAt: "desc" },
+    })
+  ).map((n) => ({
+    id: n.id,
+    body: n.body,
+    scope: "customer" as const,
+    expiresAt: n.expiresAt?.toISOString() ?? null,
+    expired: !!n.expiresAt && n.expiresAt.getTime() < now,
+  }));
 
   return (
     <div>
@@ -69,6 +83,10 @@ export default async function CustomerProfile({ params }: { params: Promise<{ id
         channelName={customer.channelName}
         insight={insight}
       />
+
+      <div className="mt-3">
+        <NotesPanel notes={notes} customerId={customer.id} />
+      </div>
 
       <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4">
         <div className="rounded-xl border border-neutral-200 bg-white p-4">

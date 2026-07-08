@@ -17,7 +17,7 @@ export default async function ReviewsPage() {
   return (
     <div>
       <div className="mb-5 flex items-baseline justify-between">
-        <h1 className="text-xl font-semibold tracking-tight">Review queue</h1>
+        <h1 className="page-title">Review queue</h1>
         <span className="text-sm text-neutral-500">{pending.length} awaiting review</span>
       </div>
       {pending.length === 0 ? (

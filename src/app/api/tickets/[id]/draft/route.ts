@@ -4,6 +4,7 @@ import { generateDraft } from "@/lib/brain/draft";
 import { cleanEmailText } from "@/lib/email-clean";
 import { getOrderContext, orderContextLines } from "@/lib/shipstation";
 import { getCustomerInsight } from "@/lib/customer-insight";
+import { groundingNotes } from "@/lib/notes";
 
 /**
  * Prepare (or regenerate) a first draft for a ticket. Grounded, cited, scored.
@@ -46,6 +47,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   if (ticket.customer.purchaseChannel) {
     ticketText += `\n[known purchase channel: ${ticket.customer.purchaseChannel}${ticket.customer.channelName ? ` — ${ticket.customer.channelName}` : ""}]`;
   }
+  // Rep-pinned context notes (this ticket + this customer, unexpired only) —
+  // team-vetted facts, safe to reference directly.
+  const notes = await groundingNotes(ticket.tenantId, ticket.id, ticket.customerId);
+  if (notes.length) ticketText += `\n\n[team notes — factual, safe to reference: ${notes.join(" | ")}]`;
   const prior = regenOfDraftId
     ? await prisma.draft.findFirst({ where: { id: regenOfDraftId, ticketId: ticket.id } })
     : null;

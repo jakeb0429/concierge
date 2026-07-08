@@ -201,7 +201,7 @@ export default async function Analytics({
   return (
     <div>
       <div className="mb-5 flex items-baseline justify-between">
-        <h1 className="text-xl font-semibold tracking-tight">Analytics</h1>
+        <h1 className="page-title">Analytics</h1>
         <span className="text-sm text-neutral-500">past 365 days · {inquiriesAll.length.toLocaleString()} inquiries</span>
       </div>
 
@@ -346,7 +346,7 @@ export default async function Analytics({
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
-              <tr>
+              <tr className="bg-cream">
                 <th className="py-1.5 pr-2 text-left font-medium text-neutral-500">{X.label}</th>
                 {yVals.map((yv) => (
                   <th key={yv} className="px-2 py-1.5 text-right font-medium text-neutral-500">{label(yDim, yv)}</th>

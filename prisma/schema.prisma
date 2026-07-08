@@ -30,6 +30,7 @@ model Tenant {
   auditEvents     AuditEvent[]
   learningSignals LearningSignal[]
   salesSources    SalesSource[]
+  contextNotes    ContextNote[]
 
   @@schema("concierge")
 }
@@ -355,6 +356,29 @@ model SalesMonthly {
   revenue Decimal  @db.Decimal(14, 2)
 
   @@id([month, source])
+  @@schema("concierge")
+}
+
+/// A pinned context note — a fact reps want teammates and drafts to know,
+/// scoped to ONE ticket (this conversation only) or to the customer (all
+/// their tickets). Optional expiration: an expired note stops feeding drafts
+/// immediately and queues on the admin dashboard for review — extend it,
+/// make it permanent, or remove it, so stale facts never linger.
+model ContextNote {
+  id         String    @id @default(cuid())
+  tenantId   String
+  tenant     Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customerId String?   // customer scope — exactly one of customerId/ticketId is set
+  ticketId   String?   // ticket scope
+  body       String    @db.Text
+  expiresAt  DateTime?
+  createdBy  String?   // user id (loose ref — notes outlive team changes)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([tenantId, customerId])
+  @@index([tenantId, ticketId])
+  @@index([tenantId, expiresAt])
   @@schema("concierge")
 }
 

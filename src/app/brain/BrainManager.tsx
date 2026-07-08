@@ -96,7 +96,7 @@ export default function BrainManager({
     <div>
       <div className="mb-5 flex items-baseline justify-between">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight">Brand Brain</h1>
+          <h1 className="page-title">Brand Brain</h1>
           <p className="text-sm text-neutral-500">{items.length} entries · the knowledge that grounds every draft</p>
         </div>
         <button
@@ -179,7 +179,7 @@ export default function BrainManager({
             <button
               onClick={create}
               disabled={!newItem.title || !newItem.answer}
-              className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+              className="btn-primary px-3 py-2 text-sm"
             >
               Save entry
             </button>
@@ -225,7 +225,7 @@ export default function BrainManager({
                 <div className="flex gap-2">
                   <button
                     onClick={() => save(it.id)}
-                    className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
+                    className="btn-primary px-3 py-1.5 text-sm"
                   >
                     Save
                   </button>

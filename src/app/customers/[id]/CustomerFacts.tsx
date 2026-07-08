@@ -70,7 +70,7 @@ export default function CustomerFacts({
           <button
             onClick={save}
             disabled={busy}
-            className="rounded-lg bg-neutral-900 px-3 py-1.5 text-xs text-white hover:bg-neutral-700 disabled:opacity-40"
+            className="btn-primary px-3 py-1.5 text-xs"
           >
             {busy ? "Saving…" : "Save"}
           </button>

@@ -6,6 +6,7 @@ import { computeReplyState, REPLY_STATE_LABEL, type ReplyState } from "@/lib/rep
 import { NOISE_CATEGORIES } from "@/lib/triage";
 import { categoryLabel } from "@/lib/categories";
 import InboxList, { type Row } from "./InboxList";
+import ExpiredNotesReview from "./ExpiredNotesReview";
 
 export const dynamic = "force-dynamic";
 
@@ -63,6 +64,16 @@ export default async function Inbox({
       _count: true,
     }),
   ]);
+  // Expired context notes queue for the triage admin — the "did the PO
+  // arrive?" prompt. Expired notes already stopped feeding drafts.
+  const expiredNotes = admin
+    ? await prisma.contextNote.findMany({
+        where: { tenantId: tenant.id, expiresAt: { lt: new Date() } },
+        orderBy: { expiresAt: "asc" },
+        take: 20,
+      })
+    : [];
+
   const noiseCount = counts.find((c) => c.status === "archived")?._count ?? 0;
   const openCount = counts.filter((c) => !["archived", "resolved"].includes(c.status)).reduce((s, c) => s + c._count, 0);
   const mineCount = assignedCounts.find((c) => c.assigneeId === me?.id)?._count ?? 0;
@@ -113,7 +124,7 @@ export default async function Inbox({
     <div>
       <div className="mb-3 flex items-baseline justify-between">
         <div className="flex items-baseline gap-4">
-          <h1 className="text-xl font-semibold tracking-tight">Inbox</h1>
+          <h1 className="page-title">Inbox</h1>
           <nav className="flex gap-2 text-sm">
             {visibleViews.map((k) => (
               <Link
@@ -131,6 +142,19 @@ export default async function Inbox({
         </div>
         <span className="text-sm text-neutral-500">{rows.length} shown</span>
       </div>
+
+      {/* triage admin: expired context notes need a decision */}
+      {admin && (
+        <ExpiredNotesReview
+          notes={expiredNotes.map((n) => ({
+            id: n.id,
+            body: n.body,
+            expiresAt: n.expiresAt!.toISOString(),
+            href: n.ticketId ? `/tickets/${n.ticketId}` : `/customers/${n.customerId}`,
+            scopeLabel: n.ticketId ? "view ticket" : "view customer",
+          }))}
+        />
+      )}
 
       {/* triage admin: who's carrying what */}
       {admin && view === "open" && (

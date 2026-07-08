@@ -159,7 +159,7 @@ export default function InboxList({
             {g.title && (
               <div
                 className={`flex items-center gap-2 border-b border-neutral-100 px-4 py-2 text-xs font-medium ${
-                  g.tone === "urgent" ? "bg-red-50 text-red-700" : "bg-neutral-50 text-neutral-500"
+                  g.tone === "urgent" ? "bg-red-50 text-red-700" : "bg-cream text-warm-grey"
                 }`}
               >
                 {g.tone === "noise" && (
@@ -224,7 +224,7 @@ export default function InboxList({
                     {statusLabel(t.status)}
                   </span>
                 </Link>
-                {canAssign ? (
+                {canAssign && view !== "noise" && !t.looksNoise ? (
                   <select
                     value={t.assigneeId ?? ""}
                     onChange={(e) => reassign(t.id, e.target.value)}

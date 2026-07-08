@@ -40,7 +40,7 @@ export default function SourcesPanel({ tenantName, sources }: { tenantName: stri
   return (
     <div>
       <div className="mb-5">
-        <h1 className="text-xl font-semibold tracking-tight">Sales data — {tenantName}</h1>
+        <h1 className="page-title">Sales data — {tenantName}</h1>
         <p className="text-sm text-neutral-500">
           The order streams feeding customer history, lifetime value, and the AI customer read.
           Configured per brand for now; credentials live on the server, not here.

@@ -60,8 +60,15 @@ function Login() {
 
   return (
     <div className="mx-auto mt-16 max-w-sm">
-      <h1 className="text-xl font-semibold tracking-tight">Concierge</h1>
-      <p className="mt-1 text-sm text-neutral-500">Sign in with your work email.</p>
+      <div className="flex items-center gap-3">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/scribe-mark.png" alt="Scribe CHS" width={40} height={40} className="rounded-lg" />
+        <div>
+          <h1 className="text-[15px] font-bold uppercase tracking-[0.14em] text-gold">Concierge</h1>
+          <p className="text-[11px] text-warm-grey">by Scribe CHS</p>
+        </div>
+      </div>
+      <p className="mt-4 text-sm text-neutral-500">Sign in with your work email.</p>
 
       {status && <p className="mt-4 rounded-lg bg-neutral-100 px-3 py-2 text-sm text-neutral-600">{status}</p>}
 
@@ -92,7 +99,7 @@ function Login() {
           <button
             type="submit"
             disabled={busy}
-            className="w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+            className="btn-primary w-full px-4 py-2 text-sm"
           >
             {busy ? "Signing in…" : "Sign in"}
           </button>
@@ -110,7 +117,7 @@ function Login() {
           <button
             type="submit"
             disabled={busy}
-            className="w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+            className="btn-primary w-full px-4 py-2 text-sm"
           >
             {busy ? "Sending…" : "Email me a sign-in link"}
           </button>

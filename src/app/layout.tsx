@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import Image from "next/image";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { isAdminRole } from "@/lib/roles";
 import BrandSwitcher from "./BrandSwitcher";
+import NavLinks, { type NavItem } from "./NavLinks";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -38,47 +40,34 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     myTraining = trainingCount;
   }
 
+  const navItems: NavItem[] = [
+    { href: "/", label: "Inbox" },
+    { href: "/brain", label: "Brand Brain" },
+    { href: "/analytics", label: "Analytics" },
+    { href: "/reviews", label: "Reviews" },
+    { href: "/training", label: "Training", badge: myTraining },
+    ...(isAdminRole(me?.role)
+      ? [
+          { href: "/users", label: "Team" },
+          { href: "/sources", label: "Sources" },
+        ]
+      : []),
+  ];
+
   return (
     <html lang="en">
       <body className="bg-neutral-50 text-neutral-900 antialiased">
         <header className="border-b border-neutral-200 bg-white">
           <div className="mx-auto flex max-w-5xl items-center gap-6 px-6 py-3">
-            <Link href="/" className="font-semibold tracking-tight">
-              Concierge
+            <Link href="/" className="flex items-center gap-2.5">
+              <Image src="/scribe-mark.png" alt="Scribe CHS" width={26} height={26} className="rounded-md" />
+              <span className="flex flex-col leading-none">
+                <span className="text-[13px] font-bold uppercase tracking-[0.14em] text-gold">Concierge</span>
+                <span className="mt-0.5 text-[10px] text-warm-grey">by Scribe CHS</span>
+              </span>
             </Link>
-            <nav className="flex gap-4 text-sm text-neutral-500">
-              <Link href="/" className="hover:text-neutral-900">
-                Inbox
-              </Link>
-              <Link href="/brain" className="hover:text-neutral-900">
-                Brand Brain
-              </Link>
-              <Link href="/analytics" className="hover:text-neutral-900">
-                Analytics
-              </Link>
-              <Link href="/reviews" className="hover:text-neutral-900">
-                Reviews
-              </Link>
-              <Link href="/training" className="flex items-center gap-1 hover:text-neutral-900">
-                Training
-                {myTraining > 0 && (
-                  <span className="rounded-full bg-amber-100 px-1.5 text-[11px] font-medium text-amber-800">
-                    {myTraining}
-                  </span>
-                )}
-              </Link>
-              {isAdminRole(me?.role) && (
-                <>
-                  <Link href="/users" className="hover:text-neutral-900">
-                    Team
-                  </Link>
-                  <Link href="/sources" className="hover:text-neutral-900">
-                    Sources
-                  </Link>
-                </>
-              )}
-            </nav>
-            <span className="ml-auto flex items-center gap-3 text-xs text-neutral-400">
+            {me && <NavLinks items={navItems} />}
+            <span className="ml-auto flex items-center gap-3 text-xs text-warm-grey">
               {myBrands.length > 1 ? (
                 <BrandSwitcher current={currentSlug} tenants={myBrands} />
               ) : (

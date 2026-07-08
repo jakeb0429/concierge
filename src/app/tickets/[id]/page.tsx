@@ -6,6 +6,7 @@ import { computeReplyState } from "@/lib/reply-state";
 import { getOrderContext, orderContextLines, trackingUrl } from "@/lib/shipstation";
 import { categoryLabel } from "@/lib/categories";
 import { getCustomerInsight } from "@/lib/customer-insight";
+import { notesForTicket } from "@/lib/notes";
 import TicketWorkspace from "./TicketWorkspace";
 
 export const dynamic = "force-dynamic";
@@ -58,6 +59,7 @@ export default async function TicketDetail({ params }: { params: Promise<{ id: s
   // AI customer read — cached on the customer; regenerates only when their
   // order/ticket counts change (fail-soft, never blocks the page).
   const customerInsight = await getCustomerInsight(ticket.customer.id).catch(() => null);
+  const contextNotes = await notesForTicket(ticket.tenantId, ticket.id, ticket.customer.id);
   const orderContext = orderContextLines(shipOrders).map((line, i) => ({
     line,
     trackingUrl: trackingUrl(shipOrders[i].carrier, shipOrders[i].trackingNumber),
@@ -140,6 +142,7 @@ export default async function TicketDetail({ params }: { params: Promise<{ id: s
         initialDraft={initialDraft}
         sentDraftId={sentDraftId}
         customerStats={customerStats}
+        contextNotes={contextNotes.map((n) => ({ ...n, expiresAt: n.expiresAt?.toISOString() ?? null }))}
         customerInsight={customerInsight}
         purchaseChannel={
           ticket.customer.purchaseChannel

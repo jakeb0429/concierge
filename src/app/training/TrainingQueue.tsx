@@ -42,7 +42,7 @@ export default function TrainingQueue({ signals: initial }: { signals: TrainingS
   return (
     <div>
       <div className="mb-5">
-        <h1 className="text-xl font-semibold tracking-tight">My training queue</h1>
+        <h1 className="page-title">My training queue</h1>
         <p className="text-sm text-neutral-500">
           Proposed Brain changes in your specialty — approving updates the knowledge every draft is
           grounded in. Prefer refining an existing entry over adding a new one.

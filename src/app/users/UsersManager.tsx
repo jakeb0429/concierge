@@ -128,7 +128,7 @@ export default function UsersManager({
     <div>
       <div className="mb-4 flex items-baseline justify-between">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight">Team — {tenantName}</h1>
+          <h1 className="page-title">Team — {tenantName}</h1>
           <p className="mt-1 text-sm text-neutral-500">
             Specialties decide which tickets auto-assign to each person. The admin sees everything and can
             override any assignment.
@@ -136,7 +136,7 @@ export default function UsersManager({
         </div>
         <button
           onClick={() => setAdding((v) => !v)}
-          className="rounded-lg bg-neutral-900 px-3 py-1.5 text-sm text-white hover:bg-neutral-700"
+          className="btn-primary px-3 py-1.5 text-sm"
         >
           {adding ? "Cancel" : "Add teammate"}
         </button>
@@ -185,7 +185,7 @@ export default function UsersManager({
           <button
             onClick={addUser}
             disabled={busy === "new" || !draft.email.includes("@")}
-            className="rounded-lg bg-neutral-900 px-4 py-1.5 text-sm text-white hover:bg-neutral-700 disabled:opacity-40"
+            className="btn-primary px-4 py-1.5 text-sm"
           >
             {busy === "new" ? "Adding…" : "Add and grant sign-in"}
           </button>
@@ -236,7 +236,7 @@ export default function UsersManager({
                   <button
                     onClick={() => save(u)}
                     disabled={busy === u.id}
-                    className="rounded-lg bg-neutral-900 px-3 py-1 text-xs text-white hover:bg-neutral-700 disabled:opacity-40"
+                    className="btn-primary px-3 py-1 text-xs"
                   >
                     {busy === u.id ? "Saving…" : "Save"}
                   </button>

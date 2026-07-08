@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { coverageChip, statusChip, statusLabel } from "@/lib/ui";
+import NotesPanel, { type NoteRow } from "@/app/components/NotesPanel";
 import { REPLY_STATE_CHIP, REPLY_STATE_LABEL, type ReplyState } from "@/lib/reply-state";
 
 type Citation = {
@@ -66,6 +67,7 @@ export default function TicketWorkspace({
   initialDraft,
   sentDraftId,
   customerStats,
+  contextNotes = [],
   customerInsight,
   purchaseChannel,
   replyState,
@@ -78,6 +80,7 @@ export default function TicketWorkspace({
   initialDraft: Draft | null;
   sentDraftId: string | null;
   customerStats: CustomerStats;
+  contextNotes?: NoteRow[];
   customerInsight?: string | null;
   purchaseChannel?: string | null;
   replyState?: ReplyState;
@@ -305,6 +308,9 @@ export default function TicketWorkspace({
         </div>
       )}
 
+      {/* rep-pinned facts, scoped to this ticket or the customer; feed drafts until they expire */}
+      <NotesPanel notes={contextNotes} ticketId={ticket.id} customerId={ticket.customerId} />
+
       {/* order context — live from the fulfillment system (ShipStation) */}
       {orderContext.length > 0 && (
         <div className="mb-3 rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-xs">
@@ -477,7 +483,7 @@ export default function TicketWorkspace({
           <button
             onClick={confirm}
             disabled={sending || generating || !draft || reviewState.status === "pending_review"}
-            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+            className="btn-primary px-4 py-2 text-sm"
           >
             {sending ? "Sending…" : `Confirm and send → ${ticket.customerEmail || "no address"}`}
           </button>
