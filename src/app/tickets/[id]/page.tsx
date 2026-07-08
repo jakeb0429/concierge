@@ -3,7 +3,6 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { cleanEmailText } from "@/lib/email-clean";
 import { computeReplyState } from "@/lib/reply-state";
-import { getOrderContext, orderContextLines, trackingUrl } from "@/lib/shipstation";
 import { categoryLabel } from "@/lib/categories";
 import { getCustomerInsight } from "@/lib/customer-insight";
 import { notesForTicket } from "@/lib/notes";
@@ -41,7 +40,7 @@ export default async function TicketDetail({ params }: { params: Promise<{ id: s
 
   // Customer key stats — orders, spend, returns, and support history at a glance.
   const email = ticket.customer.email?.toLowerCase();
-  const [orderAgg, refundCount, inquiryCounts, ticketCount, shipOrders, tenantUsers] = await Promise.all([
+  const [orderAgg, refundCount, inquiryCounts, ticketCount, tenantUsers] = await Promise.all([
     email
       ? prisma.customerOrder.aggregate({
           where: { email, tenantId: tenant.id },
@@ -56,7 +55,8 @@ export default async function TicketDetail({ params }: { params: Promise<{ id: s
       ? prisma.analyticsInquiry.groupBy({ by: ["category"], where: { fromEmail: email, tenantId: tenant.id }, _count: true })
       : Promise.resolve([]),
     prisma.ticket.count({ where: { customerId: ticket.customer.id } }),
-    getOrderContext(email), // ShipStation: placed / shipped / carrier / tracking (cached, fail-soft)
+    // ShipStation order context deliberately NOT fetched here — it can take
+    // seconds and used to block first paint; the workspace loads it client-side.
     prisma.user.findMany({
       where: { tenantId: ticket.tenantId },
       select: { id: true, email: true, name: true },
@@ -68,10 +68,6 @@ export default async function TicketDetail({ params }: { params: Promise<{ id: s
     getCustomerInsight(ticket.customer.id).catch(() => null),
     notesForTicket(ticket.tenantId, ticket.id, ticket.customer.id),
   ]);
-  const orderContext = orderContextLines(shipOrders).map((line, i) => ({
-    line,
-    trackingUrl: trackingUrl(shipOrders[i].carrier, shipOrders[i].trackingNumber),
-  }));
   const replyState = computeReplyState(ticket.messages);
   const inqTotal = inquiryCounts.reduce((s, c) => s + c._count, 0) + ticketCount;
 
@@ -158,7 +154,6 @@ export default async function TicketDetail({ params }: { params: Promise<{ id: s
             : null
         }
         replyState={replyState}
-        orderContext={orderContext}
         gmailUrl={gmailUrl}
       />
     </div>

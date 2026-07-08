@@ -71,7 +71,6 @@ export default function TicketWorkspace({
   customerInsight,
   purchaseChannel,
   replyState,
-  orderContext = [],
   gmailUrl,
   assign,
 }: {
@@ -84,7 +83,6 @@ export default function TicketWorkspace({
   customerInsight?: string | null;
   purchaseChannel?: string | null;
   replyState?: ReplyState;
-  orderContext?: { line: string; trackingUrl: string | null }[];
   gmailUrl?: string | null;
   assign?: Assign;
 }) {
@@ -96,7 +94,30 @@ export default function TicketWorkspace({
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(status === "replied" || status === "resolved");
   const [assigneeId, setAssigneeId] = useState(assign?.assigneeId ?? null);
+  // Live order status loads AFTER first paint — ShipStation can take seconds
+  // and must never block opening the ticket.
+  const [orderContext, setOrderContext] = useState<{ line: string; trackingUrl: string | null }[]>([]);
+  const [orderLoading, setOrderLoading] = useState(true);
+  // The next ticket needing a reply; fetching it also pre-warms its caches
+  // server-side so "Next →" opens fast.
+  const [nextTicket, setNextTicket] = useState<{ id: string; subject: string | null; urgent: boolean } | null>(null);
   const started = useRef(false);
+
+  useEffect(() => {
+    let alive = true;
+    fetch(`/api/tickets/${ticket.id}/order-context`)
+      .then((r) => (r.ok ? r.json() : { orderContext: [] }))
+      .then((d) => alive && setOrderContext(d.orderContext ?? []))
+      .catch(() => {})
+      .finally(() => alive && setOrderLoading(false));
+    fetch(`/api/tickets/${ticket.id}/next`)
+      .then((r) => (r.ok ? r.json() : { next: null }))
+      .then((d) => alive && setNextTicket(d.next ?? null))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [ticket.id]);
 
   async function reassign(next: string) {
     const prev = assigneeId;
@@ -224,6 +245,15 @@ export default function TicketWorkspace({
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {nextTicket && (
+            <a
+              href={`/tickets/${nextTicket.id}`}
+              title={nextTicket.subject ?? undefined}
+              className={`rounded-lg border px-2 py-1 text-[11px] ${nextTicket.urgent ? "border-red-200 text-red-700 hover:bg-red-50" : "border-neutral-200 text-neutral-600 hover:bg-neutral-50"}`}
+            >
+              Next{nextTicket.urgent ? " (urgent)" : ""} →
+            </a>
+          )}
           {ticket.categoryLabel && (
             <span className="rounded-full bg-neutral-100 px-2 py-1 text-[11px] text-neutral-600">
               {ticket.categoryLabel}
@@ -318,7 +348,13 @@ export default function TicketWorkspace({
       <NotesPanel notes={contextNotes} ticketId={ticket.id} customerId={ticket.customerId} />
 
       {/* order context — live from the fulfillment system (ShipStation) */}
-      {orderContext.length > 0 && (
+      {orderLoading && (
+        <div className="mb-3 rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-xs text-neutral-400">
+          <span className="mr-3 font-medium text-neutral-500">Order status</span>
+          <span className="animate-pulse">checking the fulfillment system…</span>
+        </div>
+      )}
+      {!orderLoading && orderContext.length > 0 && (
         <div className="mb-3 rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-xs">
           <span className="mr-3 font-medium text-neutral-500">Order status</span>
           {orderContext.map((o, i) => (
@@ -523,6 +559,14 @@ export default function TicketWorkspace({
                 ? "Resolved — no reply was needed on this ticket."
                 : "Reply sent. This ticket is now marked replied."}
           </span>
+          {nextTicket && (
+            <a
+              href={`/tickets/${nextTicket.id}`}
+              className="rounded-lg bg-green-700 px-3 py-1 text-xs font-medium text-white hover:bg-green-800"
+            >
+              Next ticket →
+            </a>
+          )}
           {sentDraftId && !promoted && (
             <button onClick={promote} className="rounded-lg border border-green-300 px-3 py-1 text-xs text-green-800 hover:bg-green-100">
               Save answer to Brand Brain
