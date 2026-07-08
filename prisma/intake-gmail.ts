@@ -165,6 +165,22 @@ async function intakeMailbox(tenantId: string, tenantSlug: string, channelId: st
       attachmentsFound += await importMessage(tenantId, ticketId, mailbox, m);
       imported++;
     }
+
+    // If the LAST message in the thread is ours (answered in Gmail directly,
+    // or a Concierge send), the ticket is not "new" work — mark it replied so
+    // the inbox separates it from tickets still needing an answer.
+    const lastMsgFrom = parseAddr(header(msgs[msgs.length - 1]?.payload?.headers ?? [], "from"));
+    const lastIsOurs = lastMsgFrom.email?.toLowerCase() === mailbox;
+    if (lastIsOurs) {
+      const current = await prisma.ticket.findUnique({ where: { id: ticketId }, select: { status: true } });
+      if (current && ["new", "drafted", "in_review"].includes(current.status)) {
+        await prisma.ticket.update({ where: { id: ticketId }, data: { status: "replied" } });
+        await prisma.auditEvent.create({
+          data: { tenantId, action: "ticket_replied_external", entity: `ticket:${ticketId}`, meta: { source: "answered in Gmail" } },
+        });
+        console.log(`    ✉ marked replied (answered in Gmail)`);
+      }
+    }
   }
   console.log(
     `  ${mailbox}: ${threadIds.length} threads, ${imported} messages, ${attachmentsFound} attachments` +

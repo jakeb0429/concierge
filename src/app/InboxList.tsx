@@ -113,13 +113,19 @@ export default function InboxList({
     const noiseLooking = rows.filter((r) => !r.urgent && r.looksNoise);
     const unassigned = canAssign ? rows.filter((r) => !r.urgent && !r.looksNoise && !r.assigneeId && r.needsReply) : [];
     const unassignedIds = new Set(unassigned.map((r) => r.id));
-    const rest = rows.filter((r) => !r.urgent && !r.looksNoise && !unassignedIds.has(r.id));
+    // Already answered (in Concierge OR directly in Gmail) — separated from
+    // the tickets that still need a reply.
+    const answered = rows.filter((r) => !r.urgent && !r.looksNoise && !unassignedIds.has(r.id) && !r.needsReply);
+    const rest = rows.filter((r) => !r.urgent && !r.looksNoise && !unassignedIds.has(r.id) && r.needsReply);
     groups = [
       ...(urgent.length ? [{ key: "urgent", title: `Answer first — urgent (${urgent.length})`, tone: "urgent" as const, rows: urgent }] : []),
       ...(unassigned.length
         ? [{ key: "unassigned", title: `Needs an owner — unassigned (${unassigned.length})`, rows: unassigned }]
         : []),
       { key: "rest", title: null, rows: rest },
+      ...(answered.length
+        ? [{ key: "answered", title: `Answered — waiting on the customer (${answered.length})`, rows: answered }]
+        : []),
       ...(noiseLooking.length
         ? [{ key: "noise", title: `Looks like vendor pitches & automated mail (${noiseLooking.length})`, tone: "noise" as const, rows: noiseLooking }]
         : []),
