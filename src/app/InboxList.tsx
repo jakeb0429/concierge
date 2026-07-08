@@ -233,6 +233,9 @@ export default function InboxList({
                     <div className="truncate text-sm text-neutral-700">{t.subject}</div>
                     <div className="truncate text-xs text-neutral-400">{t.snippet}</div>
                   </div>
+                  <span className="w-14 flex-shrink-0 text-right text-[11px] text-neutral-400" title={new Date(t.createdAt).toLocaleString()}>
+                    {new Date(t.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                  </span>
                   <span className={`rounded-full px-2.5 py-1 text-[11px] ${statusChip(t.status)}`}>
                     {statusLabel(t.status)}
                   </span>
