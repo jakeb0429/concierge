@@ -1,7 +1,7 @@
 import { auth } from "@/lib/auth";
 import { NextResponse } from "next/server";
 
-const PUBLIC_EXACT = new Set(["/login", "/favicon.ico", "/robots.txt"]);
+const PUBLIC_EXACT = new Set(["/login", "/favicon.ico", "/robots.txt", "/scribe-mark.png"]);
 const PUBLIC_PREFIXES = ["/api/auth", "/_next"];
 
 function isPublic(pathname: string): boolean {
