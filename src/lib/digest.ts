@@ -56,7 +56,7 @@ export async function buildDigest(tenantId: string, period: DigestPeriod): Promi
       where: { tenantId, action: { in: ["reply_sent", "ticket_replied_external"] }, createdAt: { gte: since } },
     }),
     prisma.auditEvent.count({
-      where: { tenantId, action: { in: ["signal_approved", "answer_promoted", "user_updated"] }, createdAt: { gte: since } },
+      where: { tenantId, action: { in: ["signal_approved", "answer_promoted"] }, createdAt: { gte: since } },
     }),
     prisma.ticket.findMany({
       where: { tenantId, status: { notIn: ["archived", "resolved", "replied"] } },
@@ -102,4 +102,155 @@ export async function buildDigest(tenantId: string, period: DigestPeriod): Promi
       .sort((a, b) => b.n - a.n),
     responseTimes,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Tile drill-downs — every digest number is clickable; these return the rows
+// behind it. Capped at 100, newest first.
+
+export type DigestRecord = { label: string; sublabel: string; href: string | null; when: Date | null };
+
+export const DRILL_KEYS = [
+  "new",
+  "replies",
+  "noise",
+  "brain",
+  "needsreply",
+  "urgent",
+  "unassigned",
+  "training",
+  "expired",
+] as const;
+export type DrillKey = (typeof DRILL_KEYS)[number];
+
+export const DRILL_TITLE: Record<DrillKey, string> = {
+  new: "New inquiries",
+  replies: "Replies sent",
+  noise: "Noise filtered automatically",
+  brain: "Brain changes approved",
+  needsreply: "Tickets needing a reply",
+  urgent: "Urgent open tickets",
+  unassigned: "Unassigned open tickets",
+  training: "Training questions pending",
+  expired: "Expired context notes",
+};
+
+const NOISE = ["automated_notification", "vendor_outreach", "internal", "spam"];
+
+export async function digestRecords(tenantId: string, period: DigestPeriod, key: DrillKey): Promise<DigestRecord[]> {
+  const hours = period === "daily" ? 24 : 24 * 7;
+  const since = new Date(Date.now() - hours * 3_600_000);
+  const openWhere = { tenantId, status: { notIn: ["archived", "resolved", "replied"] } };
+
+  const ticketRecord = (
+    t: { id: string; subject: string | null; category: string | null; createdAt: Date; customer: { displayName: string | null; email: string | null } },
+    sub?: string
+  ): DigestRecord => ({
+    label: t.subject ?? "(no subject)",
+    sublabel: sub ?? `${t.customer.displayName ?? t.customer.email ?? "customer"}${t.category ? " · " + categoryLabel(t.category) : ""}`,
+    href: `/tickets/${t.id}`,
+    when: t.createdAt,
+  });
+  const ticketSelect = {
+    id: true,
+    subject: true,
+    category: true,
+    createdAt: true,
+    tags: true,
+    priority: true,
+    customer: { select: { displayName: true, email: true } },
+  } as const;
+
+  switch (key) {
+    case "new":
+    case "noise": {
+      const rows = await prisma.ticket.findMany({
+        where: { tenantId, createdAt: { gte: since } },
+        select: ticketSelect,
+        orderBy: { createdAt: "desc" },
+        take: 200,
+      });
+      const wantNoise = key === "noise";
+      return rows
+        .filter((t) => t.tags.some((tag) => NOISE.includes(tag)) === wantNoise)
+        .slice(0, 100)
+        .map((t) => ticketRecord(t));
+    }
+    case "replies": {
+      const events = await prisma.auditEvent.findMany({
+        where: { tenantId, action: { in: ["reply_sent", "ticket_replied_external"] }, createdAt: { gte: since } },
+        orderBy: { createdAt: "desc" },
+        take: 100,
+      });
+      const ids = [...new Set(events.map((e) => e.entity.replace("ticket:", "")))];
+      const tickets = await prisma.ticket.findMany({ where: { id: { in: ids } }, select: ticketSelect });
+      const byId = new Map(tickets.map((t) => [t.id, t]));
+      return events.map((e) => {
+        const t = byId.get(e.entity.replace("ticket:", ""));
+        return {
+          label: t?.subject ?? "(ticket removed)",
+          sublabel: e.action === "ticket_replied_external" ? "answered in Gmail" : "sent from Concierge",
+          href: t ? `/tickets/${t.id}` : null,
+          when: e.createdAt,
+        };
+      });
+    }
+    case "brain": {
+      const events = await prisma.auditEvent.findMany({
+        where: { tenantId, action: { in: ["signal_approved", "answer_promoted"] }, createdAt: { gte: since } },
+        orderBy: { createdAt: "desc" },
+        take: 100,
+      });
+      return events.map((e) => ({
+        label: e.action === "signal_approved" ? "Training approved → Brain updated" : "Answer promoted to the Brain",
+        sublabel: e.entity,
+        href: "/brain",
+        when: e.createdAt,
+      }));
+    }
+    case "needsreply":
+    case "urgent":
+    case "unassigned": {
+      const rows = await prisma.ticket.findMany({
+        where: {
+          ...openWhere,
+          ...(key === "urgent" ? { priority: "high" } : {}),
+          ...(key === "unassigned" ? { assigneeId: null } : {}),
+        },
+        select: { ...ticketSelect, messages: { orderBy: { sentAt: "desc" as const }, take: 1, select: { direction: true } } },
+        orderBy: { createdAt: "asc" },
+        take: 150,
+      });
+      const filtered = key === "needsreply" ? rows.filter((t) => t.messages[0]?.direction === "inbound") : rows;
+      return filtered.slice(0, 100).map((t) => ticketRecord(t));
+    }
+    case "training": {
+      const signals = await prisma.learningSignal.findMany({
+        where: { tenantId, status: "open" },
+        orderBy: { createdAt: "desc" },
+        take: 100,
+      });
+      const users = await prisma.user.findMany({ where: { tenantId }, select: { id: true, name: true, email: true } });
+      const label = new Map(users.map((u) => [u.id, u.name ?? u.email.split("@")[0]]));
+      return signals.map((s) => ({
+        label: (s.proposedText ?? s.kind).slice(0, 110),
+        sublabel: `${s.kind.replace(/_/g, " ")}${s.category ? " · " + categoryLabel(s.category) : ""} · ${s.assigneeId ? `assigned to ${label.get(s.assigneeId) ?? "?"}` : "admin queue"}`,
+        href: "/brain",
+        when: s.createdAt,
+      }));
+    }
+    case "expired": {
+      const notes = await prisma.contextNote.findMany({
+        where: { tenantId, expiresAt: { lt: new Date() } },
+        orderBy: { expiresAt: "asc" },
+        take: 100,
+      });
+      return notes.map((n) => ({
+        label: n.body.slice(0, 110),
+        sublabel: n.ticketId ? "ticket note" : "customer note",
+        href: n.ticketId ? `/tickets/${n.ticketId}` : `/customers/${n.customerId}`,
+        when: n.expiresAt,
+      }));
+    }
+  }
 }
