@@ -45,27 +45,40 @@ async function main() {
     where: { tenantId: rheos.id, action: "draft_edited" },
     orderBy: { createdAt: "asc" },
   });
-  const byItem = new Map<string, { draftId: string; from: string; to: string }[]>();
-  for (const e of edits) {
-    const meta = e.meta as { draftId?: string; from?: string; to?: string } | null;
-    if (!meta?.draftId || !meta.from || !meta.to) continue;
-    const citations = await prisma.draftCitation.findMany({
-      where: { draftId: meta.draftId },
-      select: { knowledgeItemId: true },
-    });
-    for (const c of citations) {
-      if (!byItem.has(c.knowledgeItemId)) byItem.set(c.knowledgeItemId, []);
-      byItem.get(c.knowledgeItemId)!.push({ draftId: meta.draftId, from: meta.from, to: meta.to });
+  const editMetas = edits
+    .map((e) => ({ ...(e.meta as { draftId?: string; from?: string; to?: string } | null), at: e.createdAt }))
+    .filter((m): m is { draftId: string; from: string; to: string; at: Date } => !!(m?.draftId && m.from && m.to));
+  // One citations query for every edited draft (was one query per edit).
+  const allCitations = await prisma.draftCitation.findMany({
+    where: { draftId: { in: editMetas.map((m) => m.draftId) } },
+    select: { draftId: true, knowledgeItemId: true },
+  });
+  const citationsByDraft = new Map<string, string[]>();
+  for (const c of allCitations) {
+    if (!citationsByDraft.has(c.draftId)) citationsByDraft.set(c.draftId, []);
+    citationsByDraft.get(c.draftId)!.push(c.knowledgeItemId);
+  }
+  const byItem = new Map<string, { draftId: string; from: string; to: string; at: Date }[]>();
+  for (const meta of editMetas) {
+    for (const itemId of citationsByDraft.get(meta.draftId) ?? []) {
+      if (!byItem.has(itemId)) byItem.set(itemId, []);
+      byItem.get(itemId)!.push(meta);
     }
   }
 
   let created = 0;
-  for (const [itemId, itemEdits] of byItem) {
-    if (itemEdits.length < MIN) continue;
-    const open = await prisma.learningSignal.findFirst({
-      where: { tenantId: rheos.id, knowledgeItemId: itemId, kind: "recurring_edit", status: "open" },
+  for (const [itemId, allItemEdits] of byItem) {
+    // Watermark: a resolved (approved/dismissed) signal consumes the evidence
+    // that produced it — only edits NEWER than the item's latest signal count,
+    // else every resolved proposal resurrects from the same history forever.
+    const latest = await prisma.learningSignal.findFirst({
+      where: { tenantId: rheos.id, knowledgeItemId: itemId, kind: "recurring_edit" },
+      orderBy: { createdAt: "desc" },
+      select: { status: true, createdAt: true },
     });
-    if (open) continue; // one open proposal per item at a time
+    if (latest?.status === "open") continue; // one open proposal per item at a time
+    const itemEdits = latest ? allItemEdits.filter((e) => e.at > latest.createdAt) : allItemEdits;
+    if (itemEdits.length < MIN) continue;
     const item = await prisma.knowledgeItem.findUnique({ where: { id: itemId } });
     if (!item) continue;
 
@@ -130,19 +143,24 @@ async function main() {
   // ---- recurring_steer: the same freeform steer keeps being requested ----
   const steered = await prisma.draft.findMany({
     where: { tenantId: rheos.id, steerNotes: { not: null } },
-    select: { steerNotes: true },
+    select: { steerNotes: true, createdAt: true },
   });
-  const steerCounts = new Map<string, number>();
+  const steerCounts = new Map<string, { n: number; newest: Date }>();
   for (const s of steered) {
     const key = s.steerNotes!.toLowerCase().trim();
-    steerCounts.set(key, (steerCounts.get(key) ?? 0) + 1);
+    const cur = steerCounts.get(key) ?? { n: 0, newest: s.createdAt };
+    steerCounts.set(key, { n: cur.n + 1, newest: s.createdAt > cur.newest ? s.createdAt : cur.newest });
   }
-  for (const [note, n] of steerCounts) {
+  for (const [note, { n, newest }] of steerCounts) {
     if (n < Math.max(MIN, 3)) continue;
-    const open = await prisma.learningSignal.findFirst({
-      where: { tenantId: rheos.id, kind: "recurring_steer", proposedText: { contains: note }, status: "open" },
+    // Watermark (same rationale as recurring_edit): a resolved steer proposal
+    // stays resolved unless the steer keeps happening AFTER it.
+    const latest = await prisma.learningSignal.findFirst({
+      where: { tenantId: rheos.id, kind: "recurring_steer", proposedText: { contains: note } },
+      orderBy: { createdAt: "desc" },
+      select: { status: true, createdAt: true },
     });
-    if (open) continue;
+    if (latest && (latest.status === "open" || newest <= latest.createdAt)) continue;
     await prisma.learningSignal.create({
       data: {
         tenantId: rheos.id,

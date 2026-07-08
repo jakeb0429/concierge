@@ -10,7 +10,7 @@ export type ReplyState = "first_contact" | "follow_up" | "waiting_customer";
 export function computeReplyState(
   messages: { direction: string; sentAt: Date | string }[]
 ): ReplyState {
-  const sorted = [...messages].sort((a, b) => String(a.sentAt).localeCompare(String(b.sentAt)));
+  const sorted = [...messages].sort((a, b) => new Date(a.sentAt).getTime() - new Date(b.sentAt).getTime());
   if (!sorted.length) return "first_contact";
   const last = sorted[sorted.length - 1];
   if (last.direction === "outbound") return "waiting_customer";

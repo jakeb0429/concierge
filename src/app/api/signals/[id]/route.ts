@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentTenant } from "@/lib/tenant";
-import { sessionUser } from "@/lib/roles";
+import { sessionUser, isAdminRole } from "@/lib/roles";
 import { reindexKnowledgeItem } from "@/lib/brain/index-write";
 
 /**
@@ -21,6 +21,14 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     where: { id, tenantId: tenant.id, status: "open" },
   });
   if (!signal) return NextResponse.json({ error: "Signal not found or already resolved." }, { status: 404 });
+
+  // Brain changes are gated: a lead/admin, or the specialist this training
+  // question was routed to — nobody else.
+  const resolver = await sessionUser();
+  const canResolve =
+    isAdminRole(resolver?.role) || resolver?.role === "team_lead" || (!!signal.assigneeId && resolver?.id === signal.assigneeId);
+  if (!canResolve)
+    return NextResponse.json({ error: "This training question is assigned to someone else." }, { status: 403 });
 
   if (action === "approve" && signal.proposedText) {
     if (signal.proposedTarget === "answer" && signal.knowledgeItemId) {
@@ -63,11 +71,10 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     where: { id: signal.id },
     data: { status: action === "approve" ? "approved" : "dismissed", resolvedAt: new Date() },
   });
-  const actor = await sessionUser();
   await prisma.auditEvent.create({
     data: {
       tenantId: tenant.id,
-      actorId: actor?.id,
+      actorId: resolver?.id,
       action: action === "approve" ? "signal_approved" : "signal_dismissed",
       entity: `signal:${signal.id}`,
       meta: { kind: signal.kind, knowledgeItemId: signal.knowledgeItemId, category: signal.category },

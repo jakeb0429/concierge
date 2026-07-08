@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { prisma } from "./db";
 import { auth } from "./auth";
 
@@ -6,11 +7,11 @@ import { auth } from "./auth";
  * session. Scripts and unauthenticated contexts fall back to Rheos (the
  * original single-tenant behavior), so nothing breaks outside a request.
  */
-export async function getCurrentTenant() {
+export const getCurrentTenant = cache(async () => {
   const session = await auth().catch(() => null);
   if (session?.user?.tenantId) {
     const t = await prisma.tenant.findUnique({ where: { id: session.user.tenantId } });
     if (t) return t;
   }
   return prisma.tenant.findUniqueOrThrow({ where: { slug: "rheos" } });
-}
+});

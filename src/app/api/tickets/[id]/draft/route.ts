@@ -5,6 +5,7 @@ import { cleanEmailText } from "@/lib/email-clean";
 import { getOrderContext, orderContextLines } from "@/lib/shipstation";
 import { getCustomerInsight } from "@/lib/customer-insight";
 import { groundingNotes } from "@/lib/notes";
+import { getCurrentTenant } from "@/lib/tenant";
 
 /**
  * Prepare (or regenerate) a first draft for a ticket. Grounded, cited, scored.
@@ -17,14 +18,16 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     regenOfDraftId?: string;
   };
 
-  const ticket = await prisma.ticket.findUniqueOrThrow({
-    where: { id },
+  const currentTenant = await getCurrentTenant();
+  const ticket = await prisma.ticket.findFirst({
+    where: { id, tenantId: currentTenant.id },
     include: {
       tenant: true,
       customer: true,
       messages: { where: { direction: "inbound" }, orderBy: { sentAt: "asc" } },
     },
   });
+  if (!ticket) return NextResponse.json({ error: "Not found." }, { status: 404 });
 
   let ticketText = ticket.messages
     .map((m) => {

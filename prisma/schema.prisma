@@ -166,6 +166,7 @@ model Ticket {
   @@index([tenantId, status])
   @@index([tenantId, assigneeId])
   @@index([tenantId, category])
+  @@index([customerId]) // profile + insight-basis counts
   @@index([tenantId, createdAt(sort: Desc)]) // inbox ordering
   @@schema("concierge")
 }
@@ -214,6 +215,7 @@ model Draft {
   citations DraftCitation[]
 
   @@index([ticketId])
+  @@index([tenantId, status]) // analytics sent-unedited KPI
   @@schema("concierge")
 }
 
@@ -263,6 +265,7 @@ model User {
   assignedTickets Ticket[] @relation("Assignee")
 
   @@unique([tenantId, email])
+  @@index([email]) // cross-tenant lookups (magic-link grant, brand switcher)
   @@index([magicLinkToken])
   @@schema("concierge")
 }
@@ -323,6 +326,7 @@ model CustomerOrder {
 
   @@unique([source, orderRef])
   @@index([email])
+  @@index([tenantId, source]) // sources panel groupBy over ~80k rows
   @@schema("concierge")
 }
 
@@ -394,5 +398,6 @@ model AuditEvent {
   createdAt DateTime @default(now())
 
   @@index([tenantId, createdAt])
+  @@index([tenantId, action]) // detect-learning scans draft_edited
   @@schema("concierge")
 }

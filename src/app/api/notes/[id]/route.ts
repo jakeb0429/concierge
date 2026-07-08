@@ -18,7 +18,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     data.body = body.body.trim();
   }
   if (body.expiresAt !== undefined) {
-    const d = body.expiresAt ? new Date(body.expiresAt) : null;
+    const d = body.expiresAt
+      ? new Date(/^\d{4}-\d{2}-\d{2}$/.test(body.expiresAt) ? `${body.expiresAt}T23:59:59.000Z` : body.expiresAt)
+      : null;
     if (d && isNaN(d.getTime())) return NextResponse.json({ error: "Invalid expiration date." }, { status: 400 });
     data.expiresAt = d;
   }

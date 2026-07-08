@@ -33,10 +33,15 @@ export async function POST(req: Request) {
   const specialties = validSpecialties(body.specialties ?? []);
   if (!specialties) return NextResponse.json({ error: "Invalid specialties." }, { status: 400 });
 
-  const user = await prisma.user.upsert({
+  // Adding is CREATE-only — an existing teammate is edited via PATCH, which
+  // carries the role-change guards (no self-demotion, no super_admin edits).
+  const existing = await prisma.user.findUnique({
     where: { tenantId_email: { tenantId: tenant.id, email } },
-    update: { name: body.name || undefined, role, specialties },
-    create: { tenantId: tenant.id, email, name: body.name || null, role, specialties },
+  });
+  if (existing)
+    return NextResponse.json({ error: "That teammate already exists — edit them in the list below." }, { status: 409 });
+  const user = await prisma.user.create({
+    data: { tenantId: tenant.id, email, name: body.name || null, role, specialties },
   });
   await prisma.auditEvent.create({
     data: { tenantId: tenant.id, action: "user_provisioned", entity: `user:${user.id}`, meta: { email, role, specialties } },

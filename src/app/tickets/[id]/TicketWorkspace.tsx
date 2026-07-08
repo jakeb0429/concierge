@@ -117,11 +117,17 @@ export default function TicketWorkspace({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ steerNotes, regenOfDraftId: draft?.draftId }),
       });
-      const d: Draft = await res.json();
-      setDraft(d);
-      setBody(d.body);
+      const d = await res.json();
+      if (!res.ok) {
+        alert(d.error ?? "Draft generation failed — try again.");
+        return;
+      }
+      setDraft(d as Draft);
+      setBody((d as Draft).body);
       setStatus("in_review");
       setSteer("");
+      // New content = new review: never inherit approved/pending from the old draft.
+      setReviewState({ status: (d as Draft).status ?? "prepared", note: null });
     } finally {
       setGenerating(false);
     }
@@ -513,7 +519,9 @@ export default function TicketWorkspace({
               ? sentInfo.live
                 ? `Reply sent to ${sentInfo.to} from ${ticket.mailbox}.`
                 : `Reply logged (not transmitted — ${sentInfo.to} is a test/mock recipient or live send is off).`
-              : "Reply sent. This ticket is now marked replied."}
+              : ticket.status === "resolved" && status === "resolved"
+                ? "Resolved — no reply was needed on this ticket."
+                : "Reply sent. This ticket is now marked replied."}
           </span>
           {sentDraftId && !promoted && (
             <button onClick={promote} className="rounded-lg border border-green-300 px-3 py-1 text-xs text-green-800 hover:bg-green-100">

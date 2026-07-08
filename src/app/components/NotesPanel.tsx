@@ -133,7 +133,7 @@ export default function NotesPanel({
                     n.expired ? "bg-amber-100 text-amber-800" : "bg-white text-neutral-400"
                   }`}
                 >
-                  {n.expired ? "expired" : "until"} {new Date(n.expiresAt).toLocaleDateString()}
+                  {n.expired ? "expired" : "until"} {new Date(n.expiresAt).toLocaleDateString(undefined, { timeZone: "UTC" })}
                 </span>
               )}
               <button

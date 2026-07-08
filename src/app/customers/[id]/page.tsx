@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { statusChip, statusLabel } from "@/lib/ui";
+import { getCurrentTenant } from "@/lib/tenant";
 import { getCustomerInsight } from "@/lib/customer-insight";
 import CustomerFacts from "./CustomerFacts";
 import NotesPanel from "@/app/components/NotesPanel";
@@ -21,16 +22,17 @@ const money = (n: number) => `$${n.toLocaleString(undefined, { maximumFractionDi
 
 export default async function CustomerProfile({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const customer = await prisma.customer.findUnique({ where: { id } });
+  const tenant = await getCurrentTenant();
+  const customer = await prisma.customer.findFirst({ where: { id, tenantId: tenant.id } });
   if (!customer) notFound();
   const email = customer.email?.toLowerCase();
 
   const [orders, inquiries, tickets] = await Promise.all([
     email
-      ? prisma.customerOrder.findMany({ where: { email }, orderBy: { orderedAt: "desc" } })
+      ? prisma.customerOrder.findMany({ where: { email, tenantId: tenant.id }, orderBy: { orderedAt: "desc" }, take: 100 })
       : Promise.resolve([]),
     email
-      ? prisma.analyticsInquiry.findMany({ where: { fromEmail: email }, orderBy: { threadCreatedAt: "desc" } })
+      ? prisma.analyticsInquiry.findMany({ where: { fromEmail: email, tenantId: tenant.id }, orderBy: { threadCreatedAt: "desc" }, take: 100 })
       : Promise.resolve([]),
     prisma.ticket.findMany({
       where: { customerId: customer.id },
@@ -43,20 +45,22 @@ export default async function CustomerProfile({ params }: { params: Promise<{ id
   const firstOrder = orders.at(-1);
   const lastOrder = orders[0];
   const negatives = inquiries.filter((q) => q.endSentiment === "negative").length;
-  const insight = await getCustomerInsight(customer.id).catch(() => null);
   const now = Date.now();
-  const notes = (
-    await prisma.contextNote.findMany({
+  const [insight, rawNotes] = await Promise.all([
+    getCustomerInsight(customer.id).catch(() => null),
+    prisma.contextNote.findMany({
       where: { tenantId: customer.tenantId, customerId: customer.id },
       orderBy: { createdAt: "desc" },
-    })
-  ).map((n) => ({
+    }),
+  ]);
+  const notes = rawNotes.map((n) => ({
     id: n.id,
     body: n.body,
     scope: "customer" as const,
     expiresAt: n.expiresAt?.toISOString() ?? null,
     expired: !!n.expiresAt && n.expiresAt.getTime() < now,
   }));
+
 
   return (
     <div>

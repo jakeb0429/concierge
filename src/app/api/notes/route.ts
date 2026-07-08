@@ -29,7 +29,11 @@ export async function POST(req: Request) {
     const c = await prisma.customer.findFirst({ where: { id: customerId, tenantId: tenant.id }, select: { id: true } });
     if (!c) return NextResponse.json({ error: "Customer not found." }, { status: 404 });
   }
-  const expires = expiresAt ? new Date(expiresAt) : null;
+  // A date-only expiry means "valid through the end of that day" — store
+  // end-of-day UTC so it doesn't expire (or display) a day early in ET.
+  const expires = expiresAt
+    ? new Date(/^\d{4}-\d{2}-\d{2}$/.test(expiresAt) ? `${expiresAt}T23:59:59.000Z` : expiresAt)
+    : null;
   if (expires && isNaN(expires.getTime()))
     return NextResponse.json({ error: "Invalid expiration date." }, { status: 400 });
 

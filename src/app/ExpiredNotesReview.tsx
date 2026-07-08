@@ -49,7 +49,7 @@ export default function ExpiredNotesReview({ notes: initial }: { notes: ExpiredN
             <a href={n.href} className="text-blue-600 hover:underline">
               {n.scopeLabel}
             </a>
-            <span className="text-neutral-400">expired {new Date(n.expiresAt).toLocaleDateString()}</span>
+            <span className="text-neutral-400">expired {new Date(n.expiresAt).toLocaleDateString(undefined, { timeZone: "UTC" })}</span>
             <button
               onClick={() => act(n.id, "extend")}
               disabled={busy === n.id}

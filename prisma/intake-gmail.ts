@@ -100,21 +100,38 @@ async function intakeMailbox(tenantId: string, tenantSlug: string, channelId: st
     const subject = header(firstInbound.payload?.headers ?? [], "subject");
     const text = (decode(firstInbound.payload) ?? firstInbound.snippet ?? "").slice(0, 8000);
 
+    // Lowercased — Gmail From headers vary in case, and case variants would
+    // fork one person into two Customer rows with split histories.
+    const customerEmail = from.email!.toLowerCase();
     const customer = await prisma.customer.upsert({
-      where: { tenantId_email: { tenantId, email: from.email! } },
+      where: { tenantId_email: { tenantId, email: customerEmail } },
       update: { displayName: from.name ?? undefined },
-      create: { tenantId, email: from.email!, displayName: from.name },
+      create: { tenantId, email: customerEmail, displayName: from.name },
     });
 
     // Triage NEW threads only — an existing ticket keeps its state and just
     // gains messages. Noise is archived with its category tag, never drafted.
     const existing = await prisma.ticket.findUnique({
       where: { tenantId_providerThreadId: { tenantId, providerThreadId: threadId } },
-      select: { id: true },
+      select: { id: true, status: true },
     });
     let ticketId: string;
     if (existing) {
-      await prisma.ticket.update({ where: { id: existing.id }, data: { channelId } });
+      // A customer writing back to a RESOLVED ticket reopens it — otherwise
+      // "actually this didn't fix it" lands invisibly outside the open views.
+      const lastMsg = msgs[msgs.length - 1];
+      const lastFrom = parseAddr(header(lastMsg?.payload?.headers ?? [], "from"));
+      const reopen = existing.status === "resolved" && lastFrom.email?.toLowerCase() !== mailbox;
+      await prisma.ticket.update({
+        where: { id: existing.id },
+        data: { channelId, ...(reopen ? { status: "new" } : {}) },
+      });
+      if (reopen) {
+        await prisma.auditEvent.create({
+          data: { tenantId, action: "ticket_reopened", entity: `ticket:${existing.id}`, meta: { reason: "customer replied after resolve" } },
+        });
+        console.log(`    ↺ reopened resolved ticket (customer wrote back)`);
+      }
       ticketId = existing.id;
     } else {
       const t = await triage(from.email!, subject, text, brandContextFor(tenantSlug));

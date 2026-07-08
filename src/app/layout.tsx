@@ -58,7 +58,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     <html lang="en">
       <body className="bg-neutral-50 text-neutral-900 antialiased">
         <header className="border-b border-neutral-200 bg-white">
-          <div className="mx-auto flex max-w-5xl items-center gap-6 px-6 py-3">
+          <div className="mx-auto flex max-w-5xl items-center gap-6 overflow-x-auto px-6 py-3">
             <Link href="/" className="flex items-center gap-2.5">
               <Image src="/scribe-mark.png" alt="Scribe CHS" width={26} height={26} className="rounded-md" />
               <span className="flex flex-col leading-none">

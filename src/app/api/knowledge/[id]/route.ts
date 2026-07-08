@@ -1,11 +1,18 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentTenant } from "@/lib/tenant";
+import { sessionUser, isAdminRole } from "@/lib/roles";
 import { reindexKnowledgeItem } from "@/lib/brain/index-write";
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const tenant = await getCurrentTenant();
+  // Direct Brain writes are lead/admin territory — agents refine the Brain
+  // through their training queue (signals), which is human-gated by design.
+  const actor = await sessionUser();
+  if (!isAdminRole(actor?.role) && actor?.role !== "team_lead")
+    return NextResponse.json({ error: "Only a team lead or admin can edit the Brain directly." }, { status: 403 });
+
   const b = (await req.json()) as { title?: string; answer?: string; status?: string };
 
   const existing = await prisma.knowledgeItem.findFirstOrThrow({

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { sendReply } from "@/lib/send";
+import { getCurrentTenant } from "@/lib/tenant";
 
 /**
  * Confirm and send. The only outbound action, always rep-triggered.
@@ -8,10 +9,15 @@ import { sendReply } from "@/lib/send";
  */
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { draftId, finalBody } = (await req.json()) as { draftId: string; finalBody: string };
+  const { draftId, finalBody } = (await req.json().catch(() => ({}))) as { draftId?: string; finalBody?: string };
+  if (!draftId || typeof finalBody !== "string")
+    return NextResponse.json({ error: "draftId and finalBody required." }, { status: 400 });
 
-  const ticket = await prisma.ticket.findUniqueOrThrow({
-    where: { id },
+  // The only outbound action — strictly scoped to the caller's tenant, and
+  // the draft must belong to THIS ticket.
+  const currentTenant = await getCurrentTenant();
+  const ticket = await prisma.ticket.findFirst({
+    where: { id, tenantId: currentTenant.id },
     include: {
       customer: true,
       channelRef: true,
@@ -19,7 +25,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       messages: { where: { direction: "inbound" }, orderBy: { sentAt: "desc" }, take: 1 },
     },
   });
-  const draft = await prisma.draft.findUniqueOrThrow({ where: { id: draftId } });
+  if (!ticket) return NextResponse.json({ error: "Not found." }, { status: 404 });
+  const draft = await prisma.draft.findFirst({ where: { id: draftId, ticketId: ticket.id } });
+  if (!draft) return NextResponse.json({ error: "Draft not found on this ticket." }, { status: 404 });
   // Reply from the mailbox the ticket arrived on; legacy tickets without a
   // channelId fall back to the tenant's first channel of that provider.
   const channel = ticket.channelRef ?? ticket.tenant.channels.find((c) => c.provider === ticket.channel);

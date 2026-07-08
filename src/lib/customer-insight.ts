@@ -1,3 +1,4 @@
+import { after } from "next/server";
 import { prisma } from "./db";
 import { anthropic } from "./anthropic";
 import { cleanEmailText } from "./email-clean";
@@ -5,9 +6,13 @@ import { cleanEmailText } from "./email-clean";
 /**
  * The AI customer read — a 2–3 sentence interpretation of everything the
  * platform knows about a customer (D2C + B2B order history, inquiry pattern,
- * purchase-channel facts, recent messages), cached on the Customer row and
- * regenerated only when the underlying counts change. Shown to the rep on
- * the ticket + profile, and fed into draft grounding.
+ * purchase-channel facts, recent messages), cached on the Customer row.
+ *
+ * NEVER blocks a page: the staleness check is three cheap aggregates; when
+ * the basis changed, the CACHED read is returned immediately and the
+ * regeneration runs after the response (next/server `after`). A rep's first
+ * view of brand-new activity may show the prior read for one page load —
+ * that beats 2–6s of model latency on the page reps live in.
  */
 
 const INSIGHT_MODEL = "claude-sonnet-5";
@@ -28,16 +33,66 @@ const INSIGHT_TOOL = {
   },
 };
 
+type Basis = { orders: number; tickets: number; inquiries: number; channel: string };
+
 export async function getCustomerInsight(customerId: string): Promise<string | null> {
   const customer = await prisma.customer.findUnique({ where: { id: customerId } });
   if (!customer) return null;
   const email = customer.email?.toLowerCase();
   if (!email) return customer.insight ?? null;
 
-  const [orders, inquiryCats, ticketCount, recentMsgs] = await Promise.all([
-    prisma.customerOrder.findMany({ where: { email }, orderBy: { orderedAt: "desc" } }),
-    prisma.analyticsInquiry.groupBy({ by: ["category"], where: { fromEmail: email }, _count: true }),
+  // Staleness check = aggregates only, no row data.
+  const [orderCount, inquiryCats, ticketCount] = await Promise.all([
+    prisma.customerOrder.count({ where: { email, tenantId: customer.tenantId } }),
+    prisma.analyticsInquiry.groupBy({
+      by: ["category"],
+      where: { fromEmail: email, tenantId: customer.tenantId },
+      _count: true,
+    }),
     prisma.ticket.count({ where: { customerId } }),
+  ]);
+  const basis: Basis = {
+    orders: orderCount,
+    tickets: ticketCount,
+    inquiries: inquiryCats.reduce((s, c) => s + c._count, 0),
+    channel: `${customer.purchaseChannel ?? ""}|${customer.channelName ?? ""}`,
+  };
+  // Field-by-field — jsonb does NOT preserve key order, so comparing
+  // serializations never matches and would regenerate on every view.
+  const prev = customer.insightBasis as Basis | null;
+  const fresh =
+    !!prev &&
+    prev.orders === basis.orders &&
+    prev.tickets === basis.tickets &&
+    prev.inquiries === basis.inquiries &&
+    prev.channel === basis.channel;
+  if (customer.insight && fresh) return customer.insight;
+
+  // Nothing knowable yet — don't burn a model call to say so.
+  if (basis.orders === 0 && basis.inquiries === 0 && basis.tickets === 0 && !customer.purchaseChannel)
+    return null;
+
+  // Stale: serve what we have, regenerate out-of-band.
+  after(() =>
+    regenerateInsight(customerId, basis).catch((e) => console.error("[customer-insight] refresh failed:", e))
+  );
+  return customer.insight ?? null;
+}
+
+/** The expensive path — full history fetch + model call + cache write. */
+async function regenerateInsight(customerId: string, basis: Basis): Promise<void> {
+  const customer = await prisma.customer.findUnique({ where: { id: customerId } });
+  const email = customer?.email?.toLowerCase();
+  if (!customer || !email) return;
+
+  const [orders, inquiryCats, recentMsgs] = await Promise.all([
+    prisma.customerOrder.findMany({
+      where: { email, tenantId: customer.tenantId },
+      orderBy: { orderedAt: "desc" },
+      take: 500, // a wholesale account can be huge; 500 newest is plenty of signal
+      select: { source: true, totalAmount: true, orderedAt: true, refunded: true },
+    }),
+    prisma.analyticsInquiry.groupBy({ by: ["category"], where: { fromEmail: email, tenantId: customer.tenantId }, _count: true }),
     prisma.message.findMany({
       where: { ticket: { customerId }, direction: "inbound" },
       orderBy: { sentAt: "desc" },
@@ -45,20 +100,6 @@ export async function getCustomerInsight(customerId: string): Promise<string | n
       select: { text: true, sentAt: true },
     }),
   ]);
-
-  // Regenerate only when the picture changed — the basis snapshot is the cache key.
-  const basis = {
-    orders: orders.length,
-    tickets: ticketCount,
-    inquiries: inquiryCats.reduce((s, c) => s + c._count, 0),
-    channel: `${customer.purchaseChannel ?? ""}|${customer.channelName ?? ""}`,
-  };
-  if (customer.insight && JSON.stringify(customer.insightBasis) === JSON.stringify(basis))
-    return customer.insight;
-
-  // Nothing knowable yet — don't burn a model call to say so.
-  if (basis.orders === 0 && basis.inquiries === 0 && recentMsgs.length === 0 && !customer.purchaseChannel)
-    return null;
 
   const bySource = new Map<string, { n: number; total: number }>();
   for (const o of orders) {
@@ -80,7 +121,7 @@ export async function getCustomerInsight(customerId: string): Promise<string | n
         ]
       : ["Orders: none on record under this email (they may buy via a retailer, dealer, Amazon, or another email)"]),
     ...(inquiryCats.length
-      ? [`Support history (12mo): ${inquiryCats.map((c) => `${c.category}×${c._count}`).join(", ")}; ${ticketCount} tickets in Concierge`]
+      ? [`Support history (12mo): ${inquiryCats.map((c) => `${c.category}×${c._count}`).join(", ")}; ${basis.tickets} tickets in Concierge`]
       : []),
     ...(customer.purchaseChannel
       ? [`Known purchase channel (rep-entered): ${customer.purchaseChannel}${customer.channelName ? ` — ${customer.channelName}` : ""}`]
@@ -88,32 +129,26 @@ export async function getCustomerInsight(customerId: string): Promise<string | n
     ...recentMsgs.map((m) => `Recent message (${fmt(m.sentAt)}): ${cleanEmailText(m.text).slice(0, 280)}`),
   ].join("\n");
 
-  try {
-    const res = await anthropic.messages.create({
-      model: INSIGHT_MODEL,
-      max_tokens: 512,
-      thinking: { type: "disabled" }, // forced tool choice + small budget
-      tools: [INSIGHT_TOOL],
-      tool_choice: { type: "tool", name: "customer_read" },
-      system:
-        "Write the short read a support rep needs before replying to this customer. Only what the facts " +
-        "support: their buying relationship (direct consumer vs wholesale/B2B partner, spend, tenure), " +
-        "whether their warranty/return contact rate is notable against their order count, any signal they " +
-        "buy for someone else or bought through a retailer/dealer (say so if the messages imply it), and " +
-        "anything a rep should handle carefully. Plain, specific, no fluff, no repetition of raw numbers " +
-        "the rep already sees in the stats strip — interpret, don't recite.",
-      messages: [{ role: "user", content: facts }],
-    });
-    const call = res.content.find((c) => c.type === "tool_use");
-    if (!call || call.type !== "tool_use") return customer.insight ?? null;
-    const summary = (call.input as { summary: string }).summary.trim();
-    await prisma.customer.update({
-      where: { id: customerId },
-      data: { insight: summary, insightAt: new Date(), insightBasis: basis },
-    });
-    return summary;
-  } catch (e) {
-    console.error("[customer-insight] generation failed:", e);
-    return customer.insight ?? null; // fail-soft: stale beats broken
-  }
+  const res = await anthropic.messages.create({
+    model: INSIGHT_MODEL,
+    max_tokens: 512,
+    thinking: { type: "disabled" }, // forced tool choice + small budget
+    tools: [INSIGHT_TOOL],
+    tool_choice: { type: "tool", name: "customer_read" },
+    system:
+      "Write the short read a support rep needs before replying to this customer. Only what the facts " +
+      "support: their buying relationship (direct consumer vs wholesale/B2B partner, spend, tenure), " +
+      "whether their warranty/return contact rate is notable against their order count, any signal they " +
+      "buy for someone else or bought through a retailer/dealer (say so if the messages imply it), and " +
+      "anything a rep should handle carefully. Plain, specific, no fluff, no repetition of raw numbers " +
+      "the rep already sees in the stats strip — interpret, don't recite.",
+    messages: [{ role: "user", content: facts }],
+  });
+  const call = res.content.find((c) => c.type === "tool_use");
+  if (!call || call.type !== "tool_use") return;
+  const summary = (call.input as { summary: string }).summary.trim();
+  await prisma.customer.update({
+    where: { id: customerId },
+    data: { insight: summary, insightAt: new Date(), insightBasis: basis },
+  });
 }

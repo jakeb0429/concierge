@@ -8,6 +8,8 @@ import { baseUrl } from "@/lib/base-url";
 import { getCurrentTenant } from "@/lib/tenant";
 
 
+const rateBucket = new Map<string, number[]>();
+
 /** Request a magic link. A provisioned User row (any tenant) is the grant —
  *  the Users page is where access gets added. The env allowlist stays as a
  *  bootstrap fallback that provisions into Rheos. Response never reveals
@@ -19,6 +21,13 @@ export async function POST(req: Request) {
   };
   const email = (raw ?? "").toLowerCase().trim();
   if (!email) return NextResponse.json({ error: "Email required" }, { status: 400 });
+
+  // Cheap abuse brake: 3 link requests per email per hour (in-memory — resets
+  // on restart, which is fine; the response never reveals membership anyway).
+  const now = Date.now();
+  const hits = (rateBucket.get(email) ?? []).filter((t) => now - t < 3_600_000);
+  if (hits.length >= 3) return NextResponse.json({ success: true });
+  rateBucket.set(email, [...hits, now]);
 
   // Same email in several tenants → the most recently used row gets the
   // token (the in-app brand switcher moves between tenants after sign-in).

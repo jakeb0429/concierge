@@ -16,6 +16,8 @@ type Seed = { email: string; name?: string; role: string; specialties: string[] 
 const ROSTER: Record<string, Seed[]> = {
   rheos: [
     { email: "hello@rheosgear.com", name: "Rheos Support", role: "brand_admin", specialties: [] },
+    // Jake's cross-brand identity — admin on BOTH tenants so the brand switcher works.
+    { email: "jake@scribechs.com", name: "Jake Berton", role: "brand_admin", specialties: [] },
     // Owner-level: special-circumstance overrides/approvals + PO/purchasing mail.
     { email: "jake@rheosgear.com", name: "Jake (Rheos)", role: "team_lead", specialties: ["escalation", "purchasing_po"] },
     { email: "wholesale@rheosgear.com", name: "Rheos Wholesale", role: "agent", specialties: ["wholesale"] },

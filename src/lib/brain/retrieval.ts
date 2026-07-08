@@ -56,6 +56,11 @@ export async function retrieve(tenantId: string, query: string, k = 6): Promise<
   // A full trigger phrase found verbatim is a strong signal; shared stems add weight.
   const approved = await prisma.knowledgeItem.findMany({
     where: { tenantId, status: "approved" },
+    select: {
+      id: true, title: true, answer: true, category: true, kind: true,
+      triggerPhrases: true, tags: true, conditions: true, avoidNotes: true,
+      exemplar: true, version: true, sourceRef: true,
+    },
   });
 
   const scored = approved

@@ -7,18 +7,25 @@ import { getOrderContext, orderContextLines, trackingUrl } from "@/lib/shipstati
 import { categoryLabel } from "@/lib/categories";
 import { getCustomerInsight } from "@/lib/customer-insight";
 import { notesForTicket } from "@/lib/notes";
+import { getCurrentTenant } from "@/lib/tenant";
 import TicketWorkspace from "./TicketWorkspace";
 
 export const dynamic = "force-dynamic";
 
 export default async function TicketDetail({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const ticket = await prisma.ticket.findUnique({
-    where: { id },
+  const tenant = await getCurrentTenant();
+  // Scoped to the signed-in brand — a Stingray user can't open a Rheos URL.
+  const ticket = await prisma.ticket.findFirst({
+    where: { id, tenantId: tenant.id },
     include: {
       customer: true,
       channelRef: true,
-      messages: { orderBy: { sentAt: "asc" } },
+      messages: {
+        orderBy: { sentAt: "asc" },
+        // html is never rendered (cleanEmailText uses text) and is 2-10x the size
+        select: { id: true, direction: true, subject: true, text: true, sentAt: true, attachments: true },
+      },
       drafts: {
         orderBy: { createdAt: "desc" },
         take: 1,
@@ -37,16 +44,16 @@ export default async function TicketDetail({ params }: { params: Promise<{ id: s
   const [orderAgg, refundCount, inquiryCounts, ticketCount, shipOrders, tenantUsers] = await Promise.all([
     email
       ? prisma.customerOrder.aggregate({
-          where: { email },
+          where: { email, tenantId: tenant.id },
           _count: true,
           _sum: { totalAmount: true },
           _min: { orderedAt: true },
           _max: { orderedAt: true },
         })
       : Promise.resolve(null),
-    email ? prisma.customerOrder.count({ where: { email, refunded: true } }) : Promise.resolve(0),
+    email ? prisma.customerOrder.count({ where: { email, refunded: true, tenantId: tenant.id } }) : Promise.resolve(0),
     email
-      ? prisma.analyticsInquiry.groupBy({ by: ["category"], where: { fromEmail: email }, _count: true })
+      ? prisma.analyticsInquiry.groupBy({ by: ["category"], where: { fromEmail: email, tenantId: tenant.id }, _count: true })
       : Promise.resolve([]),
     prisma.ticket.count({ where: { customerId: ticket.customer.id } }),
     getOrderContext(email), // ShipStation: placed / shipped / carrier / tracking (cached, fail-soft)
@@ -56,10 +63,11 @@ export default async function TicketDetail({ params }: { params: Promise<{ id: s
       orderBy: { email: "asc" },
     }),
   ]);
-  // AI customer read — cached on the customer; regenerates only when their
-  // order/ticket counts change (fail-soft, never blocks the page).
-  const customerInsight = await getCustomerInsight(ticket.customer.id).catch(() => null);
-  const contextNotes = await notesForTicket(ticket.tenantId, ticket.id, ticket.customer.id);
+  // AI customer read (cached; stale reads refresh AFTER the response) + notes.
+  const [customerInsight, contextNotes] = await Promise.all([
+    getCustomerInsight(ticket.customer.id).catch(() => null),
+    notesForTicket(ticket.tenantId, ticket.id, ticket.customer.id),
+  ]);
   const orderContext = orderContextLines(shipOrders).map((line, i) => ({
     line,
     trackingUrl: trackingUrl(shipOrders[i].carrier, shipOrders[i].trackingNumber),

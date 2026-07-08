@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { gmailFor, extractAttachments, type AttachmentMeta } from "@/lib/gmail-client";
+import { getCurrentTenant } from "@/lib/tenant";
 
 /**
  * Stream an email attachment on demand. Bytes are never stored — Gmail is the
@@ -12,8 +13,9 @@ export async function GET(_req: Request, { params }: { params: Promise<{ message
   const { messageId, index } = await params;
   const idx = Number(index);
 
-  const message = await prisma.message.findUnique({
-    where: { id: messageId },
+  const tenant = await getCurrentTenant();
+  const message = await prisma.message.findFirst({
+    where: { id: messageId, tenantId: tenant.id },
     include: { ticket: { include: { channelRef: true } } },
   });
   if (!message?.attachments || !message.ticket.channelRef) {

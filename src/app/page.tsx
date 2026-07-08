@@ -40,15 +40,26 @@ export default async function Inbox({
     all: { label: "All", where: {} },
   };
 
-  const [tickets, counts, users, assignedCounts] = await Promise.all([
+  const ticketInclude = {
+    customer: { select: { displayName: true } },
+    channelRef: { select: { supportAddress: true } },
+    assignee: { select: { id: true, email: true, name: true } },
+    // Reply-state needs direction + time only — full bodies for every
+    // message of 100 tickets were the inbox's heaviest payload.
+    messages: { orderBy: { sentAt: "asc" as const }, select: { direction: true, sentAt: true } },
+  };
+  const [urgentTickets, restTickets, counts, users, assignedCounts, mineCount] = await Promise.all([
+    // Urgent first and UNCAPPED by the main window — an old urgent ticket
+    // must never fall off the list.
     prisma.ticket.findMany({
-      where: { tenantId: tenant.id, ...VIEWS[view].where },
-      include: {
-        customer: true,
-        channelRef: true,
-        assignee: { select: { id: true, email: true, name: true } },
-        messages: { orderBy: { sentAt: "asc" }, select: { direction: true, sentAt: true, text: true } },
-      },
+      where: { tenantId: tenant.id, ...VIEWS[view].where, priority: "high" },
+      include: ticketInclude,
+      orderBy: { createdAt: "desc" },
+      take: 50,
+    }),
+    prisma.ticket.findMany({
+      where: { tenantId: tenant.id, ...VIEWS[view].where, priority: { not: "high" } },
+      include: ticketInclude,
       orderBy: { createdAt: "desc" },
       take: 100,
     }),
@@ -63,26 +74,40 @@ export default async function Inbox({
       where: { tenantId: tenant.id, status: { notIn: ["archived", "resolved", "replied"] } },
       _count: true,
     }),
+    // Same where-clause as the My-tickets view, so the tab count matches its list.
+    me?.id
+      ? prisma.ticket.count({ where: { tenantId: tenant.id, ...VIEWS.mine.where } })
+      : Promise.resolve(0),
   ]);
-  // Expired context notes queue for the triage admin — the "did the PO
-  // arrive?" prompt. Expired notes already stopped feeding drafts.
-  const expiredNotes = admin
-    ? await prisma.contextNote.findMany({
-        where: { tenantId: tenant.id, expiresAt: { lt: new Date() } },
-        orderBy: { expiresAt: "asc" },
-        take: 20,
-      })
-    : [];
+  const tickets = [...urgentTickets, ...restTickets];
+  // Snippets: the first inbound message per ticket (DISTINCT ON), truncated
+  // in SQL-adjacent JS — one slim row per ticket instead of whole threads.
+  const [firstInbounds, expiredNotes] = await Promise.all([
+    prisma.message.findMany({
+      where: { ticketId: { in: tickets.map((t) => t.id) }, direction: "inbound" },
+      orderBy: [{ ticketId: "asc" }, { sentAt: "asc" }],
+      distinct: ["ticketId"],
+      select: { ticketId: true, text: true },
+    }),
+    // Expired context notes queue for the triage admin — the "did the PO
+    // arrive?" prompt. Expired notes already stopped feeding drafts.
+    admin
+      ? prisma.contextNote.findMany({
+          where: { tenantId: tenant.id, expiresAt: { lt: new Date() } },
+          orderBy: { expiresAt: "asc" },
+          take: 20,
+        })
+      : Promise.resolve([]),
+  ]);
+  const snippetOf = new Map(firstInbounds.map((m) => [m.ticketId, m.text.slice(0, 110)]));
 
   const noiseCount = counts.find((c) => c.status === "archived")?._count ?? 0;
   const openCount = counts.filter((c) => !["archived", "resolved"].includes(c.status)).reduce((s, c) => s + c._count, 0);
-  const mineCount = assignedCounts.find((c) => c.assigneeId === me?.id)?._count ?? 0;
   const unassignedCount = assignedCounts.find((c) => c.assigneeId === null)?._count ?? 0;
 
   const noiseCats = new Set<string>(NOISE_CATEGORIES);
   const now = Date.now();
   let rows: Row[] = tickets.map((t) => {
-    const firstInbound = t.messages.find((m) => m.direction === "inbound");
     const lastInbound = [...t.messages].reverse().find((m) => m.direction === "inbound");
     const replyState = computeReplyState(t.messages);
     const coarseTag = t.tags.find((tag) => !tag.startsWith("product:")) ?? null;
@@ -92,7 +117,7 @@ export default async function Inbox({
       id: t.id,
       name: t.customer.displayName ?? "Customer",
       subject: t.subject ?? "",
-      snippet: firstInbound?.text.slice(0, 110) ?? "",
+      snippet: snippetOf.get(t.id) ?? "",
       status: t.status,
       category: t.category ? categoryLabel(t.category) : (coarseTag?.replace(/_/g, " ") ?? null),
       wholesale: t.channelRef?.supportAddress?.startsWith("wholesale") ?? false,
