@@ -149,7 +149,24 @@ this database project WITHOUT these defenses (59+ PM2 restarts historically) —
 
 ## 6. Feature inventory (all live)
 
-- **Inbox** — Open/Noise/All views, triage category chips, wholesale chip, product tags
+- **Multi-user routing (shipped 2026-07-08)** — intake triage (now `claude-sonnet-5`,
+  thinking disabled — the forced-tool-choice trap) classifies every real inquiry into the
+  canonical fine-grained taxonomy (`src/lib/categories.ts`: warranty, replacement_parts,
+  shipping_order_status, returns_exchange, sizing_fit, product_question, wholesale,
+  marketing_collab, purchasing_po, escalation, other) stored on `Ticket.category`;
+  `src/lib/assign.ts` auto-assigns to the least-loaded user whose `User.specialties`
+  matches (unmatched → unassigned triage queue). Admins (brand_admin+) land on the
+  importance-ordered all-open view (urgent → needs reply → waiting longest) with a
+  per-user workload strip and inline reassign; agents land on **My tickets**. **Team page**
+  (`/users`, admin-gated) adds users, sets role + specialties, sends sign-in invites — a
+  User row IS the sign-in grant (env `AUTH_ALLOWLIST` is bootstrap-only now). Multi-tenant:
+  `getCurrentTenant()` reads the session; same email on several tenants gets a **brand
+  switcher** in the header (`/api/tenant/switch` + Auth.js `unstable_update`). Rosters for
+  Rheos + Stingray seeded via `npm run db:seed-users`. Intake cron is `*/5 --gated`:
+  every 5 min 9am–1pm ET, half-hourly otherwise (gate is inside intake-gmail.ts, DST-safe).
+  `LearningSignal.category/assigneeId` columns exist but routing of training questions to
+  specialists is NOT wired yet (next phase).
+- **Inbox** — My tickets/All open/Noise/All views, fine-grained category chips, wholesale chip, product tags, waiting-days chips, assign dropdowns (admin)
 - **Ticket workspace** — clean threaded conversation with image attachments (streamed on demand
   from Gmail), "View original in Gmail" deep link (account-scoped, for additional review), customer key-stats strip (orders, LTV, first/last sale, returns, warranty
   contacts), grounded draft with coverage + citations + policy flags, steer chips + freeform
