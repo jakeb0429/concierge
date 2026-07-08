@@ -236,6 +236,25 @@ this database project WITHOUT these defenses (59+ PM2 restarts historically) —
 - **Customer profiles** (`/customers/[id]`) — LTV, full order history, support history with
   per-inquiry sentiment and days-after-purchase, negative-outcome flag
 
+## PERFORMANCE — the geography problem (read before touching DB config)
+
+**birdseye is in Frankfurt; the Supabase project is in us-west-2 (Oregon). Base RTT ~175ms.**
+Discovered 2026-07-08 when ticket pages took 7-9s: the app ran on the TRANSACTION pooler
+(6543, `pgbouncer=true`), where Prisma can't use prepared statements — **~843ms per query**
+(≈5 round trips each). Fix applied: app runtime moved to the **SESSION pooler (5432,
+prepared statements, ~175ms/query, connection_limit=8)** — this partially supersedes the
+2026-07-02 "runtime on the transaction pooler" resilience change; the per-query retry
+wrapper remains. Layout chrome queries (tenant name, brand list, training badge) are
+unstable_cache'd (60s/30s). ShipStation is off the ticket render path (client-fetched);
+/tickets/[id]/next pre-warms the next ticket's caches.
+
+**The structural fix is data locality** — either move the Supabase project to eu-central-1
+(Frankfurt, same city as the server) or host the app in us-west. Caveat: the project is
+SHARED with rheos-inventory (concierge reads `public."Product"` and `public."AmazonOrder"`),
+so the whole project moves together, or those dependencies get duplicated. Needs Jake's
+call + a maintenance window; the nightly pg_dump + BACKUP-RECOVERY.md make the concierge
+half mechanical.
+
 ## 7. Known limitations & honest caveats
 
 1. **[FIXED 2026-07-02]** ~~"Unresolved" sentiment is inferred from the customer's last

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import Image from "next/image";
+import { unstable_cache } from "next/cache";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { isAdminRole } from "@/lib/roles";
@@ -22,21 +23,35 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   let currentSlug = "";
   let myTraining = 0;
   if (me?.tenantId) {
-    const [tenant, rows, trainingCount] = await Promise.all([
-      prisma.tenant.findUnique({ where: { id: me.tenantId } }),
-      me.email
-        ? prisma.user.findMany({
-            where: { email: me.email },
-            include: { tenant: { select: { slug: true, name: true } } },
-          })
-        : Promise.resolve([]),
-      me.id
-        ? prisma.learningSignal.count({ where: { tenantId: me.tenantId, assigneeId: me.id, status: "open" } })
-        : Promise.resolve(0),
+    // Tenant identity + brand memberships almost never change but were paying
+    // a cross-continent DB round trip on EVERY page — cache 60s. The training
+    // badge stays fresher (30s) since specialists watch it.
+    const getChrome = unstable_cache(
+      async (tenantId: string, email: string) => {
+        const [tenant, rows] = await Promise.all([
+          prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true, slug: true } }),
+          email
+            ? prisma.user.findMany({ where: { email }, select: { tenant: { select: { slug: true, name: true } } } })
+            : Promise.resolve([]),
+        ]);
+        return { tenant, brands: rows.map((r) => r.tenant) };
+      },
+      ["layout-chrome"],
+      { revalidate: 60 }
+    );
+    const getTraining = unstable_cache(
+      async (tenantId: string, userId: string) =>
+        prisma.learningSignal.count({ where: { tenantId, assigneeId: userId, status: "open" } }),
+      ["layout-training"],
+      { revalidate: 30 }
+    );
+    const [chrome, trainingCount] = await Promise.all([
+      getChrome(me.tenantId, me.email ?? ""),
+      me.id ? getTraining(me.tenantId, me.id) : Promise.resolve(0),
     ]);
-    tenantName = tenant?.name ?? null;
-    currentSlug = tenant?.slug ?? "";
-    myBrands = rows.map((r) => r.tenant);
+    tenantName = chrome.tenant?.name ?? null;
+    currentSlug = chrome.tenant?.slug ?? "";
+    myBrands = chrome.brands;
     myTraining = trainingCount;
   }
 
