@@ -1,5 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import Anthropic from "@anthropic-ai/sdk";
+import { routeSignalAssignee } from "../src/lib/assign";
 
 /**
  * Learning-signal detector — mines the Ledger into human-gated Brain proposals.
@@ -97,6 +98,18 @@ async function main() {
     const out = call.input as { converges: boolean; proposedText?: string; rationale: string };
     if (!out.converges || !out.proposedText) continue;
 
+    // Route the training question to the specialist for the category the
+    // edited tickets belong to — majority category across the cited drafts.
+    const editedDrafts = await prisma.draft.findMany({
+      where: { id: { in: itemEdits.map((e) => e.draftId) } },
+      select: { ticket: { select: { category: true } } },
+    });
+    const catCounts = new Map<string, number>();
+    for (const d of editedDrafts)
+      if (d.ticket.category) catCounts.set(d.ticket.category, (catCounts.get(d.ticket.category) ?? 0) + 1);
+    const category = [...catCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+    const assigneeId = await routeSignalAssignee(rheos.id, category);
+
     await prisma.learningSignal.create({
       data: {
         tenantId: rheos.id,
@@ -105,6 +118,8 @@ async function main() {
         proposedText: out.proposedText,
         proposedTarget: "answer",
         occurrences: itemEdits.length,
+        category,
+        assigneeId,
         evidence: { draftIds: itemEdits.map((e) => e.draftId), rationale: out.rationale },
       },
     });

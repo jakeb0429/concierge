@@ -18,8 +18,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   let tenantName: string | null = null;
   let myBrands: { slug: string; name: string }[] = [];
   let currentSlug = "";
+  let myTraining = 0;
   if (me?.tenantId) {
-    const [tenant, rows] = await Promise.all([
+    const [tenant, rows, trainingCount] = await Promise.all([
       prisma.tenant.findUnique({ where: { id: me.tenantId } }),
       me.email
         ? prisma.user.findMany({
@@ -27,10 +28,14 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             include: { tenant: { select: { slug: true, name: true } } },
           })
         : Promise.resolve([]),
+      me.id
+        ? prisma.learningSignal.count({ where: { tenantId: me.tenantId, assigneeId: me.id, status: "open" } })
+        : Promise.resolve(0),
     ]);
     tenantName = tenant?.name ?? null;
     currentSlug = tenant?.slug ?? "";
     myBrands = rows.map((r) => r.tenant);
+    myTraining = trainingCount;
   }
 
   return (
@@ -53,6 +58,14 @@ export default async function RootLayout({ children }: { children: React.ReactNo
               </Link>
               <Link href="/reviews" className="hover:text-neutral-900">
                 Reviews
+              </Link>
+              <Link href="/training" className="flex items-center gap-1 hover:text-neutral-900">
+                Training
+                {myTraining > 0 && (
+                  <span className="rounded-full bg-amber-100 px-1.5 text-[11px] font-medium text-amber-800">
+                    {myTraining}
+                  </span>
+                )}
               </Link>
               {isAdminRole(me?.role) && (
                 <Link href="/users" className="hover:text-neutral-900">

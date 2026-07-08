@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentTenant } from "@/lib/tenant";
+import { routeSignalAssignee } from "@/lib/assign";
 import { anthropic, CLAUDE_MODEL } from "@/lib/anthropic";
 
 /**
@@ -51,6 +52,15 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     draftId?: string;
   };
   if (!note?.trim()) return NextResponse.json({ error: "A note is required." }, { status: 400 });
+
+  // Training questions route to the specialist for the ticket's category —
+  // the person answering those tickets judges the proposed knowledge change.
+  const ticket = await prisma.ticket.findFirst({
+    where: { id: ticketId, tenantId: tenant.id },
+    select: { category: true },
+  });
+  const inquiryCategory = ticket?.category ?? null;
+  const signalAssigneeId = await routeSignalAssignee(tenant.id, inquiryCategory);
 
   // ---- correction to a specific (usually cited) entry ----
   if (knowledgeItemId) {
@@ -120,6 +130,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
             knowledgeItemId: item.id,
             proposedText,
             proposedTarget: "answer",
+            category: inquiryCategory,
+            assigneeId: signalAssigneeId,
             evidence,
           },
         });
@@ -168,6 +180,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       kind: "rep_learning",
       proposedText: answer,
       proposedTarget: "new_entry",
+      category: inquiryCategory,
+      assigneeId: signalAssigneeId,
       evidence: { ticketId, draftId: draftId ?? null, notes: [note.trim()], title, category },
     },
   });

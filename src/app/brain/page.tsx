@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 export default async function BrainPage() {
   const tenant = await getCurrentTenant();
-  const [items, signals] = await Promise.all([
+  const [items, signals, users] = await Promise.all([
     prisma.knowledgeItem.findMany({
       where: { tenantId: tenant.id },
       orderBy: [{ category: "asc" }, { title: "asc" }],
@@ -15,8 +15,10 @@ export default async function BrainPage() {
       where: { tenantId: tenant.id, status: "open" },
       orderBy: { createdAt: "desc" },
     }),
+    prisma.user.findMany({ where: { tenantId: tenant.id }, select: { id: true, email: true, name: true } }),
   ]);
   const titleById = new Map(items.map((i) => [i.id, i.title]));
+  const userById = new Map(users.map((u) => [u.id, u.name ?? u.email.split("@")[0]]));
 
   return (
     <BrainManager
@@ -30,6 +32,8 @@ export default async function BrainPage() {
           proposedText: s.proposedText,
           occurrences: s.occurrences,
           repNote: ev.notes?.length ? ev.notes[ev.notes.length - 1] : null,
+          category: s.category,
+          assigneeName: s.assigneeId ? (userById.get(s.assigneeId) ?? null) : null,
         };
       })}
       initialItems={items.map((i) => ({

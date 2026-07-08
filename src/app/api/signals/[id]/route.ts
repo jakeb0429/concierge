@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getCurrentTenant } from "@/lib/tenant";
+import { sessionUser } from "@/lib/roles";
 import { reindexKnowledgeItem } from "@/lib/brain/index-write";
 
 /**
@@ -62,12 +63,14 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     where: { id: signal.id },
     data: { status: action === "approve" ? "approved" : "dismissed", resolvedAt: new Date() },
   });
+  const actor = await sessionUser();
   await prisma.auditEvent.create({
     data: {
       tenantId: tenant.id,
+      actorId: actor?.id,
       action: action === "approve" ? "signal_approved" : "signal_dismissed",
       entity: `signal:${signal.id}`,
-      meta: { kind: signal.kind, knowledgeItemId: signal.knowledgeItemId },
+      meta: { kind: signal.kind, knowledgeItemId: signal.knowledgeItemId, category: signal.category },
     },
   });
   return NextResponse.json({ signal: updated });

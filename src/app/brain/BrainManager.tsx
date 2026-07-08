@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { categoryLabel } from "@/lib/categories";
 
 type Item = {
   id: string;
@@ -22,6 +23,8 @@ type Signal = {
   proposedText: string | null;
   occurrences: number;
   repNote?: string | null;
+  category?: string | null;
+  assigneeName?: string | null;
 };
 
 export default function BrainManager({
@@ -51,6 +54,10 @@ export default function BrainManager({
   const [draftAnswer, setDraftAnswer] = useState("");
   const [adding, setAdding] = useState(false);
   const [newItem, setNewItem] = useState({ title: "", answer: "", category: "" });
+  const [catFilter, setCatFilter] = useState<string | null>(null);
+
+  const categories = [...new Set(items.map((i) => i.category ?? "Uncategorized"))].sort();
+  const visible = catFilter ? items.filter((i) => (i.category ?? "Uncategorized") === catFilter) : items;
 
   async function save(id: string) {
     const res = await fetch(`/api/knowledge/${id}`, {
@@ -108,12 +115,20 @@ export default function BrainManager({
           <div className="space-y-3">
             {signals.map((s) => (
               <div key={s.id} className="rounded-lg border border-amber-200 bg-white p-3">
-                <div className="mb-1 flex items-center gap-2 text-xs text-neutral-500">
+                <div className="mb-1 flex flex-wrap items-center gap-2 text-xs text-neutral-500">
                   <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] text-amber-800">
                     {s.kind.replace(/_/g, " ")} · seen {s.occurrences}×
                   </span>
+                  {s.category && (
+                    <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] text-neutral-600">
+                      {categoryLabel(s.category)}
+                    </span>
+                  )}
                   {s.itemTitle && <span>on “{s.itemTitle}”</span>}
                   <span className="text-neutral-400">→ {s.target.replace(/_/g, " ")}</span>
+                  <span className="ml-auto rounded-full bg-indigo-50 px-2 py-0.5 text-[11px] text-indigo-700">
+                    {s.assigneeName ? `assigned to ${s.assigneeName}` : "admin queue"}
+                  </span>
                 </div>
                 <p className="text-sm leading-relaxed text-neutral-800">{s.proposedText}</p>
                 {s.repNote && (
@@ -172,8 +187,27 @@ export default function BrainManager({
         </div>
       )}
 
+      {/* train by category — filter the Brain down to one topic */}
+      <div className="mb-3 flex flex-wrap items-center gap-1.5 text-xs">
+        <button
+          onClick={() => setCatFilter(null)}
+          className={`rounded-full px-2.5 py-1 ${!catFilter ? "bg-neutral-900 text-white" : "bg-neutral-100 text-neutral-500 hover:bg-neutral-200"}`}
+        >
+          All ({items.length})
+        </button>
+        {categories.map((c) => (
+          <button
+            key={c}
+            onClick={() => setCatFilter(catFilter === c ? null : c)}
+            className={`rounded-full px-2.5 py-1 ${catFilter === c ? "bg-neutral-900 text-white" : "bg-neutral-100 text-neutral-500 hover:bg-neutral-200"}`}
+          >
+            {c} ({items.filter((i) => (i.category ?? "Uncategorized") === c).length})
+          </button>
+        ))}
+      </div>
+
       <div className="space-y-2">
-        {items.map((it) => (
+        {visible.map((it) => (
           <div key={it.id} className="rounded-xl border border-neutral-200 bg-white p-4">
             {editing === it.id ? (
               <div>

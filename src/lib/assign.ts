@@ -57,3 +57,30 @@ export async function autoAssign(
   });
   return { userId: chosen.id, email: chosen.email };
 }
+
+/**
+ * Route a brain-training question (LearningSignal) to the specialist for its
+ * category — the person answering those tickets is the right person to judge
+ * a proposed knowledge change. Least-loaded by open training questions; no
+ * specialist → null (it stays in the admin's Brain-manager queue).
+ */
+export async function routeSignalAssignee(
+  tenantId: string,
+  category: string | null
+): Promise<string | null> {
+  if (!category) return null;
+  const specialists = await prisma.user.findMany({
+    where: { tenantId, specialties: { has: category } },
+    select: { id: true },
+    orderBy: { createdAt: "asc" },
+  });
+  if (specialists.length === 0) return null;
+  if (specialists.length === 1) return specialists[0].id;
+  const loads = await prisma.learningSignal.groupBy({
+    by: ["assigneeId"],
+    where: { tenantId, assigneeId: { in: specialists.map((s) => s.id) }, status: "open" },
+    _count: true,
+  });
+  const loadOf = new Map(loads.map((l) => [l.assigneeId, l._count]));
+  return [...specialists].sort((a, b) => (loadOf.get(a.id) ?? 0) - (loadOf.get(b.id) ?? 0))[0].id;
+}
