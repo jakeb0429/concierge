@@ -29,6 +29,7 @@ model Tenant {
   users           User[]
   auditEvents     AuditEvent[]
   learningSignals LearningSignal[]
+  salesSources    SalesSource[]
 
   @@schema("concierge")
 }
@@ -119,6 +120,13 @@ model Customer {
   email       String?
   handle      String?
   displayName String?
+  // --- purchase-channel facts (rep-maintained; things the data feeds can't see) ---
+  purchaseChannel String? // "direct" | "retail" | "dealer"
+  channelName     String? // which retailer or dealer sold to them
+  // --- AI customer read (cached; regenerated when the basis counts change) ---
+  insight      String?   @db.Text
+  insightAt    DateTime?
+  insightBasis Json?     // counts snapshot the cached insight was computed from
   createdAt   DateTime @default(now())
 
   tickets Ticket[]
@@ -300,19 +308,41 @@ model ProductFamily {
   @@schema("concierge")
 }
 
-/// A customer's order (imported from the Shopify warehouse for emails that have
-/// contacted support) — powers time-since-purchase and the customer profile.
+/// A customer's order — one row per order across every configured sales
+/// source (Shopify D2C, HubSpot B2B deals, later Stingray's dealer feed).
 model CustomerOrder {
   id          String   @id @default(cuid())
+  tenantId    String?  // null = legacy Rheos rows (backfilled); importers stamp it
   email       String
   orderedAt   DateTime
   totalAmount Decimal  @db.Decimal(12, 2)
   orderRef    String
-  source      String   // "shopify-live"
+  source      String   // "shopify-live" | "hubspot-b2b" | ...
   refunded    Boolean  @default(false) // refunded or partially refunded
 
   @@unique([source, orderRef])
   @@index([email])
+  @@schema("concierge")
+}
+
+/// A tenant's configured sales-data intake (the admin-visible half — secrets
+/// stay in env). Rheos: Shopify D2C + HubSpot B2B deals. Stingray: Dealers
+/// Circle / ERP, pending their data definition.
+model SalesSource {
+  id          String    @id @default(cuid())
+  tenantId    String
+  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  key         String    // matches CustomerOrder.source: "shopify-live", "hubspot-b2b", ...
+  label       String
+  kind        String    // "shopify" | "hubspot_deals" | "erp" | "manual"
+  channelType String    // "d2c" | "b2b"
+  notes       String?   @db.Text
+  active      Boolean   @default(false)
+  lastSyncAt  DateTime?
+  lastCount   Int?      // rows touched on the last sync
+  createdAt   DateTime  @default(now())
+
+  @@unique([tenantId, key])
   @@schema("concierge")
 }
 

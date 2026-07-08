@@ -59,6 +59,7 @@ echo "== cron (idempotent) =="
 30 2 * * * cd $APP_DIR && npx tsx prisma/analytics-backfill.ts >> /root/concierge-analytics.log 2>&1
 0 3 * * * cd $APP_DIR && npx tsx prisma/import-shopify-orders.ts \$(date -d "\$(date +\%Y-\%m-01) -1 month" +\%Y-\%m-01)T00:00:00Z >> /root/concierge-orders.log 2>&1
 15 3 * * * cd $APP_DIR && node scripts/dsp-update.cjs >> /root/concierge-analytics.log 2>&1
+45 3 * * * cd $APP_DIR && npx tsx prisma/import-hubspot-orders.ts >> /root/concierge-orders.log 2>&1
 CRON
 ) | crontab -
 

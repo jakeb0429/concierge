@@ -2,6 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { statusChip, statusLabel } from "@/lib/ui";
+import { getCustomerInsight } from "@/lib/customer-insight";
+import CustomerFacts from "./CustomerFacts";
 
 export const dynamic = "force-dynamic";
 
@@ -40,6 +42,7 @@ export default async function CustomerProfile({ params }: { params: Promise<{ id
   const firstOrder = orders.at(-1);
   const lastOrder = orders[0];
   const negatives = inquiries.filter((q) => q.endSentiment === "negative").length;
+  const insight = await getCustomerInsight(customer.id).catch(() => null);
 
   return (
     <div>
@@ -59,6 +62,13 @@ export default async function CustomerProfile({ params }: { params: Promise<{ id
           </span>
         )}
       </div>
+
+      <CustomerFacts
+        customerId={customer.id}
+        purchaseChannel={customer.purchaseChannel}
+        channelName={customer.channelName}
+        insight={insight}
+      />
 
       <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4">
         <div className="rounded-xl border border-neutral-200 bg-white p-4">

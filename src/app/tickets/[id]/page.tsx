@@ -5,6 +5,7 @@ import { cleanEmailText } from "@/lib/email-clean";
 import { computeReplyState } from "@/lib/reply-state";
 import { getOrderContext, orderContextLines, trackingUrl } from "@/lib/shipstation";
 import { categoryLabel } from "@/lib/categories";
+import { getCustomerInsight } from "@/lib/customer-insight";
 import TicketWorkspace from "./TicketWorkspace";
 
 export const dynamic = "force-dynamic";
@@ -54,6 +55,9 @@ export default async function TicketDetail({ params }: { params: Promise<{ id: s
       orderBy: { email: "asc" },
     }),
   ]);
+  // AI customer read — cached on the customer; regenerates only when their
+  // order/ticket counts change (fail-soft, never blocks the page).
+  const customerInsight = await getCustomerInsight(ticket.customer.id).catch(() => null);
   const orderContext = orderContextLines(shipOrders).map((line, i) => ({
     line,
     trackingUrl: trackingUrl(shipOrders[i].carrier, shipOrders[i].trackingNumber),
@@ -136,6 +140,12 @@ export default async function TicketDetail({ params }: { params: Promise<{ id: s
         initialDraft={initialDraft}
         sentDraftId={sentDraftId}
         customerStats={customerStats}
+        customerInsight={customerInsight}
+        purchaseChannel={
+          ticket.customer.purchaseChannel
+            ? `${ticket.customer.purchaseChannel}${ticket.customer.channelName ? ` · ${ticket.customer.channelName}` : ""}`
+            : null
+        }
         replyState={replyState}
         orderContext={orderContext}
         gmailUrl={gmailUrl}

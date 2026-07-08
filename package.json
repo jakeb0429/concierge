@@ -24,7 +24,9 @@
     "db:mine-playbooks": "tsx prisma/mine-reply-playbooks.ts",
     "db:enrich-inquiries": "tsx prisma/enrich-inquiries.ts",
     "db:seed-users": "tsx prisma/seed-users.ts",
-    "db:backfill-categories": "tsx prisma/backfill-ticket-categories.ts"
+    "db:backfill-categories": "tsx prisma/backfill-ticket-categories.ts",
+    "db:import-hubspot-orders": "tsx prisma/import-hubspot-orders.ts",
+    "db:seed-sales-sources": "tsx prisma/seed-sales-sources.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

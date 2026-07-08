@@ -66,6 +66,8 @@ export default function TicketWorkspace({
   initialDraft,
   sentDraftId,
   customerStats,
+  customerInsight,
+  purchaseChannel,
   replyState,
   orderContext = [],
   gmailUrl,
@@ -76,6 +78,8 @@ export default function TicketWorkspace({
   initialDraft: Draft | null;
   sentDraftId: string | null;
   customerStats: CustomerStats;
+  customerInsight?: string | null;
+  purchaseChannel?: string | null;
   replyState?: ReplyState;
   orderContext?: { line: string; trackingUrl: string | null }[];
   gmailUrl?: string | null;
@@ -283,10 +287,23 @@ export default function TicketWorkspace({
           {customerStats.warrantyContacts} warranty contact{customerStats.warrantyContacts !== 1 ? "s" : ""}
         </span>
         <span className="text-neutral-500">{customerStats.totalInquiries} total inquiries</span>
+        {purchaseChannel && (
+          <span className="rounded-full bg-teal-50 px-2 py-0.5 text-[11px] text-teal-700">
+            buys via {purchaseChannel}
+          </span>
+        )}
         <a href={`/customers/${ticket.customerId}`} className="ml-auto text-blue-600 hover:underline">
           full profile →
         </a>
       </div>
+
+      {/* the AI read — interpretation of the sales + support history */}
+      {customerInsight && (
+        <div className="mb-3 rounded-xl border border-blue-100 bg-blue-50/50 px-4 py-2.5 text-xs leading-relaxed text-neutral-700">
+          <span className="mr-2 font-medium text-blue-700">Customer read</span>
+          {customerInsight}
+        </div>
+      )}
 
       {/* order context — live from the fulfillment system (ShipStation) */}
       {orderContext.length > 0 && (

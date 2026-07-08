@@ -68,9 +68,14 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                 )}
               </Link>
               {isAdminRole(me?.role) && (
-                <Link href="/users" className="hover:text-neutral-900">
-                  Team
-                </Link>
+                <>
+                  <Link href="/users" className="hover:text-neutral-900">
+                    Team
+                  </Link>
+                  <Link href="/sources" className="hover:text-neutral-900">
+                    Sources
+                  </Link>
+                </>
               )}
             </nav>
             <span className="ml-auto flex items-center gap-3 text-xs text-neutral-400">

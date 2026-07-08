@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { generateDraft } from "@/lib/brain/draft";
 import { cleanEmailText } from "@/lib/email-clean";
 import { getOrderContext, orderContextLines } from "@/lib/shipstation";
+import { getCustomerInsight } from "@/lib/customer-insight";
 
 /**
  * Prepare (or regenerate) a first draft for a ticket. Grounded, cited, scored.
@@ -37,6 +38,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const orders = await getOrderContext(ticket.customer.email);
   if (orders.length) {
     ticketText += `\n\n[order context from the fulfillment system — factual, safe to reference: ${orderContextLines(orders).join(" | ")}]`;
+  }
+  // The AI customer read + rep-entered channel facts — tone and context, not
+  // policy: grounding facts still come only from the Brand Brain.
+  const insight = await getCustomerInsight(ticket.customer.id).catch(() => null);
+  if (insight) ticketText += `\n\n[customer context — for tone and relevance, not for policy claims: ${insight}]`;
+  if (ticket.customer.purchaseChannel) {
+    ticketText += `\n[known purchase channel: ${ticket.customer.purchaseChannel}${ticket.customer.channelName ? ` — ${ticket.customer.channelName}` : ""}]`;
   }
   const prior = regenOfDraftId
     ? await prisma.draft.findFirst({ where: { id: regenOfDraftId, ticketId: ticket.id } })
