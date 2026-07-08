@@ -52,7 +52,8 @@ nginx -t && systemctl reload nginx
 
 echo "== cron (idempotent) =="
 ( crontab -l 2>/dev/null | grep -v "concierge-" ; cat <<CRON
-*/10 * * * * cd $APP_DIR && npx tsx prisma/intake-gmail.ts 25 >> /root/concierge-intake.log 2>&1
+# --gated: runs every firing 9am-1pm ET, otherwise only on the half hour.
+*/5 * * * * cd $APP_DIR && npx tsx prisma/intake-gmail.ts 25 --gated >> /root/concierge-intake.log 2>&1
 30 3 * * * cd $APP_DIR && npx tsx prisma/detect-learning.ts >> /root/concierge-learning.log 2>&1
 30 4 * * * cd $APP_DIR && npx tsx prisma/import-products.ts >> /root/concierge-products.log 2>&1
 30 2 * * * cd $APP_DIR && npx tsx prisma/analytics-backfill.ts >> /root/concierge-analytics.log 2>&1

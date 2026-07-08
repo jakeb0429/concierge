@@ -15,7 +15,9 @@ import Anthropic from "@anthropic-ai/sdk";
  * Usage: tsx prisma/detect-learning.ts [minOccurrences=2]
  */
 
-const CLAUDE_MODEL = "claude-opus-4-8";
+// Sonnet is plenty for gated proposals (2026-07-04 cost tuning) — a human
+// approves every signal, so a weaker model can't hurt the Brain.
+const CLAUDE_MODEL = "claude-sonnet-5";
 const prisma = new PrismaClient();
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const MIN = Number(process.argv[2] ?? 2);
@@ -69,6 +71,9 @@ async function main() {
     const res = await anthropic.messages.create({
       model: CLAUDE_MODEL,
       max_tokens: 1024,
+      // Sonnet defaults to adaptive thinking ON — it would eat the 1024-token
+      // budget before the forced tool output. Keep disabled (see 7/4 handoff).
+      thinking: { type: "disabled" },
       tools: [PROPOSE_TOOL],
       tool_choice: { type: "tool", name: "propose_revision" },
       system:
