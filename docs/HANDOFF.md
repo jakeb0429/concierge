@@ -170,6 +170,18 @@ this database project WITHOUT these defenses (59+ PM2 restarts historically) —
   drafts' tickets; no specialist → admin's Brain-manager queue). `/training` = each user's
   personal queue (nav badge shows their open count); Brain manager shows category + assignee
   on every signal and filters entries by category.
+- **Context notes + expiry review (shipped 2026-07-08, Phase 5)** — `ContextNote` scoped to
+  ONE ticket or the customer (all their tickets), optional `expiresAt`. NotesPanel on the
+  ticket workspace (scope picker + date) and profile. Unexpired notes feed draft grounding
+  as team-vetted facts; the moment one expires it drops out of grounding AND queues on the
+  admin inbox: "did what they describe happen?" → Extend 30d / Keep no expiry / Remove.
+  No cron — expiry is computed on read, so the queue is always current.
+- **Scribe design system (2026-07-08)** — tokens in `globals.css` (`--color-gold #A8882E`,
+  cream `#FAF6EC`, warm grey, Arial per ops/scribe-pitch-delivery-style-guide.md);
+  `.page-title` (gold ALL-CAPS + hairline underline) on every page; `.btn-primary` gold for
+  main CTAs (semantic green/red kept); brand mark `public/scribe-mark.png` (must stay in
+  middleware PUBLIC_EXACT or it 307s) + "by Scribe CHS" wordmark in header/login; cream
+  group headers; nav marks the active section in gold (NavLinks client component).
 - **Customer sales space (shipped 2026-07-08, Phase 4)** — `SalesSource` rows per tenant
   drive the admin `/sources` panel (order counts/revenue derived live from `CustomerOrder`,
   which now carries `tenantId`). Rheos streams: Shopify D2C (nightly), **HubSpot B2B** —
