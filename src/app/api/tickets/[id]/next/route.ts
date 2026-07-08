@@ -38,7 +38,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 
   after(async () => {
     // Fire-and-forget cache warming — failures are irrelevant here.
-    await Promise.allSettled([getOrderContext(next.customer.email), getCustomerInsight(next.customerId)]);
+    await Promise.allSettled([getOrderContext(next.customer.email, tenant.id), getCustomerInsight(next.customerId)]);
   });
 
   return NextResponse.json({ next: { id: next.id, subject: next.subject, urgent: next.priority === "high" } });

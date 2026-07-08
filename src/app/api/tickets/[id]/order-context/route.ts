@@ -17,7 +17,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   });
   if (!ticket) return NextResponse.json({ error: "Not found." }, { status: 404 });
 
-  const orders = await getOrderContext(ticket.customer.email);
+  const orders = await getOrderContext(ticket.customer.email, tenant.id);
   return NextResponse.json({
     orderContext: orderContextLines(orders).map((line, i) => ({
       line,

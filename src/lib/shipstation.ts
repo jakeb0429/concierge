@@ -5,6 +5,8 @@
  * Cached in-process (10 min) so page loads and drafts don't hammer the API.
  */
 
+import { prisma } from "./db";
+
 const SS_V1 = "https://ssapi.shipstation.com";
 const TTL = 10 * 60_000;
 
@@ -21,6 +23,7 @@ type SSOrder = {
   orderNumber: string;
   orderDate: string;
   orderStatus: string;
+  customerEmail: string | null;
 };
 type SSShipment = {
   shipDate: string;
@@ -53,18 +56,43 @@ async function ss<T>(path: string): Promise<T | null> {
   }
 }
 
-/** Most recent orders (and their shipments) for a customer email. */
-export async function getOrderContext(email: string | null | undefined, limit = 2): Promise<OrderContext[]> {
+/**
+ * Most recent orders (and their shipments) for a customer email.
+ *
+ * IMPORTANT: ShipStation's /orders endpoint has NO customerEmail parameter —
+ * it silently ignores unknown filters and returns the whole account's orders,
+ * which once surfaced OTHER customers' orders on tickets. The lookup now goes
+ * through OUR CustomerOrder table (the customer's real order numbers, synced
+ * nightly from Shopify) and asks ShipStation for those exact orders, then
+ * double-checks the returned customerEmail before trusting anything.
+ */
+export async function getOrderContext(
+  email: string | null | undefined,
+  tenantId?: string,
+  limit = 2
+): Promise<OrderContext[]> {
   if (!email) return [];
   const key = email.toLowerCase();
-  const hit = cache.get(key);
+  const cacheKey = `${tenantId ?? ""}|${key}`;
+  const hit = cache.get(cacheKey);
   if (hit && Date.now() - hit.at < TTL) return hit.data;
 
-  const orders = await ss<{ orders: SSOrder[] }>(
-    `/orders?customerEmail=${encodeURIComponent(key)}&sortBy=OrderDate&sortDir=DESC&pageSize=${limit}`
-  );
+  const refs = await prisma.customerOrder.findMany({
+    where: { email: key, source: "shopify-live", ...(tenantId ? { tenantId } : {}) },
+    orderBy: { orderedAt: "desc" },
+    take: limit,
+    select: { orderRef: true },
+  });
+  const matched: SSOrder[] = [];
+  for (const { orderRef } of refs) {
+    const res = await ss<{ orders: SSOrder[] }>(`/orders?orderNumber=${encodeURIComponent(orderRef)}`);
+    const o = res?.orders?.find(
+      (x) => x.orderNumber === orderRef && (!x.customerEmail || x.customerEmail.toLowerCase() === key)
+    );
+    if (o) matched.push(o);
+  }
   const out: OrderContext[] = [];
-  for (const o of orders?.orders?.slice(0, limit) ?? []) {
+  for (const o of matched) {
     let shipment: SSShipment | null = null;
     if (o.orderStatus === "shipped") {
       const ships = await ss<{ shipments: SSShipment[] }>(
@@ -81,7 +109,7 @@ export async function getOrderContext(email: string | null | undefined, limit = 
       trackingNumber: shipment?.trackingNumber ?? null,
     });
   }
-  cache.set(key, { at: Date.now(), data: out });
+  cache.set(cacheKey, { at: Date.now(), data: out });
   return out;
 }
 

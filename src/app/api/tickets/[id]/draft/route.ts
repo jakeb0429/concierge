@@ -39,7 +39,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
   // Live order context (ShipStation, cached, fail-soft) — lets shipping/order
   // drafts reference the customer's ACTUAL order state instead of hedging.
-  const orders = await getOrderContext(ticket.customer.email);
+  const orders = await getOrderContext(ticket.customer.email, ticket.tenantId);
   if (orders.length) {
     ticketText += `\n\n[order context from the fulfillment system — factual, safe to reference: ${orderContextLines(orders).join(" | ")}]`;
   }
