@@ -100,11 +100,14 @@ model LearningSignal {
   occurrences     Int      @default(1) // how many Ledger events support this
   evidence        Json?    // draft/edit/steer ids + diffs backing the proposal
   status          String   @default("open") // "open" | "approved" | "dismissed"
+  category        String?  // inquiry category — routes the training question to a specialist
+  assigneeId      String?  // user this training question is assigned to (loose ref, like knowledgeItemId)
   createdAt       DateTime @default(now())
   resolvedAt      DateTime?
 
   @@index([tenantId, status])
   @@index([tenantId, kind])
+  @@index([tenantId, assigneeId, status])
   @@schema("concierge")
 }
 
@@ -138,6 +141,7 @@ model Ticket {
   subject       String?
   status        String   @default("new") // new|drafted|in_review|replied|resolved|archived
   priority      String   @default("normal") // low|normal|high|vip
+  category      String?  // fine-grained inquiry category (see INQUIRY_CATEGORIES) — drives routing + brain training
   assigneeId    String?
   assignee      User?    @relation("Assignee", fields: [assigneeId], references: [id])
   tags          String[]
@@ -152,6 +156,7 @@ model Ticket {
   @@unique([tenantId, providerThreadId])
   @@index([tenantId, status])
   @@index([tenantId, assigneeId])
+  @@index([tenantId, category])
   @@index([tenantId, createdAt(sort: Desc)]) // inbox ordering
   @@schema("concierge")
 }
@@ -239,6 +244,7 @@ model User {
   email            String
   name             String?
   role             String    @default("agent") // agent|team_lead|brand_admin|super_admin
+  specialties      String[]  // inquiry categories this user handles — drives auto-assign suggestions
   magicLinkToken   String? // sha256 hash of the current magic-link/one-time token
   magicLinkExpires DateTime?
   passwordHash     String? // PBKDF2 (pbkdf2$iter$salt$hash); null = magic-link only

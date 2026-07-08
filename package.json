@@ -22,7 +22,9 @@
     "db:analytics-backfill": "tsx prisma/analytics-backfill.ts",
     "db:import-shopify-orders": "tsx prisma/import-shopify-orders.ts",
     "db:mine-playbooks": "tsx prisma/mine-reply-playbooks.ts",
-    "db:enrich-inquiries": "tsx prisma/enrich-inquiries.ts"
+    "db:enrich-inquiries": "tsx prisma/enrich-inquiries.ts",
+    "db:seed-users": "tsx prisma/seed-users.ts",
+    "db:backfill-categories": "tsx prisma/backfill-ticket-categories.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

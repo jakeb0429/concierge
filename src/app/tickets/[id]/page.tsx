@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { cleanEmailText } from "@/lib/email-clean";
 import { computeReplyState } from "@/lib/reply-state";
 import { getOrderContext, orderContextLines, trackingUrl } from "@/lib/shipstation";
+import { categoryLabel } from "@/lib/categories";
 import TicketWorkspace from "./TicketWorkspace";
 
 export const dynamic = "force-dynamic";
@@ -31,7 +32,7 @@ export default async function TicketDetail({ params }: { params: Promise<{ id: s
 
   // Customer key stats — orders, spend, returns, and support history at a glance.
   const email = ticket.customer.email?.toLowerCase();
-  const [orderAgg, refundCount, inquiryCounts, ticketCount, shipOrders] = await Promise.all([
+  const [orderAgg, refundCount, inquiryCounts, ticketCount, shipOrders, tenantUsers] = await Promise.all([
     email
       ? prisma.customerOrder.aggregate({
           where: { email },
@@ -47,6 +48,11 @@ export default async function TicketDetail({ params }: { params: Promise<{ id: s
       : Promise.resolve([]),
     prisma.ticket.count({ where: { customerId: ticket.customer.id } }),
     getOrderContext(email), // ShipStation: placed / shipped / carrier / tracking (cached, fail-soft)
+    prisma.user.findMany({
+      where: { tenantId: ticket.tenantId },
+      select: { id: true, email: true, name: true },
+      orderBy: { email: "asc" },
+    }),
   ]);
   const orderContext = orderContextLines(shipOrders).map((line, i) => ({
     line,
@@ -111,6 +117,11 @@ export default async function TicketDetail({ params }: { params: Promise<{ id: s
           customerName: ticket.customer.displayName ?? "Customer",
           customerEmail: ticket.customer.email ?? "",
           mailbox,
+          categoryLabel: ticket.category ? categoryLabel(ticket.category) : null,
+        }}
+        assign={{
+          assigneeId: ticket.assigneeId,
+          users: tenantUsers.map((u) => ({ id: u.id, label: u.name ?? u.email.split("@")[0] })),
         }}
         messages={ticket.messages.map((m) => ({
           id: m.id,

@@ -8,7 +8,10 @@ import { baseUrl } from "@/lib/base-url";
 import { getCurrentTenant } from "@/lib/tenant";
 
 
-/** Request a magic link. Only allowlisted emails get one; response never reveals which. */
+/** Request a magic link. A provisioned User row (any tenant) is the grant —
+ *  the Users page is where access gets added. The env allowlist stays as a
+ *  bootstrap fallback that provisions into Rheos. Response never reveals
+ *  whether the email is known. */
 export async function POST(req: Request) {
   const { email: raw, callbackUrl } = (await req.json().catch(() => ({}))) as {
     email?: string;
@@ -17,17 +20,18 @@ export async function POST(req: Request) {
   const email = (raw ?? "").toLowerCase().trim();
   if (!email) return NextResponse.json({ error: "Email required" }, { status: 400 });
 
-  // Don't reveal allowlist membership — always return success.
-  if (!isAllowed(email)) return NextResponse.json({ success: true });
-
-  // First sign-in provisions the user in the Rheos tenant (jake = brand_admin).
-  const tenant = await getCurrentTenant();
-  const role = email === "jacob.berton@gmail.com" || email === "jake@scribechs.com" ? "brand_admin" : "agent";
-  const user = await prisma.user.upsert({
-    where: { tenantId_email: { tenantId: tenant.id, email } },
-    update: {},
-    create: { tenantId: tenant.id, email, role },
+  // Same email in several tenants → the most recently used row gets the
+  // token (the in-app brand switcher moves between tenants after sign-in).
+  let user = await prisma.user.findFirst({
+    where: { email },
+    orderBy: { lastLogin: { sort: "desc", nulls: "last" } },
   });
+  if (!user) {
+    if (!isAllowed(email)) return NextResponse.json({ success: true });
+    const tenant = await getCurrentTenant();
+    const role = email === "jacob.berton@gmail.com" || email === "jake@scribechs.com" ? "brand_admin" : "agent";
+    user = await prisma.user.create({ data: { tenantId: tenant.id, email, role } });
+  }
 
   const token = randomBytes(32).toString("hex");
   await prisma.user.update({

@@ -16,7 +16,14 @@ export type Row = {
   urgent: boolean;
   replyState: ReplyState;
   looksNoise: boolean;
+  assigneeId: string | null;
+  assigneeLabel: string | null;
+  waitingDays: number | null;
+  needsReply: boolean;
+  createdAt: number;
 };
+
+export type AssignableUser = { id: string; label: string };
 
 /**
  * Inbox list with grouping + multi-select bulk archive.
@@ -25,10 +32,30 @@ export type Row = {
  *               bottom with select-all — one click clears them (Gmail too)
  *   noise view: grouped by triage category with select-all per group
  */
-export default function InboxList({ rows, view }: { rows: Row[]; view: string }) {
+export default function InboxList({
+  rows,
+  view,
+  canAssign = false,
+  users = [],
+}: {
+  rows: Row[];
+  view: string;
+  canAssign?: boolean;
+  users?: AssignableUser[];
+}) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+
+  async function reassign(ticketId: string, assigneeId: string) {
+    const res = await fetch(`/api/tickets/${ticketId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ assigneeId: assigneeId || null }),
+    });
+    if (res.ok) window.location.reload();
+    else alert((await res.json().catch(() => ({ error: "Reassign failed" }))).error);
+  }
 
   const toggle = (id: string) =>
     setSelected((s) => {
@@ -81,12 +108,17 @@ export default function InboxList({ rows, view }: { rows: Row[]; view: string })
     groups = [...byCat.entries()]
       .sort((a, b) => b[1].length - a[1].length)
       .map(([k, rs]) => ({ key: k, title: `${k.replace(/_/g, " ")} (${rs.length})`, tone: "noise" as const, rows: rs }));
-  } else if (view === "open") {
+  } else if (view === "open" || view === "mine") {
     const urgent = rows.filter((r) => r.urgent);
     const noiseLooking = rows.filter((r) => !r.urgent && r.looksNoise);
-    const rest = rows.filter((r) => !r.urgent && !r.looksNoise);
+    const unassigned = canAssign ? rows.filter((r) => !r.urgent && !r.looksNoise && !r.assigneeId && r.needsReply) : [];
+    const unassignedIds = new Set(unassigned.map((r) => r.id));
+    const rest = rows.filter((r) => !r.urgent && !r.looksNoise && !unassignedIds.has(r.id));
     groups = [
       ...(urgent.length ? [{ key: "urgent", title: `Answer first — urgent (${urgent.length})`, tone: "urgent" as const, rows: urgent }] : []),
+      ...(unassigned.length
+        ? [{ key: "unassigned", title: `Needs an owner — unassigned (${unassigned.length})`, rows: unassigned }]
+        : []),
       { key: "rest", title: null, rows: rest },
       ...(noiseLooking.length
         ? [{ key: "noise", title: `Looks like vendor pitches & automated mail (${noiseLooking.length})`, tone: "noise" as const, rows: noiseLooking }]
@@ -179,6 +211,11 @@ export default function InboxList({ rows, view }: { rows: Row[]; view: string })
                           {t.category.replace(/_/g, " ")}
                         </span>
                       )}
+                      {t.waitingDays !== null && t.waitingDays >= 1 && (
+                        <span className="rounded-full bg-orange-50 px-2 py-0.5 text-[11px] text-orange-700">
+                          waiting {t.waitingDays}d
+                        </span>
+                      )}
                     </div>
                     <div className="truncate text-sm text-neutral-700">{t.subject}</div>
                     <div className="truncate text-xs text-neutral-400">{t.snippet}</div>
@@ -187,6 +224,30 @@ export default function InboxList({ rows, view }: { rows: Row[]; view: string })
                     {statusLabel(t.status)}
                   </span>
                 </Link>
+                {canAssign ? (
+                  <select
+                    value={t.assigneeId ?? ""}
+                    onChange={(e) => reassign(t.id, e.target.value)}
+                    onClick={(e) => e.stopPropagation()}
+                    title="Assign this ticket"
+                    className={`w-28 flex-shrink-0 rounded-lg border px-1.5 py-1 text-[11px] ${
+                      t.assigneeId ? "border-neutral-200 text-neutral-600" : "border-amber-300 bg-amber-50 text-amber-800"
+                    }`}
+                  >
+                    <option value="">unassigned</option>
+                    {users.map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {u.label}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  t.assigneeLabel && (
+                    <span className="flex-shrink-0 rounded-full bg-indigo-50 px-2 py-0.5 text-[11px] text-indigo-700">
+                      {t.assigneeLabel}
+                    </span>
+                  )
+                )}
               </div>
             ))}
           </div>

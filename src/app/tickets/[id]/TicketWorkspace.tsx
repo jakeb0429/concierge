@@ -39,6 +39,12 @@ type Ticket = {
   customerName: string;
   customerEmail: string;
   mailbox: string;
+  categoryLabel: string | null;
+};
+
+type Assign = {
+  assigneeId: string | null;
+  users: { id: string; label: string }[];
 };
 
 type CustomerStats = {
@@ -63,6 +69,7 @@ export default function TicketWorkspace({
   replyState,
   orderContext = [],
   gmailUrl,
+  assign,
 }: {
   ticket: Ticket;
   messages: Msg[];
@@ -72,6 +79,7 @@ export default function TicketWorkspace({
   replyState?: ReplyState;
   orderContext?: { line: string; trackingUrl: string | null }[];
   gmailUrl?: string | null;
+  assign?: Assign;
 }) {
   const [draft, setDraft] = useState<Draft | null>(initialDraft);
   const [body, setBody] = useState(initialDraft?.body ?? "");
@@ -80,7 +88,19 @@ export default function TicketWorkspace({
   const [steer, setSteer] = useState("");
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(status === "replied" || status === "resolved");
+  const [assigneeId, setAssigneeId] = useState(assign?.assigneeId ?? null);
   const started = useRef(false);
+
+  async function reassign(next: string) {
+    const prev = assigneeId;
+    setAssigneeId(next || null);
+    const res = await fetch(`/api/tickets/${ticket.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ assigneeId: next || null }),
+    });
+    if (!res.ok) setAssigneeId(prev);
+  }
 
   async function generate(steerNotes?: string) {
     setGenerating(true);
@@ -191,6 +211,28 @@ export default function TicketWorkspace({
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {ticket.categoryLabel && (
+            <span className="rounded-full bg-neutral-100 px-2 py-1 text-[11px] text-neutral-600">
+              {ticket.categoryLabel}
+            </span>
+          )}
+          {assign && (
+            <select
+              value={assigneeId ?? ""}
+              onChange={(e) => reassign(e.target.value)}
+              title="Assigned to"
+              className={`rounded-lg border px-1.5 py-1 text-[11px] ${
+                assigneeId ? "border-neutral-200 text-neutral-600" : "border-amber-300 bg-amber-50 text-amber-800"
+              }`}
+            >
+              <option value="">unassigned</option>
+              {assign.users.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.label}
+                </option>
+              ))}
+            </select>
+          )}
           {ticket.priority === "high" && (
             <span className="rounded-full bg-red-600 px-2 py-1 text-[11px] font-semibold text-white">URGENT</span>
           )}

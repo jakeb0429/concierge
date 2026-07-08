@@ -48,7 +48,7 @@ export async function verifyPassword(password: string, stored: string): Promise<
   return diff === 0;
 }
 
-export const { handlers, signIn, signOut, auth } = NextAuth({
+export const { handlers, signIn, signOut, auth, unstable_update } = NextAuth({
   providers: [
     Credentials({
       name: "magic-link",
@@ -85,8 +85,12 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         if (!email || !password) return null;
 
         // Having a passwordHash on the account IS the grant — set via
-        // prisma/set-password.ts, never self-service.
-        const user = await prisma.user.findFirst({ where: { email, passwordHash: { not: null } } });
+        // prisma/set-password.ts, never self-service. Same email in several
+        // tenants → most recently used row wins; the brand switcher moves you.
+        const user = await prisma.user.findFirst({
+          where: { email, passwordHash: { not: null } },
+          orderBy: { lastLogin: { sort: "desc", nulls: "last" } },
+        });
         if (!user || !(await verifyPassword(password, user.passwordHash!))) return null;
 
         await prisma.user.update({ where: { id: user.id }, data: { lastLogin: new Date() } });
@@ -95,11 +99,24 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     }),
   ],
   callbacks: {
-    async jwt({ token, user }) {
+    async jwt({ token, user, trigger, session }) {
       if (user) {
         token.id = user.id;
         token.tenantId = (user as { tenantId?: string }).tenantId;
         token.role = (user as { role?: string }).role;
+      }
+      // Brand switch (unstable_update from /api/tenant/switch): re-verify
+      // against the DB — you can only switch to a tenant where your email has
+      // a provisioned User row.
+      if (trigger === "update" && (session as { tenantId?: string })?.tenantId && token.email) {
+        const target = await prisma.user.findFirst({
+          where: { email: token.email as string, tenantId: (session as { tenantId: string }).tenantId },
+        });
+        if (target) {
+          token.id = target.id;
+          token.tenantId = target.tenantId;
+          token.role = target.role;
+        }
       }
       return token;
     },

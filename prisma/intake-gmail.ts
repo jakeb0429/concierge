@@ -1,6 +1,7 @@
 import { PrismaClient } from "@prisma/client";
 import { gmail_v1 } from "googleapis";
-import { triage } from "../src/lib/triage";
+import { triage, brandContextFor } from "../src/lib/triage";
+import { autoAssign } from "../src/lib/assign";
 import { gmailFor, extractAttachments } from "../src/lib/gmail-client";
 import { extractProductMention } from "../src/lib/product-extract";
 
@@ -10,12 +11,28 @@ import { extractProductMention } from "../src/lib/product-extract";
  * Bounded, idempotent (upserts by thread + message id), keeps existing tickets.
  * Read-only against the mailbox; nothing is sent.
  *
- * Usage: tsx prisma/intake-gmail.ts [max=15] [mailbox]
+ * Usage: tsx prisma/intake-gmail.ts [max=15] [mailbox] [--gated]
  */
 
 const prisma = new PrismaClient();
-const MAX = Number(process.argv[2] ?? 15);
-const ONLY_MAILBOX = process.argv[3];
+
+/**
+ * --gated: the crontab fires every 5 minutes; during business hours
+ * (9am–1pm Eastern, DST-safe via the tz database) every firing runs, outside
+ * them only the on-the-half-hour firings do. One cron line, two cadences.
+ */
+if (process.argv.includes("--gated")) {
+  const [h, m] = new Date()
+    .toLocaleTimeString("en-US", { timeZone: "America/New_York", hour12: false, hour: "2-digit", minute: "2-digit" })
+    .split(":")
+    .map(Number);
+  const peak = h >= 9 && h < 13;
+  if (!peak && m % 30 >= 5) process.exit(0);
+}
+
+const args = process.argv.slice(2).filter((a) => a !== "--gated");
+const MAX = Number(args[0] ?? 15);
+const ONLY_MAILBOX = args[1];
 
 function header(headers: gmail_v1.Schema$MessagePartHeader[], n: string): string | null {
   return headers.find((h) => h.name?.toLowerCase() === n)?.value ?? null;
@@ -60,7 +77,7 @@ async function importMessage(tenantId: string, ticketId: string, mailbox: string
   return attachments.length;
 }
 
-async function intakeMailbox(tenantId: string, channelId: string, mailbox: string) {
+async function intakeMailbox(tenantId: string, tenantSlug: string, channelId: string, mailbox: string) {
   const gmail = gmailFor(mailbox);
   const list = await gmail.users.messages.list({ userId: "me", labelIds: ["INBOX"], maxResults: MAX });
   const threadIds = [...new Set((list.data.messages ?? []).map((m) => m.threadId!))];
@@ -100,7 +117,7 @@ async function intakeMailbox(tenantId: string, channelId: string, mailbox: strin
       await prisma.ticket.update({ where: { id: existing.id }, data: { channelId } });
       ticketId = existing.id;
     } else {
-      const t = await triage(from.email!, subject, text);
+      const t = await triage(from.email!, subject, text, brandContextFor(tenantSlug));
       // Tag detected product mentions so the queue shows what the ticket is about.
       const pm = await extractProductMention(`${subject ?? ""}\n${text}`);
       const tags = [t.category, ...(pm.productFamily ? [`product:${pm.productFamily}`] : [])];
@@ -113,12 +130,18 @@ async function intakeMailbox(tenantId: string, channelId: string, mailbox: strin
           subject,
           status: t.isNoise ? "archived" : "new",
           priority: t.priority,
+          category: t.inquiryCategory,
           tags,
           providerThreadId: threadId,
         },
       });
       ticketId = created.id;
       if (t.isNoise) skippedNoise.push(`${from.email} (${t.category})`);
+      else {
+        // Route to a specialist — the triage admin sees and can override.
+        const assigned = await autoAssign(tenantId, created.id, t.inquiryCategory);
+        if (assigned) console.log(`    → ${t.inquiryCategory} auto-assigned to ${assigned.email}`);
+      }
     }
 
     for (const m of msgs) {
@@ -133,20 +156,21 @@ async function intakeMailbox(tenantId: string, channelId: string, mailbox: strin
 }
 
 async function main() {
-  const rheos = await prisma.tenant.findUniqueOrThrow({ where: { slug: "rheos" } });
+  // Every tenant with an active Gmail channel — Stingray joins via the Graph
+  // adapter later, so today this still resolves to Rheos's two mailboxes.
   const channels = await prisma.channel.findMany({
     where: {
-      tenantId: rheos.id,
       provider: "gmail",
       active: true,
       ...(ONLY_MAILBOX ? { supportAddress: ONLY_MAILBOX } : {}),
     },
+    include: { tenant: { select: { id: true, slug: true } } },
   });
   console.log(`Live intake across ${channels.length} Gmail channel(s):`);
-  for (const ch of channels) await intakeMailbox(rheos.id, ch.id, ch.supportAddress);
+  for (const ch of channels) await intakeMailbox(ch.tenant.id, ch.tenant.slug, ch.id, ch.supportAddress);
 
-  const total = await prisma.ticket.count({ where: { tenantId: rheos.id, channel: "gmail" } });
-  console.log(`Rheos gmail tickets now: ${total}.`);
+  const total = await prisma.ticket.count({ where: { channel: "gmail" } });
+  console.log(`Gmail tickets now: ${total}.`);
 }
 
 main()
