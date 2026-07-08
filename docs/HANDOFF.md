@@ -170,6 +170,19 @@ this database project WITHOUT these defenses (59+ PM2 restarts historically) —
   drafts' tickets; no specialist → admin's Brain-manager queue). `/training` = each user's
   personal queue (nav badge shows their open count); Brain manager shows category + assignee
   on every signal and filters entries by category.
+- **Customer sales space (shipped 2026-07-08, Phase 4)** — `SalesSource` rows per tenant
+  drive the admin `/sources` panel (order counts/revenue derived live from `CustomerOrder`,
+  which now carries `tenantId`). Rheos streams: Shopify D2C (nightly), **HubSpot B2B** —
+  won-stage deals (probability 1.0, discovered from live pipeline config, NOT hardcoded)
+  imported via `import-hubspot-orders` (cron 03:45, `--full` for backfill; 354 deals seeded).
+  Stingray slot: Dealers Circle/ERP placeholder, inactive until their data is defined.
+  **AI customer read** (`src/lib/customer-insight.ts`, Sonnet 5 thinking-disabled): 2–3
+  rep-facing sentences interpreting D2C+B2B history, inquiry pattern, rep-entered channel
+  facts, and recent messages; cached on `Customer.insight`, regenerated only when the
+  basis counts change, fail-soft (stale beats broken). Shown on ticket + profile, appended
+  to draft grounding as tone/context only — policy facts stay Brand-Brain-only.
+  `Customer.purchaseChannel/channelName` (direct|retail|dealer + which one) editable on
+  the profile ("Buys via"), chipped on the ticket stats strip.
 - **Inbox** — My tickets/All open/Noise/All views, fine-grained category chips, wholesale chip, product tags, waiting-days chips, assign dropdowns (admin)
 - **Ticket workspace** — clean threaded conversation with image attachments (streamed on demand
   from Gmail), "View original in Gmail" deep link (account-scoped, for additional review), customer key-stats strip (orders, LTV, first/last sale, returns, warranty
