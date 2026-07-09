@@ -42,6 +42,7 @@ model Channel {
   tenant         Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   provider       String  // "gmail" | "graph" | "instagram" | "web"
   supportAddress String  // hello@rheosgear.com, support@stingrayboats.com
+  businessLine   String  @default("d2c") // "d2c" | "b2b" — splits reporting by business (wholesale@ = b2b)
   cursor         String? // Gmail historyId / Graph deltaLink for incremental sync
   watchExpiresAt DateTime?
   active         Boolean @default(true)

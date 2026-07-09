@@ -1,5 +1,8 @@
 import Link from "next/link";
-import { polylinePoints, type WeekPoint } from "@/lib/analytics";
+import { polylinePoints } from "@/lib/analytics";
+
+/** Any labeled point series plots — weekly counts, monthly revenue, etc. */
+type Pt = { label: string; n: number };
 
 /**
  * Server-rendered analytics building blocks — no client JS. Hover detail rides
@@ -77,17 +80,19 @@ export function BarRow({
   );
 }
 
-/** Two aligned weekly series as thin SVG lines with end labels + legend. */
+/** Two aligned series as thin SVG lines with end labels + legend. */
 export function TrendChart({
   a,
   b,
   aLabel,
   bLabel,
+  fmt = (v: number) => v.toLocaleString(),
 }: {
-  a: WeekPoint[];
-  b: WeekPoint[];
+  a: Pt[];
+  b: Pt[];
   aLabel: string;
   bLabel: string;
+  fmt?: (v: number) => string;
 }) {
   const W = 720;
   const H = 120;
@@ -109,7 +114,7 @@ export function TrendChart({
           <g key={p.label}>
             {/* invisible wide hit target with native tooltip per week */}
             <rect x={4 + i * stepX - stepX / 2} y="0" width={Math.max(stepX, 12)} height={H} fill="transparent">
-              <title>{`${p.label}: ${p.n} ${aLabel.toLowerCase()} · ${b[i]?.n ?? 0} ${bLabel.toLowerCase()}`}</title>
+              <title>{`${p.label}: ${fmt(p.n)} ${aLabel.toLowerCase()} · ${fmt(b[i]?.n ?? 0)} ${bLabel.toLowerCase()}`}</title>
             </rect>
             <circle cx={4 + i * stepX} cy={H - 4 - (p.n / max) * (H - 8)} r="2.5" fill="#2e74b5" />
             <circle cx={4 + i * stepX} cy={H - 4 - ((b[i]?.n ?? 0) / max) * (H - 8)} r="2.5" fill="#a8882e" />
@@ -123,10 +128,10 @@ export function TrendChart({
       </div>
       <div className="mt-1 flex gap-4 text-xs text-neutral-500">
         <span className="flex items-center gap-1.5">
-          <span className="inline-block h-0.5 w-4 rounded" style={{ background: "#2e74b5" }} /> {aLabel} (max {Math.max(...scaleA)})
+          <span className="inline-block h-0.5 w-4 rounded" style={{ background: "#2e74b5" }} /> {aLabel} (max {fmt(Math.max(...scaleA))})
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="inline-block h-0.5 w-4 rounded" style={{ background: "#a8882e" }} /> {bLabel} (max {Math.max(...scaleB)})
+          <span className="inline-block h-0.5 w-4 rounded" style={{ background: "#a8882e" }} /> {bLabel} (max {fmt(Math.max(...scaleB))})
         </span>
       </div>
     </div>

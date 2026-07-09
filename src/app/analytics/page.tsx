@@ -5,7 +5,7 @@ import { sessionUser, isAdminRole } from "@/lib/roles";
 import { computeResponseTimes, fmtDuration } from "@/lib/response-times";
 import { categoryLabel } from "@/lib/categories";
 import { msAgo } from "@/lib/time";
-import { ticketAnalytics, myStats, sortCategoryRows, type CategorySort } from "@/lib/analytics";
+import { ticketAnalytics, myStats, salesByLine, sortCategoryRows, type CategorySort } from "@/lib/analytics";
 import { StatTile, BarRow, TrendChart, FilterPills } from "@/app/components/analytics-ui";
 
 export const dynamic = "force-dynamic";
@@ -138,7 +138,7 @@ export default async function Analytics({ searchParams }: { searchParams: Promis
     return `/analytics${pairs.length ? "?" + pairs.map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join("&") : ""}${hash}`;
   };
 
-  const [inquiriesAll, sales, sentDrafts, live, mine, myUser] = await Promise.all([
+  const [inquiriesAll, sales, sentDrafts, live, mine, myUser, byLine] = await Promise.all([
     prisma.analyticsInquiry.findMany({
       where: { tenantId: tenant.id, threadCreatedAt: { gte: since } },
       select: { id: true, category: true, endSentiment: true, threadCreatedAt: true, daysSincePurchase: true, fromEmail: true, productFamily: true, frameColor: true, lensColor: true, productStyle: true, productGender: true },
@@ -152,6 +152,7 @@ export default async function Analytics({ searchParams }: { searchParams: Promis
     ticketAnalytics(tenant.id, weeks),
     me ? myStats(tenant.id, me.id) : Promise.resolve(null),
     me ? prisma.user.findUnique({ where: { id: me.id }, select: { name: true } }) : Promise.resolve(null),
+    admin ? salesByLine(tenant.id) : Promise.resolve(null),
   ]);
   const real = inquiriesAll.filter((q) => !NOISE.includes(q.category));
 
@@ -296,11 +297,60 @@ export default async function Analytics({ searchParams }: { searchParams: Promis
               <div className="mb-1 text-xs font-medium uppercase tracking-wide text-neutral-400">Arriving mailbox ({days}d)</div>
               <div className="space-y-1.5">
                 {live.mailboxMix.map((r) => (
-                  <BarRow key={r.label} label={r.label} n={r.n} max={maxMailbox} color="bg-scribe-navy" />
+                  <BarRow
+                    key={r.label}
+                    label={r.label}
+                    n={r.n}
+                    max={maxMailbox}
+                    color={r.line === "b2b" ? "bg-violet-400" : "bg-scribe-navy"}
+                    right={`${r.n} · ${r.line}`}
+                  />
                 ))}
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* D2C vs B2B — the two business lines side by side (admin) */}
+      {admin && byLine && (
+        <div className="mb-4 rounded-xl border border-neutral-200 bg-white p-4">
+          <div className="mb-1 flex items-baseline justify-between">
+            <div className="text-sm font-medium">D2C vs B2B</div>
+            <span className="text-xs text-neutral-400">revenue trailing 12 months · tickets past {days} days</span>
+          </div>
+          <div className="mb-3 grid grid-cols-2 gap-3 md:grid-cols-5">
+            <StatTile
+              label="D2C revenue (12mo)"
+              value={`$${Math.round(byLine.d2cTotal).toLocaleString()}`}
+              sub={`${byLine.d2cOrders.toLocaleString()} orders`}
+            />
+            <StatTile
+              label="B2B revenue (12mo)"
+              value={`$${Math.round(byLine.b2bTotal).toLocaleString()}`}
+              sub={`${byLine.b2bOrders.toLocaleString()} deals`}
+            />
+            <StatTile
+              label="B2B share of revenue"
+              value={`${byLine.d2cTotal + byLine.b2bTotal ? Math.round((byLine.b2bTotal / (byLine.d2cTotal + byLine.b2bTotal)) * 100) : 0}%`}
+            />
+            {live.lineMix.map((l) => (
+              <StatTile
+                key={l.line}
+                label={`${l.line.toUpperCase()} tickets (${days}d)`}
+                value={l.n}
+                sub={`${l.open} open now`}
+                tone={l.line === "b2b" ? "violet" : undefined}
+              />
+            ))}
+          </div>
+          <TrendChart
+            a={byLine.d2c}
+            b={byLine.b2b}
+            aLabel="D2C revenue"
+            bLabel="B2B revenue"
+            fmt={(v) => `$${Math.round(v).toLocaleString()}`}
+          />
         </div>
       )}
 
@@ -409,7 +459,9 @@ export default async function Analytics({ searchParams }: { searchParams: Promis
       <div className="mb-1.5 flex items-center gap-2">
         <span className="inline-block h-2 w-2 rounded-full bg-scribe-blue" />
         <span className="text-[10px] font-bold uppercase tracking-[0.16em] text-warm-grey">Customer-experience history</span>
-        <span className="text-[10px] text-neutral-400">· past 365 days · {inquiriesAll.length.toLocaleString()} inquiries</span>
+        <span className="text-[10px] text-neutral-400">
+          · past 365 days · {inquiriesAll.length.toLocaleString()} inquiries · mined from the hello@ (D2C) mailbox — wholesale history not yet backfilled
+        </span>
       </div>
       <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-4">
         <StatTile label="Customer inquiries (365d)" value={real.length.toLocaleString()} />

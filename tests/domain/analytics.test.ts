@@ -4,7 +4,7 @@ import { describe, it, expect, vi } from "vitest";
 // constructs a client against the production DB.
 vi.mock("@/lib/db", () => ({ prisma: {} }));
 
-import { weeklySeries, sortCategoryRows, polylinePoints, RETURN_PIPELINE } from "@/lib/analytics";
+import { weeklySeries, monthlySeries, sortCategoryRows, polylinePoints, RETURN_PIPELINE } from "@/lib/analytics";
 
 const DAY = 24 * 3600 * 1000;
 const NOW = new Date(2026, 6, 9, 12).getTime(); // fixed clock
@@ -29,6 +29,24 @@ describe("weeklySeries", () => {
 
   it("handles an empty input", () => {
     expect(weeklySeries([], 2, NOW).map((w) => w.n)).toEqual([0, 0]);
+  });
+});
+
+describe("monthlySeries", () => {
+  it("sums amounts into trailing calendar months, oldest first", () => {
+    const rows = [
+      { at: new Date(Date.UTC(2026, 6, 1)), amount: 100 }, // Jul 26 (current month)
+      { at: new Date(Date.UTC(2026, 6, 8)), amount: 50 },
+      { at: new Date(Date.UTC(2026, 5, 15)), amount: 200 }, // Jun 26
+      { at: new Date(Date.UTC(2025, 6, 20)), amount: 999 }, // Jul 25 — outside a 3-month window
+    ];
+    const got = monthlySeries(rows, 3, NOW);
+    expect(got.map((m) => m.label)).toEqual(["May 26", "Jun 26", "Jul 26"]);
+    expect(got.map((m) => m.n)).toEqual([0, 200, 150]);
+  });
+
+  it("handles empty input", () => {
+    expect(monthlySeries([], 2, NOW).map((m) => m.n)).toEqual([0, 0]);
   });
 });
 
