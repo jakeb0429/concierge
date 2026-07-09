@@ -73,7 +73,7 @@ export default function ContextComposer({
   }
 
   return (
-    <div className="mt-3 rounded-xl border border-neutral-200 bg-white p-4">
+    <div className="mt-3 rounded-xl border border-l-4 border-neutral-200 border-l-amber-400 bg-white p-4">
       <div className="mb-2 text-xs font-medium text-neutral-500">
         Add context — a fact the reply (and future drafts) should know
       </div>

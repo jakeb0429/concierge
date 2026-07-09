@@ -37,3 +37,21 @@ export function categoryLabel(category: string | null | undefined): string {
   if (!category) return "—";
   return INQUIRY_CATEGORY_LABEL[category as InquiryCategory] ?? category.replace(/_/g, " ");
 }
+
+/** Consistent category colors across inbox chips + ticket headers. */
+export const INQUIRY_CATEGORY_CHIP: Record<string, string> = {
+  warranty: "bg-amber-50 text-amber-700",
+  replacement_parts: "bg-orange-50 text-orange-700",
+  shipping_order_status: "bg-blue-50 text-blue-700",
+  returns_exchange: "bg-violet-50 text-violet-700",
+  sizing_fit: "bg-pink-50 text-pink-700",
+  product_question: "bg-emerald-50 text-emerald-700",
+  wholesale: "bg-purple-50 text-purple-700",
+  marketing_collab: "bg-fuchsia-50 text-fuchsia-700",
+  purchasing_po: "bg-slate-100 text-slate-700",
+  escalation: "bg-red-50 text-red-700",
+  other: "bg-neutral-100 text-neutral-600",
+};
+export function categoryChipClass(category: string | null | undefined): string {
+  return INQUIRY_CATEGORY_CHIP[category ?? ""] ?? "bg-neutral-100 text-neutral-600";
+}

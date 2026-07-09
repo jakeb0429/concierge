@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { coverageChip, statusChip, statusLabel } from "@/lib/ui";
 import NotesPanel, { type NoteRow } from "@/app/components/NotesPanel";
 import ContextComposer from "./ContextComposer";
+import { categoryChipClass } from "@/lib/categories";
 import { REPLY_STATE_CHIP, REPLY_STATE_LABEL, type ReplyState } from "@/lib/reply-state";
 
 type Citation = {
@@ -42,6 +43,7 @@ type Ticket = {
   customerEmail: string;
   mailbox: string;
   categoryLabel: string | null;
+  categoryKey?: string | null;
 };
 
 type Assign = {
@@ -63,6 +65,18 @@ type CustomerStats = {
 };
 
 const STEER_CHIPS = ["Warmer", "Shorter", "More detail", "Add next steps", "More formal"];
+
+/** Zone label — the page reads as four color-coded bands: status (navy),
+ *  system inputs (blue), added context (amber), the reply (gold). */
+function ZoneLabel({ dot, text, hint }: { dot: string; text: string; hint?: string }) {
+  return (
+    <div className="mb-1.5 mt-5 flex items-center gap-2 first:mt-0">
+      <span className={`inline-block h-2 w-2 rounded-full ${dot}`} />
+      <span className="text-[10px] font-bold uppercase tracking-[0.16em] text-warm-grey">{text}</span>
+      {hint && <span className="text-[10px] text-neutral-400">· {hint}</span>}
+    </div>
+  );
+}
 
 export default function TicketWorkspace({
   ticket,
@@ -238,6 +252,7 @@ export default function TicketWorkspace({
 
   return (
     <div className="mt-3">
+      <ZoneLabel dot="bg-scribe-navy" text="Ticket status" />
       {/* header */}
       <div className="mb-3 flex items-center justify-between rounded-xl border border-neutral-200 bg-white px-4 py-3">
         <div className="flex items-center gap-3">
@@ -264,7 +279,7 @@ export default function TicketWorkspace({
             </a>
           )}
           {ticket.categoryLabel && (
-            <span className="rounded-full bg-neutral-100 px-2 py-1 text-[11px] text-neutral-600">
+            <span className={`rounded-full px-2 py-1 text-[11px] ${categoryChipClass(ticket.categoryKey)}`}>
               {ticket.categoryLabel}
             </span>
           )}
@@ -315,8 +330,16 @@ export default function TicketWorkspace({
         </div>
       )}
 
+      <ZoneLabel dot="bg-scribe-blue" text="System inputs" hint="orders, history, fulfillment — fetched automatically" />
+      {/* likely already handled — evidence from orders/fulfillment */}
+      {handledEvidence && handledEvidence.length > 0 && !sent && (
+        <div className="mb-3 rounded-xl border border-teal-200 bg-teal-50 px-4 py-2.5 text-sm text-teal-800">
+          <span className="font-medium">Possibly already handled: </span>
+          {handledEvidence.join("; ")}. Confirm with the customer, then resolve.
+        </div>
+      )}
       {/* customer key stats — what the rep should know before replying */}
-      <div className="mb-3 flex flex-wrap items-center gap-x-5 gap-y-1 rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-xs">
+      <div className="mb-3 flex flex-wrap items-center gap-x-5 gap-y-1 rounded-xl border border-l-4 border-neutral-200 border-l-scribe-blue bg-white px-4 py-2.5 text-xs">
         {customerStats.orders > 0 ? (
           <>
             <span className="text-neutral-600">
@@ -363,24 +386,21 @@ export default function TicketWorkspace({
 
       {/* the AI read — interpretation of the sales + support history */}
       {customerInsight && (
-        <div className="mb-3 rounded-xl border border-blue-100 bg-blue-50/50 px-4 py-2.5 text-xs leading-relaxed text-neutral-700">
+        <div className="mb-3 rounded-xl border border-l-4 border-blue-100 border-l-scribe-blue bg-blue-50/50 px-4 py-2.5 text-xs leading-relaxed text-neutral-700">
           <span className="mr-2 font-medium text-blue-700">Customer read</span>
           {customerInsight}
         </div>
       )}
 
-      {/* rep-pinned facts, scoped to this ticket or the customer; feed drafts until they expire */}
-      <NotesPanel key={contextNotes.length} notes={contextNotes} ticketId={ticket.id} customerId={ticket.customerId} />
-
       {/* order context — live from the fulfillment system (ShipStation) */}
       {orderLoading && (
-        <div className="mb-3 rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-xs text-neutral-400">
+        <div className="mb-3 rounded-xl border border-l-4 border-neutral-200 border-l-scribe-blue bg-white px-4 py-2.5 text-xs text-neutral-400">
           <span className="mr-3 font-medium text-neutral-500">Order status</span>
           <span className="animate-pulse">checking the fulfillment system…</span>
         </div>
       )}
       {!orderLoading && orderContext.length > 0 && (
-        <div className="mb-3 rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-xs">
+        <div className="mb-3 rounded-xl border border-l-4 border-neutral-200 border-l-scribe-blue bg-white px-4 py-2.5 text-xs">
           <span className="mr-3 font-medium text-neutral-500">Order status</span>
           {orderContext.map((o, i) => (
             <span key={i} className="mr-4 text-neutral-700">
@@ -398,16 +418,23 @@ export default function TicketWorkspace({
         </div>
       )}
 
-      {/* likely already handled — evidence from orders/fulfillment */}
-      {handledEvidence && handledEvidence.length > 0 && !sent && (
-        <div className="mb-3 rounded-xl border border-teal-200 bg-teal-50 px-4 py-2.5 text-sm text-teal-800">
-          <span className="font-medium">Possibly already handled: </span>
-          {handledEvidence.join("; ")}. Confirm with the customer, then resolve.
-        </div>
+      <ZoneLabel dot="bg-amber-400" text="Added context" hint="facts your team pinned — these ground the draft" />
+      {/* rep-pinned facts: this ticket, this customer, or a product */}
+      <NotesPanel key={contextNotes.length} notes={contextNotes} ticketId={ticket.id} customerId={ticket.customerId} />
+      {!sent && (
+        <ContextComposer
+          ticketId={ticket.id}
+          customerId={ticket.customerId}
+          productFamily={detectedFamily}
+          onSaved={(regen) => {
+            if (regen) generate("Incorporate the newly added context.");
+          }}
+        />
       )}
 
+      <ZoneLabel dot="bg-gold" text="The reply" hint="grounded draft — you confirm before anything sends" />
       {/* the reply — first and full width; everything a rep needs to answer */}
-      <div className="rounded-xl border border-neutral-200 bg-white p-4">
+      <div className="rounded-xl border border-l-4 border-neutral-200 border-l-gold bg-white p-4">
         <div className="mb-2 flex items-center justify-between">
           <div className="text-xs text-neutral-400">{sent ? "Sent" : "First draft · edit inline"}</div>
           {draft && (
@@ -566,20 +593,9 @@ export default function TicketWorkspace({
         </div>
       )}
 
-      {/* add context — one composer for ticket/customer/product facts + FAQ proposals */}
-      {!sent && (
-        <ContextComposer
-          ticketId={ticket.id}
-          customerId={ticket.customerId}
-          productFamily={detectedFamily}
-          onSaved={(regen) => {
-            if (regen) generate("Incorporate the newly added context.");
-          }}
-        />
-      )}
-
+      <ZoneLabel dot="bg-neutral-300" text="Conversation" hint="the full email thread" />
       {/* conversation — full width, the complete thread */}
-      <div className="mt-3 rounded-xl border border-neutral-200 bg-white p-4">
+      <div className="rounded-xl border border-l-4 border-neutral-200 border-l-neutral-300 bg-white p-4">
         <div className="mb-2 flex items-baseline justify-between text-xs text-neutral-400">
           <span>Conversation</span>
           {gmailUrl && (

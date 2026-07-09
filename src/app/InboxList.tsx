@@ -5,6 +5,7 @@ import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { statusChip, statusLabel } from "@/lib/ui";
 import { REPLY_STATE_CHIP, REPLY_STATE_LABEL, type ReplyState } from "@/lib/reply-state";
+import { categoryChipClass } from "@/lib/categories";
 
 export type Row = {
   id: string;
@@ -13,6 +14,7 @@ export type Row = {
   snippet: string;
   status: string;
   category: string | null;
+  categoryKey?: string | null;
   wholesale: boolean;
   urgent: boolean;
   replyState: ReplyState;
@@ -335,7 +337,7 @@ function TableGroup({
           </td>
           <td className="px-2 py-2 align-middle">
             {t.category && (
-              <span className="inline-block rounded-full bg-neutral-100 px-2 py-0.5 text-[11px] text-neutral-600">
+              <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] ${categoryChipClass(t.categoryKey)}`}>
                 {t.category.replace(/_/g, " ")}
               </span>
             )}

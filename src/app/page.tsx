@@ -161,6 +161,7 @@ export default async function Inbox({
       lastActivityAt: lastMsg ? lastMsg.sentAt.getTime() : t.createdAt.getTime(),
       maybeHandled: t.tags.includes("maybe_handled"),
       category: t.category ? categoryLabel(t.category) : (coarseTag?.replace(/_/g, " ") ?? null),
+      categoryKey: t.category ?? coarseTag,
       wholesale: t.channelRef?.supportAddress?.startsWith("wholesale") ?? false,
       urgent: t.priority === "high" && open,
       replyState,

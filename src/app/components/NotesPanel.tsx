@@ -65,7 +65,7 @@ export default function NotesPanel({
   }
 
   return (
-    <div className="mb-3 rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-xs">
+    <div className="mb-3 rounded-xl border border-l-4 border-neutral-200 border-l-amber-400 bg-white px-4 py-2.5 text-xs">
       <div className="flex items-center gap-2">
         <span className="font-medium text-neutral-500">Context notes</span>
         <span className="text-neutral-400">
