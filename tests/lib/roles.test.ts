@@ -100,3 +100,19 @@ describe("requireAdmin", () => {
     });
   });
 });
+
+describe("canSeeSales", () => {
+  it("is off for admins and agents without the flag — admin is not enough", async () => {
+    const { canSeeSales } = await import("@/lib/roles");
+    expect(canSeeSales({ role: "brand_admin", canViewSales: false })).toBe(false);
+    expect(canSeeSales({ role: "agent", canViewSales: false })).toBe(false);
+    expect(canSeeSales(null)).toBe(false);
+  });
+
+  it("is on for flagged users regardless of role, and always for super_admin", async () => {
+    const { canSeeSales } = await import("@/lib/roles");
+    expect(canSeeSales({ role: "team_lead", canViewSales: true })).toBe(true);
+    expect(canSeeSales({ role: "brand_admin", canViewSales: true })).toBe(true);
+    expect(canSeeSales({ role: "super_admin", canViewSales: false })).toBe(true);
+  });
+});

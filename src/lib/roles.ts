@@ -13,6 +13,15 @@ export function isAdminRole(role: string | null | undefined): boolean {
   return !!role && (ADMIN_ROLES as readonly string[]).includes(role);
 }
 
+/**
+ * Financial visibility — revenue/sales summaries render only for flagged
+ * users (owners) or the super admin. Admin role alone is NOT enough: reps
+ * run support as brand_admin without seeing the business's numbers.
+ */
+export function canSeeSales(u: { role?: string | null; canViewSales?: boolean | null } | null | undefined): boolean {
+  return !!u && (u.role === "super_admin" || !!u.canViewSales);
+}
+
 export type SessionUser = { id: string; email: string; tenantId: string; role: string };
 
 /** The signed-in user, or null. Middleware walls the app, so null = API misuse. */

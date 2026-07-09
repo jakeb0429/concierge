@@ -259,6 +259,10 @@ model User {
   email            String
   name             String?
   role             String    @default("agent") // agent|team_lead|brand_admin|super_admin
+  // financial visibility: revenue/sales summaries render only for flagged
+  // users (owners) — being an admin is NOT enough (reps run support as
+  // brand_admin without seeing the business's numbers)
+  canViewSales     Boolean   @default(false)
   specialties      String[]  // inquiry categories this user handles — drives auto-assign suggestions
   magicLinkToken   String? // sha256 hash of the current magic-link/one-time token
   magicLinkExpires DateTime?

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { getCurrentTenant } from "@/lib/tenant";
-import { sessionUser, isAdminRole } from "@/lib/roles";
+import { sessionUser, isAdminRole, canSeeSales } from "@/lib/roles";
 import { computeResponseTimes, fmtDuration } from "@/lib/response-times";
 import { categoryLabel } from "@/lib/categories";
 import { msAgo } from "@/lib/time";
@@ -138,7 +138,7 @@ export default async function Analytics({ searchParams }: { searchParams: Promis
     return `/analytics${pairs.length ? "?" + pairs.map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join("&") : ""}${hash}`;
   };
 
-  const [inquiriesAll, sales, sentDrafts, live, mine, myUser, byLine] = await Promise.all([
+  const [inquiriesAll, sales, sentDrafts, live, mine, myUser] = await Promise.all([
     prisma.analyticsInquiry.findMany({
       where: { tenantId: tenant.id, threadCreatedAt: { gte: since } },
       select: { id: true, category: true, endSentiment: true, threadCreatedAt: true, daysSincePurchase: true, fromEmail: true, productFamily: true, frameColor: true, lensColor: true, productStyle: true, productGender: true },
@@ -151,9 +151,12 @@ export default async function Analytics({ searchParams }: { searchParams: Promis
     ]).then(([total, unedited]) => ({ total, unedited })),
     ticketAnalytics(tenant.id, weeks),
     me ? myStats(tenant.id, me.id) : Promise.resolve(null),
-    me ? prisma.user.findUnique({ where: { id: me.id }, select: { name: true } }) : Promise.resolve(null),
-    admin ? salesByLine(tenant.id) : Promise.resolve(null),
+    me ? prisma.user.findUnique({ where: { id: me.id }, select: { name: true, canViewSales: true } }) : Promise.resolve(null),
   ]);
+  // Sales/revenue summaries are owner-only (canViewSales flag), independent
+  // of admin — reps run support as brand_admin without the business numbers.
+  const showSales = canSeeSales({ role: me?.role, canViewSales: myUser?.canViewSales });
+  const byLine = showSales ? await salesByLine(tenant.id) : null;
   const real = inquiriesAll.filter((q) => !NOISE.includes(q.category));
 
   // Mined-history aggregations (365d)
@@ -312,8 +315,8 @@ export default async function Analytics({ searchParams }: { searchParams: Promis
         </div>
       )}
 
-      {/* D2C vs B2B — the two business lines side by side (admin) */}
-      {admin && byLine && (
+      {/* D2C vs B2B — the two business lines side by side (owner-only) */}
+      {showSales && byLine && (
         <div className="mb-4 rounded-xl border border-neutral-200 bg-white p-4">
           <div className="mb-1 flex items-baseline justify-between">
             <div className="text-sm font-medium">D2C vs B2B</div>
@@ -540,8 +543,8 @@ export default async function Analytics({ searchParams }: { searchParams: Promis
         </div>
       </div>
 
-      {/* Inquiries vs sales — two aligned rows, one month axis, separate scales stated */}
-      {admin && (
+      {/* Inquiries vs sales — two aligned rows, one month axis, separate scales stated (owner-only) */}
+      {showSales && (
         <div className="mt-4 rounded-xl border border-neutral-200 bg-white p-4">
           <div className="mb-1 text-sm font-medium">Inquiries vs sales, by month</div>
           <div className="mb-3 text-xs text-neutral-400">
