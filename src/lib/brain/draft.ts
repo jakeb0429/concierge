@@ -102,8 +102,8 @@ export async function generateDraft(input: DraftInput): Promise<DraftResult> {
     "Cite every knowledge item you used by its [id]. Score coverage honestly.",
     input.voiceGuide ? `Write in this brand voice:\n${input.voiceGuide}` : "",
     // Style rules that override anything the voice guide or mined exemplars imply:
-    "STYLE: Use at most ONE em dash (—) in the entire reply, ideally zero — prefer commas, periods,",
-    "or parentheses. Keep it tight: same warmth, fewer words. Cut throat-clearing ('here's the scoop',",
+    "STYLE: NEVER use an em dash (—). Not one, anywhere. Use a comma, a period, or parentheses",
+    "instead. Keep it tight: same warmth, fewer words. Cut throat-clearing ('here's the scoop',",
     "'a quick heads up though'), don't state the same idea twice, and don't narrate what the list",
     "already shows. Short sentences read friendlier than long ones.",
     input.repName
@@ -138,5 +138,8 @@ export async function generateDraft(input: DraftInput): Promise<DraftResult> {
 
   const call = res.content.find((c) => c.type === "tool_use");
   if (!call || call.type !== "tool_use") throw new Error("Model did not return a draft.");
-  return call.input as DraftResult;
+  const result = call.input as DraftResult;
+  // Belt and braces: no em dash ever reaches a customer, whatever the model did.
+  result.body = result.body.replace(/\s*—\s*/g, ", ").replace(/, ,/g, ",");
+  return result;
 }
