@@ -9,6 +9,7 @@ describe("isPublic", () => {
     expect(isPublic("/favicon.ico")).toBe(true);
     expect(isPublic("/robots.txt")).toBe(true);
     expect(isPublic("/scribe-mark.png")).toBe(true);
+    expect(isPublic("/icon.png")).toBe(true); // the favicon must load on /login
   });
 
   it("protects app and API routes", () => {
@@ -38,7 +39,7 @@ describe("isPublic", () => {
 
   it("exports the expected surface (guards accidental additions)", () => {
     expect([...PUBLIC_EXACT].sort()).toEqual(
-      ["/favicon.ico", "/login", "/robots.txt", "/scribe-mark.png"].sort()
+      ["/favicon.ico", "/icon.png", "/login", "/robots.txt", "/scribe-mark.png"].sort()
     );
     expect(PUBLIC_PREFIXES).toEqual(["/api/auth", "/_next"]);
   });
