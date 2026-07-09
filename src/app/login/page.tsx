@@ -4,6 +4,9 @@ import { Suspense, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { signIn } from "next-auth/react";
 
+// Password-only mode unless explicitly re-enabled (inlined at build time).
+const MAGIC_LINK = process.env.NEXT_PUBLIC_MAGIC_LINK === "true";
+
 function Login() {
   const params = useSearchParams();
   const [email, setEmail] = useState("");
@@ -15,10 +18,12 @@ function Login() {
     params.get("magic") === "verified"
       ? "Signing you in…"
       : params.get("error")
-        ? "That link was invalid or expired — request a new one."
+        ? MAGIC_LINK
+          ? "That link was invalid or expired — request a new one."
+          : "That link is no longer valid — sign in with your password."
         : null
   );
-  const [usePassword, setUsePassword] = useState(false);
+  const [usePassword, setUsePassword] = useState(!MAGIC_LINK);
   const [password, setPassword] = useState("");
   const callbackUrl = params.get("callbackUrl") || "/";
   const signedIn = useRef(false); // fire the one-time-token sign-in exactly once (dev strict-mode guard)
@@ -76,7 +81,9 @@ function Login() {
           <p className="text-[11px] text-warm-grey">by Scribe CHS</p>
         </div>
       </div>
-      <p className="mt-4 text-sm text-neutral-500">Sign in with your work email.</p>
+      <p className="mt-4 text-sm text-neutral-500">
+        {MAGIC_LINK ? "Sign in with your work email." : "Sign in with your work email and password."}
+      </p>
 
       {status && <p className="mt-4 rounded-lg bg-neutral-100 px-3 py-2 text-sm text-neutral-600">{status}</p>}
 
@@ -132,7 +139,7 @@ function Login() {
         </form>
       )}
 
-      {!sent && (
+      {!sent && MAGIC_LINK && (
         <button
           onClick={() => {
             setUsePassword((v) => !v);

@@ -24,6 +24,9 @@ const req = (email: string) =>
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // These tests exercise the enabled behavior; password-only mode (the
+  // production default since 2026-07-09) is covered by its own test below.
+  vi.stubEnv("NEXT_PUBLIC_MAGIC_LINK", "true");
   getCurrentTenant.mockResolvedValue({ id: "t1", slug: "rheos" });
   hashToken.mockImplementation(async (t: string) => `hashed:${t}`);
   prisma.user.update.mockResolvedValue({});
@@ -70,5 +73,15 @@ describe("POST /api/auth/magic-link", () => {
     expect(await fourth.json()).toEqual({ success: true }); // indistinguishable to the caller
     expect(sendMagicLink).toHaveBeenCalledTimes(3); // no new send
     expect(prisma.user.findFirst).toHaveBeenCalledTimes(3); // brake fires before any DB work
+  });
+});
+
+describe("password-only mode (flag unset)", () => {
+  it("rejects with 403 before touching the DB or sending anything", async () => {
+    vi.stubEnv("NEXT_PUBLIC_MAGIC_LINK", "");
+    const res = await POST(req("rep@rheos.com"));
+    expect(res.status).toBe(403);
+    expect(prisma.user.findFirst).not.toHaveBeenCalled();
+    expect(sendMagicLink).not.toHaveBeenCalled();
   });
 });

@@ -25,6 +25,12 @@ const bodySchema = z.object({
  *  bootstrap fallback that provisions into Rheos. Response never reveals
  *  whether the email is known. */
 export async function POST(req: Request) {
+  // Password-only mode (Jake, 2026-07-09): magic links stay off unless the
+  // flag is explicitly "true". Re-enable = set NEXT_PUBLIC_MAGIC_LINK=true.
+  if (process.env.NEXT_PUBLIC_MAGIC_LINK !== "true") {
+    logger.warn({}, "[magic-link] request rejected — magic-link sign-in is disabled");
+    return NextResponse.json({ error: "Magic-link sign-in is disabled. Use your password." }, { status: 403 });
+  }
   const parsed = await parseBody(req, bodySchema);
   if (parsed instanceof NextResponse) return parsed;
   const { email, callbackUrl } = parsed;

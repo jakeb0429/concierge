@@ -54,6 +54,9 @@ export const { handlers, signIn, signOut, auth, unstable_update } = NextAuth({
       name: "magic-link",
       credentials: { email: {}, token: {} },
       async authorize(credentials) {
+        // Password-only mode: also refuses links emailed before the flag
+        // flipped, so nothing outstanding can still sign in.
+        if (process.env.NEXT_PUBLIC_MAGIC_LINK !== "true") return null;
         const email = (credentials?.email as string)?.toLowerCase().trim();
         const token = credentials?.token as string;
         if (!email || !token) return null;
