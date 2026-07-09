@@ -704,7 +704,7 @@ export default function TicketWorkspace({
             ) : (
               <div key={i} className="rounded-lg bg-green-50 p-3 text-sm leading-relaxed">
                 <div className="mb-1 flex items-baseline justify-between">
-                  <span className="text-xs font-medium text-green-700">Rheos support</span>
+                  <span className="text-xs font-medium text-green-700">{ticket.mailbox || "Support"}</span>
                   <span className="text-[11px] text-green-700/70">{fmtTime(m.sentAt)}</span>
                 </div>
                 <p className="whitespace-pre-wrap text-neutral-800">{m.text}</p>

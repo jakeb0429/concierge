@@ -49,8 +49,19 @@ never in a prompt; the Brain is small, curated, versioned, and is the only groun
 Learning = human-approved updates to existing entries, not accumulation.
 
 **The Microsoft seam:** core code only touches `ChannelAdapter` (`src/lib/channels/types.ts`).
-`GmailAdapter` is live; `GraphMailAdapter` is compiled-and-stubbed. Onboarding Stingray =
-Azure app registration + fill in the Graph method bodies + a Channel row. Zero core changes.
+`GmailAdapter` is live. `GraphMailAdapter` is LIVE as of 2026-07-09 (plain bounded fetch,
+no SDK): client-credentials token (cached in-process), ingest via recent-inbox poll,
+send via createReply→PATCH→send (preserves Outlook threading; falls back to sendMail),
+categories as tags, mailFolders moves, archive via the "archive" well-known folder.
+Watch/push subscriptions intentionally NOT wired — intake polls via
+`prisma/intake-graph.ts` (15-min cron, mirrors intake-gmail: conversationId = thread,
+idempotent upserts, triage/auto-assign/replied-detection, attachment metadata).
+Stingray's mailbox is **hello@stingrayboats.com** (verified live: token roles
+Mail.ReadWrite+Mail.Send, access scoped to ONLY that mailbox; support@ does not
+exist — seed + Channel row fixed accordingly). Credentials: STINGRAY_GRAPH_* in .env
+(local + birdseye; Azure secret expires 2028-07-08). The attachments route branches
+by provider (Graph ids are stable; bytes proxied via contentBytes). Sends still pass
+the CONCIERGE_LIVE_SEND gate + rep confirm like Gmail.
 
 ## 3. Where everything runs
 

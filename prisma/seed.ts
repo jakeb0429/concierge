@@ -57,16 +57,18 @@ async function main() {
     update: {},
     create: { slug: "stingray", name: "Stingray Boats" },
   });
+  // hello@ per the M365 IT setup (their ApplicationAccessPolicy grants ONLY
+  // this mailbox; support@stingrayboats.com does not exist — verified 7/9).
   await prisma.channel.upsert({
     where: {
       tenantId_provider_supportAddress: {
         tenantId: stingray.id,
         provider: "graph",
-        supportAddress: "support@stingrayboats.com",
+        supportAddress: "hello@stingrayboats.com",
       },
     },
     update: {},
-    create: { tenantId: stingray.id, provider: "graph", supportAddress: "support@stingrayboats.com" },
+    create: { tenantId: stingray.id, provider: "graph", supportAddress: "hello@stingrayboats.com" },
   });
 
   console.log(`Seeded Rheos (${RHEOS_SEED.length} knowledge items) + Stingray tenant.`);

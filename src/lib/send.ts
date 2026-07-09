@@ -71,5 +71,12 @@ export function credentialsFor(provider: string): Record<string, string> | null 
       pubsubTopic: process.env.RHEOS_GMAIL_PUBSUB_TOPIC ?? "",
     };
   }
+  if (provider === "graph" && process.env.STINGRAY_GRAPH_CLIENT_SECRET) {
+    return {
+      azureTenantId: process.env.STINGRAY_GRAPH_TENANT_ID ?? "",
+      clientId: process.env.STINGRAY_GRAPH_CLIENT_ID ?? "",
+      clientSecret: process.env.STINGRAY_GRAPH_CLIENT_SECRET,
+    };
+  }
   return null;
 }

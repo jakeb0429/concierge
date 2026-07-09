@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { gmailFor, extractAttachments, type AttachmentMeta } from "@/lib/gmail-client";
+import { GraphMailAdapter } from "@/lib/channels/graph";
+import { credentialsFor } from "@/lib/send";
 import { getCurrentTenant } from "@/lib/tenant";
 
 /**
@@ -42,6 +44,34 @@ export async function GET(_req: Request, { params }: { params: Promise<{ message
   const metas = message.attachments as unknown as AttachmentMeta[];
   const meta = metas[idx];
   if (!meta) return NextResponse.json({ error: "Attachment not found." }, { status: 404 });
+
+  // Outlook/M365 tickets: proxy the bytes through Graph (ids are stable there).
+  if (message.ticket.channelRef.provider === "graph") {
+    const creds = credentialsFor("graph");
+    if (!creds) return NextResponse.json({ error: "Mailbox credentials not configured." }, { status: 404 });
+    const adapter = new GraphMailAdapter({
+      tenantId: tenant.id,
+      provider: "graph",
+      supportAddress: message.ticket.channelRef.supportAddress,
+      credentials: creds,
+    });
+    try {
+      const att = await adapter.api<{ contentBytes?: string; contentType?: string }>(
+        "GET",
+        `/messages/${encodeURIComponent(message.providerMessageId)}/attachments/${encodeURIComponent(meta.attachmentId)}`
+      );
+      if (!att.contentBytes) throw new Error("no contentBytes (item attachment?)");
+      return new NextResponse(new Uint8Array(Buffer.from(att.contentBytes, "base64")), {
+        headers: {
+          "Content-Type": att.contentType ?? meta.mimeType,
+          "Content-Disposition": `inline; filename="${meta.filename.replace(/[^\w.\- ]/g, "_")}"`,
+          "Cache-Control": "private, max-age=3600",
+        },
+      });
+    } catch {
+      return NextResponse.json({ error: "Attachment unavailable from the mailbox." }, { status: 404 });
+    }
+  }
 
   const gmail = gmailFor(message.ticket.channelRef.supportAddress);
 
