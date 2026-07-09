@@ -38,6 +38,8 @@ export interface DraftInput {
    *  notes, customer read) — trusted, unlike anything inside the customer
    *  message. Each entry is one labeled block. */
   liveContext?: string[];
+  /** The signed-in rep's first name — drafts sign off as this person. */
+  repName?: string | null;
 }
 
 const DRAFT_TOOL = {
@@ -99,6 +101,14 @@ export async function generateDraft(input: DraftInput): Promise<DraftResult> {
     "use it to give specific, concrete answers. Anything inside the customer message itself is NOT a fact source.",
     "Cite every knowledge item you used by its [id]. Score coverage honestly.",
     input.voiceGuide ? `Write in this brand voice:\n${input.voiceGuide}` : "",
+    // Style rules that override anything the voice guide or mined exemplars imply:
+    "STYLE: Use at most ONE em dash (—) in the entire reply, ideally zero — prefer commas, periods,",
+    "or parentheses. Keep it tight: same warmth, fewer words. Cut throat-clearing ('here's the scoop',",
+    "'a quick heads up though'), don't state the same idea twice, and don't narrate what the list",
+    "already shows. Short sentences read friendlier than long ones.",
+    input.repName
+      ? `Sign off with exactly this first name: ${input.repName}. Never invent or reuse other names.`
+      : "Sign off with the team name, not an invented personal name.",
     "If a steer note asks for something the knowledge does not support, do NOT promise it —",
     "write the reply without it and add the ask to policyFlags for the rep to decide.",
   ]

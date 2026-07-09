@@ -8,6 +8,7 @@ import { groundingNotes } from "@/lib/notes";
 import { findStockists, stockistLines, detectPlace } from "@/lib/stockists";
 import { extractProductMention } from "@/lib/product-extract";
 import { getCurrentTenant } from "@/lib/tenant";
+import { sessionUser } from "@/lib/roles";
 
 /**
  * Prepare (or regenerate) a first draft for a ticket. Grounded, cited, scored.
@@ -77,6 +78,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     ? await prisma.draft.findFirst({ where: { id: regenOfDraftId, ticketId: ticket.id } })
     : null;
 
+  // Drafts sign off as the person who'll send them — the signed-in rep.
+  const me = await sessionUser();
+  const repUser = me ? await prisma.user.findUnique({ where: { id: me.id }, select: { name: true } }) : null;
+  const repName = repUser?.name?.split(" ")[0] ?? null;
+
   const result = await generateDraft({
     tenantId: ticket.tenantId,
     ticketText,
@@ -84,6 +90,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     steerNotes,
     priorDraftBody: prior?.editedBody ?? prior?.body ?? undefined,
     liveContext,
+    repName,
   });
 
   // Only cite ids that are real KnowledgeItems in this tenant.
