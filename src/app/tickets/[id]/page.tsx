@@ -170,6 +170,7 @@ export default async function TicketDetail({ params }: { params: Promise<{ id: s
           mailbox,
           categoryLabel: ticket.category ? categoryLabel(ticket.category) : null,
           categoryKey: ticket.category,
+          returnStatus: ticket.returnStatus,
         }}
         assign={{
           assigneeId: ticket.assigneeId,

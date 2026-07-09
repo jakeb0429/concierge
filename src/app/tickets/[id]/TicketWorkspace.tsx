@@ -44,7 +44,10 @@ type Ticket = {
   mailbox: string;
   categoryLabel: string | null;
   categoryKey?: string | null;
+  returnStatus?: string | null;
 };
+
+type ReturnEligibility = { verdict: "eligible" | "ineligible" | "review"; reasons: string[] };
 
 type Assign = {
   assigneeId: string | null;
@@ -124,6 +127,9 @@ export default function TicketWorkspace({
   // The next ticket needing a reply; fetching it also pre-warms its caches
   // server-side so "Next →" opens fast.
   const [nextTicket, setNextTicket] = useState<{ id: string; subject: string | null; urgent: boolean } | null>(null);
+  // guided returns (Phase A): lifecycle chip + the last eligibility verdict
+  const [returnStatus, setReturnStatus] = useState<string | null>(ticket.returnStatus ?? null);
+  const [returnVerdict, setReturnVerdict] = useState<ReturnEligibility | null>(null);
   const started = useRef(false);
 
   useEffect(() => {
@@ -153,13 +159,13 @@ export default function TicketWorkspace({
     if (!res.ok) setAssigneeId(prev);
   }
 
-  async function generate(steerNotes?: string) {
+  async function generate(steerNotes?: string, opts?: { startReturn?: boolean }) {
     setGenerating(true);
     try {
       const res = await fetch(`/api/tickets/${ticket.id}/draft`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ steerNotes, regenOfDraftId: draft?.draftId }),
+        body: JSON.stringify({ steerNotes, regenOfDraftId: draft?.draftId, startReturn: opts?.startReturn }),
       });
       const d = await res.json();
       if (!res.ok) {
@@ -170,6 +176,10 @@ export default function TicketWorkspace({
       setBody((d as Draft).body);
       setStatus("in_review");
       setSteer("");
+      if (d.returnEligibility) {
+        setReturnVerdict(d.returnEligibility as ReturnEligibility);
+        setReturnStatus("requested");
+      }
       // New content = new review: never inherit approved/pending from the old draft.
       setReviewState({ status: (d as Draft).status ?? "prepared", note: null });
     } finally {
@@ -281,6 +291,11 @@ export default function TicketWorkspace({
           {ticket.categoryLabel && (
             <span className={`rounded-full px-2 py-1 text-[11px] ${categoryChipClass(ticket.categoryKey)}`}>
               {ticket.categoryLabel}
+            </span>
+          )}
+          {returnStatus && (
+            <span className="rounded-full bg-violet-100 px-2 py-1 text-[11px] font-medium text-violet-800">
+              return {returnStatus.replace(/_/g, " ")}
             </span>
           )}
           {assign && (
@@ -430,6 +445,52 @@ export default function TicketWorkspace({
             if (regen) generate("Incorporate the newly added context.");
           }}
         />
+      )}
+
+      {/* guided returns (Phase A) — eligibility check + return-grounded draft,
+          offered on returns/exchange tickets until the reply goes out */}
+      {ticket.categoryKey === "returns_exchange" && !sent && (
+        <>
+          <ZoneLabel dot="bg-violet-400" text="Return / exchange" hint="eligibility from order history — you confirm before anything is promised" />
+          <div className="mb-1 rounded-xl border border-l-4 border-neutral-200 border-l-violet-400 bg-white px-4 py-3">
+            {returnVerdict ? (
+              <div
+                className={`rounded-lg px-3 py-2 text-sm ${
+                  returnVerdict.verdict === "eligible"
+                    ? "bg-green-50 text-green-800"
+                    : returnVerdict.verdict === "ineligible"
+                      ? "bg-red-50 text-red-800"
+                      : "bg-amber-50 text-amber-800"
+                }`}
+              >
+                <span className="font-semibold">
+                  {returnVerdict.verdict === "eligible"
+                    ? "Eligible"
+                    : returnVerdict.verdict === "ineligible"
+                      ? "Not eligible"
+                      : "Needs review"}
+                  {": "}
+                </span>
+                {returnVerdict.reasons.join("; ")}. The draft below is grounded in these facts.
+              </div>
+            ) : (
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  onClick={() => generate(undefined, { startReturn: true })}
+                  disabled={generating}
+                  className="rounded-lg bg-violet-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50"
+                >
+                  {generating ? "Checking eligibility…" : "Start return/exchange"}
+                </button>
+                <span className="text-xs text-neutral-500">
+                  Checks the order window ({"365-day Saltwater Promise"}), refund history, and channel, then
+                  prepares a reply from the verdict.
+                  {returnStatus ? " A return is already in progress on this ticket." : ""}
+                </span>
+              </div>
+            )}
+          </div>
+        </>
       )}
 
       <ZoneLabel dot="bg-gold" text="The reply" hint="grounded draft — you confirm before anything sends" />

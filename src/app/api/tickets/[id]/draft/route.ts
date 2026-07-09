@@ -9,23 +9,34 @@ import { findStockists, stockistLines, detectPlace } from "@/lib/stockists";
 import { extractProductMention } from "@/lib/product-extract";
 import { getCurrentTenant } from "@/lib/tenant";
 import { sessionUser } from "@/lib/roles";
+import { checkReturnEligibility } from "@/lib/returns";
 import { z } from "zod";
 import { parseBody } from "@/lib/validate";
 
 const bodySchema = z.object({
   steerNotes: z.string().optional(),
   regenOfDraftId: z.string().optional(),
+  // guided returns (Phase A): compute eligibility, ground the draft in it,
+  // and mark the ticket's return lifecycle as requested
+  startReturn: z.boolean().optional(),
 });
+
+const RETURN_STEER =
+  "The customer wants a return or exchange. Use the system-computed return eligibility " +
+  "facts from live context: if eligible, lay out the clear next steps to start the return " +
+  "or exchange, and offer an exchange first where it feels natural; if not eligible or " +
+  "flagged for review, kindly explain what we can and cannot do. Never promise a specific " +
+  "refund amount or timeline that is not in the grounding.";
 
 /**
  * Prepare (or regenerate) a first draft for a ticket. Grounded, cited, scored.
- * Body: { steerNotes?: string, regenOfDraftId?: string }
+ * Body: { steerNotes?: string, regenOfDraftId?: string, startReturn?: boolean }
  */
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const parsed = await parseBody(req, bodySchema);
   if (parsed instanceof NextResponse) return parsed;
-  const { steerNotes, regenOfDraftId } = parsed;
+  const { steerNotes, regenOfDraftId, startReturn } = parsed;
 
   const currentTenant = await getCurrentTenant();
   const ticket = await prisma.ticket.findFirst({
@@ -80,6 +91,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       );
     }
   }
+  // Guided return: eligibility verdict + facts join the trusted context.
+  const eligibility = startReturn ? await checkReturnEligibility(ticket.customer, ticket.tenantId) : null;
+  if (eligibility) liveContext.push(...eligibility.liveContext);
+
   const prior = regenOfDraftId
     ? await prisma.draft.findFirst({ where: { id: regenOfDraftId, ticketId: ticket.id } })
     : null;
@@ -93,7 +108,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     tenantId: ticket.tenantId,
     ticketText,
     voiceGuide: ticket.tenant.voiceGuide,
-    steerNotes,
+    steerNotes: startReturn ? [RETURN_STEER, steerNotes].filter(Boolean).join(" ") : steerNotes,
     priorDraftBody: prior?.editedBody ?? prior?.body ?? undefined,
     liveContext,
     repName,
@@ -135,7 +150,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     });
   }
 
-  await prisma.ticket.update({ where: { id: ticket.id }, data: { status: "in_review" } });
+  await prisma.ticket.update({
+    where: { id: ticket.id },
+    data: { status: "in_review", ...(eligibility ? { returnStatus: "requested" } : {}) },
+  });
   await prisma.auditEvent.create({
     data: {
       tenantId: ticket.tenantId,
@@ -144,6 +162,17 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       meta: { draftId: draft.id, coverage: result.coverage, steerNotes: steerNotes ?? null },
     },
   });
+  if (eligibility) {
+    await prisma.auditEvent.create({
+      data: {
+        tenantId: ticket.tenantId,
+        actorId: me?.id,
+        action: "return_started",
+        entity: `ticket:${ticket.id}`,
+        meta: { draftId: draft.id, verdict: eligibility.verdict, reasons: eligibility.reasons },
+      },
+    });
+  }
 
   return NextResponse.json({
     draftId: draft.id,
@@ -152,6 +181,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     coverageNote: result.coverageNote ?? null,
     policyFlags: result.policyFlags,
     suggested: result.suggested,
+    returnEligibility: eligibility ? { verdict: eligibility.verdict, reasons: eligibility.reasons } : null,
     citations: result.citations
       .filter((c) => validIds.has(c.knowledgeItemId))
       .map((c) => {

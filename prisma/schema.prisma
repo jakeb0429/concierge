@@ -149,6 +149,9 @@ model Ticket {
   channelRef    Channel? @relation(fields: [channelId], references: [id])
   subject       String?
   status        String   @default("new") // new|drafted|in_review|replied|resolved|archived
+  // return/exchange lifecycle (null = no return in play). Phase A sets
+  // "requested"; later phases advance: approved|label_sent|package_received|refunded|exchanged
+  returnStatus  String?
   priority      String   @default("normal") // low|normal|high|vip
   category      String?  // fine-grained inquiry category (see INQUIRY_CATEGORIES) — drives routing + brain training
   assigneeId    String?

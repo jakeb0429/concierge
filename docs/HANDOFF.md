@@ -294,16 +294,23 @@ half mechanical.
 9. **PM2 single instance, no CI** — deploys are manual/rsync; GitHub is source-of-truth but
    nothing auto-deploys on push.
 
-## FUTURE: returns & exchange process (Jake-approved direction, 2026-07-08)
+## Returns & exchange process (Jake-approved direction, 2026-07-08)
 
 Build the return/exchange flow INTO the ticket workspace, staged so each phase ships value:
 
-**Phase A — guided returns (no new integrations).** A "Start return/exchange" action on
-returns_exchange tickets: eligibility check runs automatically against data we already
-have (their order from CustomerOrder/ShipStation, purchase date vs the 365-day Saltwater
-Promise, refund history, the AI customer read for abuse signals). Output = an eligibility
-verdict + a pre-filled reply (return instructions / exchange offer) grounded in the Brain's
-return policy. The rep confirms and sends, and the ticket gains a `return_started` state.
+**Phase A — guided returns (SHIPPED 2026-07-09).** A "Start return/exchange" action shows
+on returns_exchange tickets (violet zone above The Reply): `src/lib/returns.ts` computes
+the verdict from CustomerOrder history — window vs the 365-day Saltwater Promise
+(`RETURN_WINDOW_DAYS`), refund history (≥2 prior refunds → review), channel (B2B-only →
+review/wholesale), no orders → review with a related-customer household hint
+(`findRelatedCustomers`). The verdict + facts go to the draft engine as liveContext via
+`POST /api/tickets/[id]/draft {startReturn:true}` (plus a returns steer), the ticket gains
+`returnStatus="requested"` (chip in the status header), and a `return_started` AuditEvent
+records the verdict. Rep confirms and sends as usual — eligibility never auto-approves.
+NOTE for the Brain: the seeded "Saltwater Promise" KnowledgeItem covers lens-replacement
+warranty ($20 fee), not general return instructions — until a returns-policy item is
+taught/approved, return drafts lean on the eligibility liveContext and may score partial
+coverage. Teach a proper returns/exchange policy item to close this.
 
 **Phase B — label + tracking.** Generate the return label via ShipStation (we already have
 API creds; POST /shipments/createlabel) or Shopify's return APIs, attach it to the outgoing
