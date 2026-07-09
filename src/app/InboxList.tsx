@@ -15,7 +15,7 @@ export type Row = {
   status: string;
   category: string | null;
   categoryKey?: string | null;
-  wholesale: boolean;
+  mailboxTag: string | null;
   urgent: boolean;
   replyState: ReplyState;
   looksNoise: boolean;
@@ -315,8 +315,8 @@ function TableGroup({
                 {t.urgent && (
                   <span className="rounded-full bg-red-600 px-1.5 text-[10px] font-semibold text-white">URGENT</span>
                 )}
-                {t.wholesale && (
-                  <span className="rounded-full bg-purple-50 px-1.5 text-[10px] text-purple-700">wholesale</span>
+                {t.mailboxTag && (
+                  <span className="rounded-full bg-purple-50 px-1.5 text-[10px] text-purple-700">{t.mailboxTag}</span>
                 )}
                 {t.maybeHandled && (
                   <span

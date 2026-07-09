@@ -163,7 +163,12 @@ export default async function Inbox({
       maybeHandled: t.tags.includes("maybe_handled"),
       category: t.category ? categoryLabel(t.category) : (coarseTag?.replace(/_/g, " ") ?? null),
       categoryKey: t.category ?? coarseTag,
-      wholesale: t.channelRef?.supportAddress?.startsWith("wholesale") ?? false,
+      // non-primary mailboxes get a feed badge (wholesale@, marketing@, ...);
+      // hello@ is every brand's primary and stays unbadged
+      mailboxTag:
+        t.channelRef?.supportAddress && !t.channelRef.supportAddress.startsWith("hello")
+          ? t.channelRef.supportAddress.split("@")[0]
+          : null,
       urgent: t.priority === "high" && open,
       replyState,
       looksNoise: coarseTag !== null && noiseCats.has(coarseTag),
