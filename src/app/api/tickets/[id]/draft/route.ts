@@ -5,6 +5,8 @@ import { cleanEmailText } from "@/lib/email-clean";
 import { getOrderContext, orderContextLines } from "@/lib/shipstation";
 import { getCustomerInsight } from "@/lib/customer-insight";
 import { groundingNotes } from "@/lib/notes";
+import { findStockists, stockistLines, detectPlace } from "@/lib/stockists";
+import { extractProductMention } from "@/lib/product-extract";
 import { getCurrentTenant } from "@/lib/tenant";
 
 /**
@@ -37,23 +39,41 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     })
     .join("\n\n");
 
-  // Live order context (ShipStation, cached, fail-soft) — lets shipping/order
-  // drafts reference the customer's ACTUAL order state instead of hedging.
+  // Verified live context — facts WE fetched (never trusted from the customer
+  // message itself): order status, customer read, channel, team notes,
+  // stockists. Passed to the engine as its own trusted section.
+  const liveContext: string[] = [];
   const orders = await getOrderContext(ticket.customer.email, ticket.tenantId);
-  if (orders.length) {
-    ticketText += `\n\n[order context from the fulfillment system — factual, safe to reference: ${orderContextLines(orders).join(" | ")}]`;
-  }
-  // The AI customer read + rep-entered channel facts — tone and context, not
-  // policy: grounding facts still come only from the Brand Brain.
+  if (orders.length)
+    liveContext.push(`Order status (fulfillment system): ${orderContextLines(orders).join(" | ")}`);
   const insight = await getCustomerInsight(ticket.customer.id).catch(() => null);
-  if (insight) ticketText += `\n\n[customer context — for tone and relevance, not for policy claims: ${insight}]`;
-  if (ticket.customer.purchaseChannel) {
-    ticketText += `\n[known purchase channel: ${ticket.customer.purchaseChannel}${ticket.customer.channelName ? ` — ${ticket.customer.channelName}` : ""}]`;
-  }
-  // Rep-pinned context notes (this ticket + this customer, unexpired only) —
-  // team-vetted facts, safe to reference directly.
+  if (insight) liveContext.push(`Customer read (for tone/relevance, not policy claims): ${insight}`);
+  if (ticket.customer.purchaseChannel)
+    liveContext.push(
+      `Known purchase channel: ${ticket.customer.purchaseChannel}${ticket.customer.channelName ? ` — ${ticket.customer.channelName}` : ""}`
+    );
   const notes = await groundingNotes(ticket.tenantId, ticket.id, ticket.customerId);
-  if (notes.length) ticketText += `\n\n[team notes — factual, safe to reference: ${notes.join(" | ")}]`;
+  if (notes.length) liveContext.push(`Team notes (rep-vetted facts): ${notes.join(" | ")}`);
+  // "Where can I buy X in person?" → real stockist data (wholesale accounts
+  // that recently ordered it), scoped to a place they named if we recognize one.
+  if (/in[- ]?person|near\s?(me|by)|\blocal|\bstore\b|\bstores\b|\bretail|where .{0,30}(buy|find|get)|stockist|carr(y|ies)/i.test(ticketText)) {
+    const [pm, place] = await Promise.all([
+      extractProductMention(ticketText),
+      detectPlace(ticket.tenantId, ticketText),
+    ]);
+    const hits = await findStockists({
+      tenantId: ticket.tenantId,
+      productFamily: pm.productFamily,
+      place,
+      months: 12,
+      limit: place ? 6 : 10,
+    });
+    if (hits.length) {
+      liveContext.push(
+        `Retail stockists that RECENTLY ORDERED ${pm.productFamily ?? "our products"} wholesale${place ? ` near ${place}` : ""} (order history, not live shelf stock — suggest the customer call ahead; prefer the ones nearest their stated location): ${stockistLines(hits, pm.productFamily).join(" | ")}`
+      );
+    }
+  }
   const prior = regenOfDraftId
     ? await prisma.draft.findFirst({ where: { id: regenOfDraftId, ticketId: ticket.id } })
     : null;
@@ -64,6 +84,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     voiceGuide: ticket.tenant.voiceGuide,
     steerNotes,
     priorDraftBody: prior?.editedBody ?? prior?.body ?? undefined,
+    liveContext,
   });
 
   // Only cite ids that are real KnowledgeItems in this tenant.

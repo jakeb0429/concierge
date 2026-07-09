@@ -351,6 +351,29 @@ model SalesSource {
   @@schema("concierge")
 }
 
+/// One wholesale line item from a won HubSpot deal — which retail account
+/// bought which product, when, and where. Powers "which store near the
+/// customer carries X" for reps (Ask the Brain) and draft grounding.
+model StockistSale {
+  id            String   @id @default(cuid())
+  tenantId      String
+  dealId        String
+  companyName   String
+  city          String?
+  state         String?
+  zip           String?
+  itemName      String
+  sku           String?
+  productFamily String?  // normalized silhouette via the product extractor
+  quantity      Int      @default(1)
+  closedAt      DateTime
+
+  @@unique([dealId, itemName])
+  @@index([tenantId, productFamily, closedAt])
+  @@index([tenantId, state])
+  @@schema("concierge")
+}
+
 /// Monthly sales aggregates for the inquiries-vs-sales chart, per source
 /// (shopify-live, amazon) — the chart sums sources per month.
 model SalesMonthly {

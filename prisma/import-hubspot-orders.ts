@@ -1,4 +1,5 @@
 import { PrismaClient } from "@prisma/client";
+import { extractProductMention } from "../src/lib/product-extract";
 
 /**
  * B2B order import — HubSpot won deals become CustomerOrder rows (source
@@ -116,6 +117,74 @@ async function main() {
     });
     upserted++;
   }
+
+  // ---- stockist intelligence: line items + buying company per deal ----
+  // Which retail account bought which product, where — the data behind
+  // "which store near you carries X".
+  const companyOfDeal = new Map<string, string>();
+  for (const batch of chunk(deals, 100)) {
+    const assoc = await hs<{ results: { from: { id: string }; to: { toObjectId: number }[] }[] }>(
+      "/crm/v4/associations/deal/company/batch/read",
+      { inputs: batch.map((d) => ({ id: d.id })) }
+    );
+    for (const r of assoc.results) if (r.to[0]) companyOfDeal.set(r.from.id, String(r.to[0].toObjectId));
+  }
+  const companies = new Map<string, { name: string; city: string | null; state: string | null; zip: string | null }>();
+  for (const batch of chunk([...new Set(companyOfDeal.values())], 100)) {
+    const res = await hs<{ results: { id: string; properties: { name: string | null; city: string | null; state: string | null; zip: string | null } }[] }>(
+      "/crm/v3/objects/companies/batch/read",
+      { inputs: batch.map((id) => ({ id })), properties: ["name", "city", "state", "zip"] }
+    );
+    for (const c of res.results)
+      companies.set(c.id, { name: c.properties.name ?? "(unnamed account)", city: c.properties.city, state: c.properties.state, zip: c.properties.zip });
+  }
+  const lineItemsOfDeal = new Map<string, string[]>();
+  for (const batch of chunk(deals, 100)) {
+    const assoc = await hs<{ results: { from: { id: string }; to: { toObjectId: number }[] }[] }>(
+      "/crm/v4/associations/deal/line_item/batch/read",
+      { inputs: batch.map((d) => ({ id: d.id })) }
+    );
+    for (const r of assoc.results) lineItemsOfDeal.set(r.from.id, r.to.map((t) => String(t.toObjectId)));
+  }
+  const allItemIds = [...lineItemsOfDeal.values()].flat();
+  const itemProps = new Map<string, { name: string | null; hs_sku: string | null; quantity: string | null }>();
+  for (const batch of chunk(allItemIds, 100)) {
+    const res = await hs<{ results: { id: string; properties: { name: string | null; hs_sku: string | null; quantity: string | null } }[] }>(
+      "/crm/v3/objects/line_items/batch/read",
+      { inputs: batch.map((id) => ({ id })), properties: ["name", "hs_sku", "quantity"] }
+    );
+    for (const it of res.results) itemProps.set(it.id, it.properties);
+  }
+
+  let stockistRows = 0;
+  for (const d of deals) {
+    const company = companies.get(companyOfDeal.get(d.id) ?? "");
+    if (!company) continue;
+    for (const itemId of lineItemsOfDeal.get(d.id) ?? []) {
+      const it = itemProps.get(itemId);
+      if (!it?.name) continue;
+      const pm = await extractProductMention(it.name); // deterministic + cached
+      await prisma.stockistSale.upsert({
+        where: { dealId_itemName: { dealId: d.id, itemName: it.name } },
+        update: { quantity: Number(it.quantity ?? 1) || 1, productFamily: pm.productFamily },
+        create: {
+          tenantId: rheos.id,
+          dealId: d.id,
+          companyName: company.name,
+          city: company.city,
+          state: company.state,
+          zip: company.zip,
+          itemName: it.name,
+          sku: it.hs_sku,
+          productFamily: pm.productFamily,
+          quantity: Number(it.quantity ?? 1) || 1,
+          closedAt: new Date(d.properties.closedate ?? d.properties.createdate),
+        },
+      });
+      stockistRows++;
+    }
+  }
+  console.log(`Stockist intel: ${stockistRows} line items across ${companies.size} retail accounts.`);
 
   await prisma.salesSource.upsert({
     where: { tenantId_key: { tenantId: rheos.id, key: "hubspot-b2b" } },
