@@ -1,0 +1,260 @@
+[
+  {
+    "model": "173CC",
+    "category": "Center Consoles",
+    "tagline": "Entry-Level Center Console for Fishing and Family Fun",
+    "description": "The 173CC is Stingray's entry-level center console, built on the exclusive Z-Plane hull and designed for first-time center console buyers who want a versatile boat for both near-shore fishing and family watersports. At 17'3\" with a 90\" beam, it's compact enough to fit in most garages and light enough to tow with a midsize SUV. Despite its size, the 173CC packs serious fishing features: an aerated rear livewell, stainless steel rod holders, a self-bailing cockpit, and a 68-quart cooler/storage box with overboard drain. The bow offers generous under-seat storage and comfortable seating for up to 7 people. At the helm, a wide leaning post provides comfortable standing or seated operation, with backlit instruments, 12V plug with dual USB ports, and a deluxe stainless steel steering wheel. The removable windshield is a standout feature — take it off for unobstructed fishing access, put it back for comfortable cruising. Optional extras include a ski tow cage for watersports, a forward aerated livewell in the console, a fishing package with raw water washdown, and Garmin GPS electronics. Engine options range from 90HP to 115HP across Suzuki, Yamaha, and Mercury brands. With a max HP rating of 115 and a 30-gallon fuel tank, the 173CC delivers efficient performance ideal for lakes, rivers, and protected coastal waters.",
+    "specs": {
+      "length": "17'3\"",
+      "beam": "90\"",
+      "max_hp": 115,
+      "weight": "2,100 lbs (with 90HP engine)",
+      "capacity": "7 people / 2,000 lbs",
+      "fuel": "30 gal",
+      "deadrise": "18°",
+      "draft_up": "11.5\"",
+      "draft_down": "28\"",
+      "bridge_clearance": "59.0\""
+    },
+    "best_for": "First-time buyers, lake fishing, family day trips, budget-conscious boaters",
+    "engine_brands": ["Suzuki", "Yamaha", "Mercury"]
+  },
+  {
+    "model": "206CC",
+    "category": "Center Consoles",
+    "tagline": "20-Foot Center Console — Fishing Boat and Family Deck Boat in One",
+    "description": "The 206CC is a 20-foot center console that blends serious fishing capability with family-friendly comfort. Built on the Z-Plane hull, it delivers the kind of dual-purpose versatility that makes it ideal for families who fish on Saturday and cruise on Sunday. The fishing side features a rear aerated livewell (800 GPH), stainless steel rod holders with drain, a self-bailing cockpit, and a leaning post with built-in cooler. The family side offers removable bow cushions/seats for sun lounging, a cooler/storage box with overboard drain, and generous floor space. The 206CC steps up from the 173CC with a deluxe console, leaning post with cooler, stainless steel spring line cleats, and LED docking lights. Engine options range from 115HP to 200HP across Suzuki, Yamaha, and Mercury, giving you the power to reach offshore spots while staying fuel-efficient for longer bay cruises. The 30-gallon fuel tank and efficient Z-Plane hull extend your range, while the self-bailing cockpit keeps things dry even in chop.",
+    "specs": {
+      "length": "20'1\"",
+      "beam": "96\"",
+      "max_hp": 200,
+      "weight": "2,500 lbs",
+      "capacity": "9 people / 2,200 lbs",
+      "fuel": "30 gal",
+      "deadrise": "18°"
+    },
+    "best_for": "Families who fish, bay and coastal fishing, versatile weekend boating",
+    "engine_brands": ["Suzuki", "Yamaha", "Mercury"]
+  },
+  {
+    "model": "216CC",
+    "category": "Center Consoles",
+    "tagline": "Feature-Rich Mid-Size Center Console for Dedicated Anglers",
+    "description": "The 216CC raises the bar with a feature-rich mid-size center console aimed at dedicated anglers who also appreciate comfort. It shares the 206CC's 20-foot platform but adds premium fishing and comfort features as standard: a deluxe console with tackle storage and trash can pull-out, a leaning post with a 74-quart Engel cooler, electric trim tabs with LED indicator, LED docking lights in stainless steel, and Nano-Block stain resistant vinyl that stands up to fish blood, sunscreen, and salt. The hull options category offers upgrades not found on smaller models, reflecting the 216CC's position as a serious fishing platform. Whether you're targeting inshore species or running offshore to near-shore reefs, the 216CC has the range, storage, and fishability to handle it. The Z-Plane hull ensures smooth, predictable handling even in rough conditions, while the self-bailing cockpit and aerated livewell keep you focused on fishing rather than boat management.",
+    "specs": {
+      "length": "21'6\"",
+      "beam": "96\"",
+      "max_hp": 200,
+      "weight": "2,800 lbs",
+      "capacity": "9 people / 2,400 lbs",
+      "fuel": "46 gal",
+      "deadrise": "20°"
+    },
+    "best_for": "Dedicated anglers, inshore to near-shore fishing, anglers who want premium features",
+    "engine_brands": ["Suzuki", "Yamaha", "Mercury"]
+  },
+  {
+    "model": "236CC",
+    "category": "Center Consoles",
+    "tagline": "Coastal Fishing Powerhouse That Doubles as a Family Cruiser",
+    "description": "The 236CC is designed as a coastal fishing boat, but its versatility makes it much more. At 23'6\" with a 102\" beam, it's the largest single-engine center console in the Stingray lineup before jumping to the twin-engine 253CC. Standard features include electric trim tabs with LED indicator, LED docking lights, a deluxe console, bolster seats for the leaning post, tackle storage with trash can pull-out, stainless steel hardware package, and a 74-quart Engel cooler. The fishing credentials are strong: 800 GPH aerated rear livewell, stainless steel rod holders with drain, self-bailing cockpit, and enough deck space for multiple anglers to work the cockpit comfortably. The 46-gallon fuel tank combined with Z-Plane hull efficiency gives serious range for offshore runs. Engine options go up to 300HP, meaning you have the power to reach blue water and get back safely. When you're not fishing, the removable bow cushions/seats transform the foredeck into a comfortable lounge area.",
+    "specs": {
+      "length": "23'6\"",
+      "beam": "102\"",
+      "max_hp": 300,
+      "weight": "3,600 lbs",
+      "capacity": "10 people / 3,000 lbs",
+      "fuel": "46 gal",
+      "deadrise": "20°"
+    },
+    "best_for": "Coastal and near-offshore fishing, experienced anglers, family cruising with fishing capability",
+    "engine_brands": ["Suzuki", "Yamaha", "Mercury"]
+  },
+  {
+    "model": "253CC",
+    "category": "Center Consoles",
+    "tagline": "Flagship Twin-Engine Center Console with Full Cabin Amenities",
+    "description": "The 253CC is Stingray's flagship center console and the most capable offshore fishing platform in the lineup. Powered by twin outboard engines (up to 600HP total), it delivers the performance and range needed for serious offshore excursions. This is a fundamentally different boat from the other center consoles — it features a full center console hard top for weather protection, an enclosed head compartment with lighting and freshwater sink, a Garmin 1243 Touch chartplotter with Airmar B150M CHIRP transducer, twin 2000 GPH bilge pumps, a 1500 GPH aerated livewell, JL Audio speaker upgrade, Fusion RA670 stereo with WiFi and 1500W amplifier, thru-hull windlass system, Lumitec underwater lights, and a pressurized water transom shower. The dual battery system with VSR and switch provides the electrical capacity for all this equipment. With stainless steel bow rails, spring line cleats, pull-up cleats, rod holders, and a hardware package all in stainless, the 253CC is built to handle salt water day after day. The insulated fish/storage box aft keeps your catch fresh on long runs back from offshore. This is the boat for anglers who want to reach the Gulf Stream, deep-water wrecks, or offshore reefs with confidence.",
+    "specs": {
+      "length": "25'3\"",
+      "beam": "102\"",
+      "max_hp": 600,
+      "weight": "5,500 lbs",
+      "capacity": "12 people / 3,500 lbs",
+      "fuel": "135 gal",
+      "deadrise": "22°"
+    },
+    "best_for": "Serious offshore fishing, blue water adventures, anglers who want cabin amenities and twin-engine reliability",
+    "engine_brands": ["Suzuki", "Yamaha", "Mercury"]
+  },
+  {
+    "model": "182SC",
+    "category": "Deck Boats",
+    "tagline": "Compact Deck Boat — Maximum Fun in a Trailerable Package",
+    "description": "The 182SC is Stingray's most affordable deck boat and the perfect entry point for families who want open deck space without breaking the budget. At 18'2\" with a wide beam, it delivers the spacious interior feel of a much larger boat. The open deck layout creates an inviting social space with plenty of room for family and friends. Standard features include a helm bucket seat with bolster, Italian steering wheel, tinted windscreen, 25-quart removable Igloo cooler, stainless steel package (cleats, multi-step aft ladder), and a Fusion RA-60 stereo with Bluetooth. The bow storage and floor storage with oversize door provide ample room for gear, tubes, and towables. The Z-Plane hull makes the 182SC feel stable and confident even with a full load, while keeping the weight low enough for easy towing and launching with a standard SUV. With engine options from 90HP to 150HP, you get snappy performance for tubing and skiing without the fuel costs of larger engines.",
+    "specs": {
+      "length": "18'2\"",
+      "beam": "96\"",
+      "max_hp": 150,
+      "weight": "2,200 lbs",
+      "capacity": "8 people / 1,800 lbs",
+      "fuel": "30 gal",
+      "deadrise": "18°"
+    },
+    "best_for": "Budget-conscious families, first-time boat buyers, tubing and watersports, lakes and rivers",
+    "engine_brands": ["Suzuki", "Yamaha", "Mercury"]
+  },
+  {
+    "model": "192SC",
+    "category": "Deck Boats",
+    "tagline": "The Versatile 20-Footer That Does Everything Well",
+    "description": "The 192SC is one of the most popular models in the Stingray lineup, and for good reason. This 20'1\" deck boat hits the sweet spot between size, capability, and value. The wide 100\" beam creates a remarkably spacious interior for a 20-foot boat, with an L-shaped aft lounge that seats five and a bow lounge with full-beam seating. Stingray makes the most of every inch — the cockpit table with floor mounts converts the aft area for dining at anchor, while the insulated fish/storage box aft and freshwater cockpit sink show that this deck boat can handle fishing duty too. Standard features are generous: digital switching with integrated touch screen, self-bailing cockpit, 25-quart removable cooler, Italian steering wheel, Fusion RA-60 stereo, tinted windscreen, helm bucket seat with bolster, and a fire extinguisher holder insert. The extended swim platforms on both sides of the outboard are a standout — they're massive compared to typical outboard boats and provide fantastic water access. The Z-Plane hull uses recessed stacking strakes that increase lift and efficiency, enabling speeds over 40 mph even with a 115HP engine.",
+    "specs": {
+      "length": "20'1\"",
+      "beam": "100\"",
+      "max_hp": 200,
+      "weight": "2,600 lbs",
+      "capacity": "10 people / 2,200 lbs",
+      "fuel": "40 gal",
+      "deadrise": "20°"
+    },
+    "best_for": "Families who want one boat that does everything, social boating, tubing, casual fishing, lake and coastal cruising",
+    "engine_brands": ["Suzuki", "Yamaha", "Mercury"]
+  },
+  {
+    "model": "212SC",
+    "category": "Deck Boats",
+    "tagline": "Stingray's Largest Deck Boat — Built for Bigger Groups and Bigger Days",
+    "description": "The 212SC is the largest deck boat in the Stingray lineup, designed for families and friend groups who need maximum interior space and all-day comfort. At 21'2\", it brings the kids, the friends, and the tubes with room to spare. Digital switching with integrated touch screen puts boat management at your fingertips, while the self-bailing cockpit and head floor reflex add convenience and easy cleanup. Standard features include a helm bucket seat with bolster, bimini top with stainless steel frame, cockpit table with floor mounts, 25-quart removable Igloo cooler, Italian steering wheel, Fusion RA-60 stereo, tinted windscreen, and a full stainless steel package. The battery switch and cockpit cover round out a generous standard equipment list. With engine options reaching 200HP, the 212SC has the power to pull tubes and skiers confidently while still cruising efficiently. The wide beam provides stability when the whole crew is moving around, and the Z-Plane hull delivers the predictable handling Stingray is known for.",
+    "specs": {
+      "length": "21'2\"",
+      "beam": "100\"",
+      "max_hp": 200,
+      "weight": "2,900 lbs",
+      "capacity": "11 people / 2,600 lbs",
+      "fuel": "46 gal",
+      "deadrise": "20°"
+    },
+    "best_for": "Large families, group outings, all-day lake trips, tubing and watersports with a big crew",
+    "engine_brands": ["Suzuki", "Yamaha", "Mercury"]
+  },
+  {
+    "model": "172DC",
+    "category": "Dual Consoles",
+    "tagline": "The Perfect First Family Boat",
+    "description": "The 172DC is Stingray's most compact dual console and the ideal choice for families choosing their first boat. At 17'3\", it's easy to tow, easy to launch, and easy to handle — yet the dual console layout provides a full windshield and passenger-side console that smaller boats lack. This makes the 172DC feel more like a car than a boat for first-timers, with the passenger protected behind glass and controls logically arranged at the helm. Standard features include backlit instruments and circuit breakers, a helm bucket seat with bolster, Italian steering wheel, safety glass windshield, Fusion RA-60 stereo with Bluetooth, 25-quart removable Igloo cooler, and the full stainless steel package. The bow storage and floor storage with oversize door provide practical stowage for a day on the water. The Z-Plane hull gives the 172DC handling confidence that belies its size, making it a forgiving boat for new operators learning to dock and navigate.",
+    "specs": {
+      "length": "17'3\"",
+      "beam": "90\"",
+      "max_hp": 115,
+      "weight": "2,000 lbs",
+      "capacity": "7 people / 1,800 lbs",
+      "fuel": "25 gal",
+      "deadrise": "18°"
+    },
+    "best_for": "First-time boat buyers, small families, lake cruising, learning to boat",
+    "engine_brands": ["Suzuki", "Yamaha", "Mercury"]
+  },
+  {
+    "model": "191DC",
+    "category": "Dual Consoles",
+    "tagline": "Open Deck Layout with Full Windshield Protection",
+    "description": "The 191DC answers the question: what if you love the open layout of a deck boat but want the windshield protection of a dual console? At 19'1\" with dual bucket seats with bolster and a safety glass windshield, it offers the best of both worlds. The open layout provides easy side-entry boarding and generous bow space, while the full windshield and passenger console protect everyone from spray and wind. Standard features include backlit instruments, floor storage with oversize door, Italian steering wheel, Fusion RA-60 stereo, 25-quart removable cooler, and the stainless steel package. The 191DC is sized perfectly for couples and small families who want comfortable cruising without the complexity of larger boats. Engine options up to 150HP provide plenty of power for tubing, skiing, and spirited cruising. The Z-Plane hull delivers the smooth ride and predictable handling that makes Stingray boats so easy to drive.",
+    "specs": {
+      "length": "19'1\"",
+      "beam": "96\"",
+      "max_hp": 150,
+      "weight": "2,400 lbs",
+      "capacity": "9 people / 2,000 lbs",
+      "fuel": "30 gal",
+      "deadrise": "18°"
+    },
+    "best_for": "Couples, small families, windshield lovers who want open deck space, cruising and light watersports",
+    "engine_brands": ["Suzuki", "Yamaha", "Mercury"]
+  },
+  {
+    "model": "211DC",
+    "category": "Dual Consoles",
+    "tagline": "Premium Dual Console Dayboat with Comfort and Versatility",
+    "description": "The 211DC is a premium dual console dayboat with a feature list that punches well above its class. Digital switching with integrated touch screen, self-bailing cockpit, LED docking lights in stainless steel, cockpit table with side mounts, dual bucket seats with bolster, bimini top, head floor reflex, and stainless steel bow rails all come standard. The safety glass windshield and enclosed bow with anchor locker provide genuine cruising capability, not just fair-weather fun. At 21'1\", the 211DC has the beam and length to handle choppy conditions confidently while still being manageable enough for a single operator. The cockpit cover and bow cover protect your investment, and the 25-quart removable cooler and oversized cup holders keep refreshments close at hand. Engine options reach 200HP, giving the 211DC spirited acceleration for watersports and efficient cruising for longer range trips. This is the boat for families who have outgrown their first boat and want more features, more space, and more capability without jumping to the complexity of a cabin cruiser.",
+    "specs": {
+      "length": "21'1\"",
+      "beam": "100\"",
+      "max_hp": 200,
+      "weight": "3,100 lbs",
+      "capacity": "10 people / 2,400 lbs",
+      "fuel": "46 gal",
+      "deadrise": "20°"
+    },
+    "best_for": "Families upgrading from a starter boat, all-day comfort, cruising and watersports, coastal waterways",
+    "engine_brands": ["Suzuki", "Yamaha", "Mercury"]
+  },
+  {
+    "model": "231DC",
+    "category": "Dual Consoles",
+    "tagline": "Luxurious Dual Console for Extended Days on the Water",
+    "description": "The 231DC takes the dual console concept to a higher level with features designed for long, comfortable days on the water. At 23'1\", it's the largest single-engine dual console in the lineup. Standard equipment includes digital switching with touch screen, self-bailing cockpit, porta-potti with dockside pump out, pressurized water with both bow and transom showers, LED docking lights, cockpit table with side mounts, dual bucket seats with bolster on adjustable pedestals, bimini top, stainless steel bow rails, head floor reflex, and a cockpit and bow cover set. The porta-potti and freshwater system transform the 231DC from a dayboat into a viable overnight platform — anchor in a secluded cove and you have all the essentials. The adjustable pedestal seats let the captain fine-tune their driving position. Engine options reach 300HP, providing the thrust to handle rough water and heavy loads. The 231DC is for experienced boaters who spend full weekends on the water and need a boat that keeps everyone comfortable from morning to sunset.",
+    "specs": {
+      "length": "23'1\"",
+      "beam": "102\"",
+      "max_hp": 300,
+      "weight": "3,800 lbs",
+      "capacity": "12 people / 3,000 lbs",
+      "fuel": "60 gal",
+      "deadrise": "20°"
+    },
+    "best_for": "Extended day trips, experienced boating families, coastal cruising, overnight anchoring, large groups",
+    "engine_brands": ["Suzuki", "Yamaha", "Mercury"]
+  },
+  {
+    "model": "259DC",
+    "category": "Dual Consoles",
+    "tagline": "Flagship Dual Console — Twin-Engine Performance with Cruiser Amenities",
+    "description": "The 259DC is Stingray's flagship dual console and the most luxurious model in the entire lineup alongside the 253CC. Powered by twin outboard engines with up to 600HP total, it delivers flagship performance matched with flagship amenities. Standard equipment reads like a premium options list: Garmin 1243 chartplotter with Airmar B150M CHIRP transducer, dual console hard top, enclosed head with lighting and freshwater sink, 1500 GPH aerated livewell, twin 2000 GPH bilge pumps, JL Audio speaker upgrade, Fusion RA670 stereo with WiFi and 1500W amplifier, trim tabs with LED indicator, pressurized water transom shower, freshwater system, thru-hull windlass system, Lumitec underwater lights, and a complete stainless steel hardware package including bow rails, spring line cleats, rod holders, and pull-up cleats. The dual battery system with VSR and switch handles the electrical demands. The insulated fish/storage box aft and cabin walk-thru door show that the 259DC is designed for serious use — whether that's offshore fishing, island hopping, or extended cruising. This is the boat for buyers who want the ultimate dual console experience with no compromises.",
+    "specs": {
+      "length": "25'9\"",
+      "beam": "102\"",
+      "max_hp": 600,
+      "weight": "5,800 lbs",
+      "capacity": "12 people / 3,500 lbs",
+      "fuel": "135 gal",
+      "deadrise": "22°"
+    },
+    "best_for": "Luxury cruising, offshore capable, buyers who want the best of everything, large families, twin-engine confidence",
+    "engine_brands": ["Suzuki", "Yamaha", "Mercury"]
+  },
+  {
+    "model": "20SBX",
+    "category": "Sport Boats",
+    "tagline": "Sand Bar Extreme — Bold Style Meets Premium Comfort",
+    "description": "The 20SBX (Sand Bar Extreme) is Stingray's newest addition, delivering bold style, premium comfort, and proven Stingray performance for the sand bar and social boating crowd. Built on the exclusive Z-Plane hull, the 20SBX is purpose-built for the lifestyle boater who spends weekends rafting up at the sand bar, cruising to waterfront restaurants, and towing tubes with friends. The design emphasizes social space and style — this isn't a fishing boat repurposed for cruising, it's built from the ground up for fun. The open layout maximizes usable deck space, and the premium comfort features make all-day lounging effortless. The 20SBX targets the growing segment of boaters who prioritize the social experience on the water over any single activity like fishing or watersports. Engine options provide the power for spirited performance while the Z-Plane hull ensures a smooth, dry ride even in choppy conditions.",
+    "specs": {
+      "length": "20'0\"",
+      "beam": "100\"",
+      "max_hp": 200,
+      "weight": "2,800 lbs",
+      "capacity": "10 people / 2,200 lbs",
+      "fuel": "40 gal",
+      "deadrise": "20°"
+    },
+    "best_for": "Sand bar hopping, social boating, lifestyle boaters, waterfront dining cruises, tubing",
+    "engine_brands": ["Suzuki", "Yamaha", "Mercury"]
+  },
+  {
+    "model": "23OSX",
+    "category": "Sport Boats",
+    "tagline": "High-Performance 23-Foot Sport Boat with Race-Inspired Styling",
+    "description": "The 23 OSX is Stingray's flagship sport boat, a 23-foot outboard-powered performance machine with a 100\" beam that delivers thrilling speed and agile handling. This is the boat for buyers who want to turn heads and feel the adrenaline. Standard features are comprehensive: Lumitec underwater lights, pressurized water transom shower, dual battery system with VSR and switch, electric trim tabs with LED indicator, dual bucket seats with bolster, Italian steering wheel, factory-installed windshield with safety glass, RA670 stereo upgrade with remote, bow filler cushion, stainless steel pop-up cleats, and a cockpit and bow cover in Sunbrella. The 23 OSX supports engines up to 300HP, making it one of the fastest boats in the Stingray lineup. The wide beam provides stability at speed, while the Z-Plane hull delivers the precise, predictable turn response that experienced drivers appreciate. Underwater lights create a stunning visual at anchor after dark. Whether you're running wide open across a lake, towing a wakeboard, or pulling up to a waterfront venue, the 23 OSX makes a statement.",
+    "specs": {
+      "length": "23'0\"",
+      "beam": "100\"",
+      "max_hp": 300,
+      "weight": "3,400 lbs",
+      "capacity": "11 people / 2,800 lbs",
+      "fuel": "60 gal",
+      "deadrise": "20°"
+    },
+    "best_for": "Performance enthusiasts, wakeboarding and watersports, making a statement, experienced boaters who want speed",
+    "engine_brands": ["Suzuki", "Yamaha", "Mercury"]
+  }
+]

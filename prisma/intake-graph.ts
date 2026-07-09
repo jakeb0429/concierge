@@ -181,7 +181,15 @@ async function main() {
     include: { tenant: { select: { id: true, slug: true } } },
   });
   console.log(`Live intake across ${channels.length} Graph channel(s):`);
-  for (const ch of channels) await intakeMailbox(ch.tenant.id, ch.tenant.slug, ch.id, ch.supportAddress);
+  for (const ch of channels) {
+    // One mailbox failing (e.g. not yet in the ApplicationAccessPolicy group)
+    // must not kill intake for the others.
+    try {
+      await intakeMailbox(ch.tenant.id, ch.tenant.slug, ch.id, ch.supportAddress);
+    } catch (e) {
+      console.error(`  ${ch.supportAddress}: intake failed —`, e instanceof Error ? e.message : e);
+    }
+  }
 
   const total = await prisma.ticket.count({ where: { channel: "graph" } });
   console.log(`Graph tickets now: ${total}.`);
