@@ -1,13 +1,6 @@
 import { auth } from "@/lib/auth";
 import { NextResponse } from "next/server";
-
-const PUBLIC_EXACT = new Set(["/login", "/favicon.ico", "/robots.txt", "/scribe-mark.png"]);
-const PUBLIC_PREFIXES = ["/api/auth", "/_next"];
-
-function isPublic(pathname: string): boolean {
-  if (PUBLIC_EXACT.has(pathname)) return true;
-  return PUBLIC_PREFIXES.some((p) => pathname === p || pathname.startsWith(p + "/") || pathname.startsWith(p));
-}
+import { isPublic } from "@/lib/public-paths";
 
 export default auth((req) => {
   const { pathname } = req.nextUrl;

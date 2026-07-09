@@ -16,6 +16,9 @@ import { routeSignalAssignee } from "../src/lib/assign";
  * Usage: tsx prisma/detect-learning.ts [minOccurrences=2]
  */
 
+// idempotent: watermark guards — one open signal per item blocks new ones, and only
+// evidence newer than the latest resolved signal counts, so re-runs create nothing new.
+
 // Sonnet is plenty for gated proposals (2026-07-04 cost tuning) — a human
 // approves every signal, so a weaker model can't hurt the Brain.
 const CLAUDE_MODEL = "claude-sonnet-5";

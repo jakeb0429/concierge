@@ -67,10 +67,13 @@ const INQUIRIES: {
   },
 ];
 
+// idempotent: wipes ALL rheos tickets then re-creates the fixed mock set — re-runs
+// converge to the same state. Demo/dev only: the wipe also deletes real tickets.
+
 async function main() {
   const rheos = await prisma.tenant.findUniqueOrThrow({ where: { slug: "rheos" } });
 
-  // Idempotent-ish: clear prior mock tickets for a clean re-seed.
+  // Clear prior mock tickets for a clean re-seed (deletes ALL rheos tickets).
   await prisma.ticket.deleteMany({ where: { tenantId: rheos.id } });
 
   let hoursAgo = 1;

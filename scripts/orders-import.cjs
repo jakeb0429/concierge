@@ -1,4 +1,5 @@
 // Import warehouse orders (JSON file: [{email, orderedAt, total, ref}]) into CustomerOrder.
+// idempotent: deterministic id + ON CONFLICT (source, orderRef) DO NOTHING — re-runs skip.
 const fs=require("fs");const {Client}=require("pg");
 const env=fs.readFileSync(__dirname+"/../.env","utf8");
 const url=env.match(/^DATABASE_URL="(.+)"/m)[1].replace(/[?&]schema=concierge/,"");

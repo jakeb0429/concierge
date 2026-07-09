@@ -1,6 +1,7 @@
 import { prisma } from "./db";
 import { getChannelAdapter } from "./channels";
 import { credentialsFor } from "./send";
+import { logger } from "./log";
 
 /**
  * Two-way archive sync: archiving a ticket in Concierge also archives the
@@ -37,7 +38,10 @@ export async function syncArchiveToProvider(ticketId: string): Promise<boolean> 
     });
     return true;
   } catch (e) {
-    console.error(`[archive-sync] ticket ${ticketId} failed:`, (e as Error).message.slice(0, 120));
+    logger.error(
+      { err: e, ticketId, provider: ticket.channelRef.provider },
+      "[archive-sync] provider archive failed"
+    );
     return false;
   }
 }

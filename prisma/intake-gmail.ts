@@ -14,6 +14,9 @@ import { extractProductMention } from "../src/lib/product-extract";
  * Usage: tsx prisma/intake-gmail.ts [max=15] [mailbox] [--gated]
  */
 
+// idempotent: Ticket upserts by (tenantId, providerThreadId), Message by (tenantId,
+// providerMessageId), Customer by (tenantId, email); status flips are state-guarded.
+
 const prisma = new PrismaClient();
 
 /**

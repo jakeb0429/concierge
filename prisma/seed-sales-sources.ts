@@ -9,6 +9,9 @@ import { PrismaClient } from "@prisma/client";
  * Usage: tsx prisma/seed-sales-sources.ts
  */
 
+// idempotent: SalesSource upserts by (tenantId, key); sync stats and the
+// admin-managed active flag are preserved on update.
+
 const prisma = new PrismaClient();
 
 const SOURCES: Record<

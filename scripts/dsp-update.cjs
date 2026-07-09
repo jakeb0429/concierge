@@ -1,4 +1,6 @@
 // Compute daysSincePurchase for every inquiry with a matching prior order.
+// idempotent: deterministic recompute — the UPDATE derives the value from orders
+// and overwrites in place, so re-runs converge to the same result.
 const fs=require("fs");const {Client}=require("pg");
 const env=fs.readFileSync(__dirname+"/../.env","utf8");
 const url=env.match(/^DATABASE_URL="(.+)"/m)[1].replace(/[?&]schema=concierge/,"");

@@ -14,6 +14,9 @@ import { hubspotOrNull as hs } from "../src/lib/hubspot";
  * Usage: tsx prisma/enrich-inquiries.ts [max]
  */
 
+// idempotent: selects only rows with productFamily IS NULL; a stamped family removes
+// the row from the next run (no-mention rows are re-derived, cheap and convergent).
+
 const prisma = new PrismaClient();
 
 const MAX = Number(process.argv[2] ?? 5000);

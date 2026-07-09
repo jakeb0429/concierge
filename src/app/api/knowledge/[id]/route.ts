@@ -1,8 +1,16 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { getCurrentTenant } from "@/lib/tenant";
 import { sessionUser, isAdminRole } from "@/lib/roles";
 import { reindexKnowledgeItem } from "@/lib/brain/index-write";
+import { parseBody } from "@/lib/validate";
+
+const bodySchema = z.object({
+  title: z.string().min(1).optional(),
+  answer: z.string().min(1).optional(),
+  status: z.enum(["draft", "approved"]).optional(),
+});
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -13,7 +21,8 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   if (!isAdminRole(actor?.role) && actor?.role !== "team_lead")
     return NextResponse.json({ error: "Only a team lead or admin can edit the Brain directly." }, { status: 403 });
 
-  const b = (await req.json()) as { title?: string; answer?: string; status?: string };
+  const b = await parseBody(req, bodySchema);
+  if (b instanceof NextResponse) return b;
 
   const existing = await prisma.knowledgeItem.findFirstOrThrow({
     where: { id, tenantId: tenant.id },

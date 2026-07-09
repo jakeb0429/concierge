@@ -1,8 +1,12 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { getCurrentTenant } from "@/lib/tenant";
 import { sessionUser, isAdminRole } from "@/lib/roles";
 import { reindexKnowledgeItem } from "@/lib/brain/index-write";
+import { parseBody } from "@/lib/validate";
+
+const bodySchema = z.object({ action: z.enum(["approve", "dismiss"]) });
 
 /**
  * Resolve a learning signal. Approval is the ONLY path from Ledger to Brain:
@@ -15,7 +19,9 @@ import { reindexKnowledgeItem } from "@/lib/brain/index-write";
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const tenant = await getCurrentTenant();
-  const { action } = (await req.json()) as { action: "approve" | "dismiss" };
+  const parsed = await parseBody(req, bodySchema);
+  if (parsed instanceof NextResponse) return parsed;
+  const { action } = parsed;
 
   const signal = await prisma.learningSignal.findFirst({
     where: { id, tenantId: tenant.id, status: "open" },

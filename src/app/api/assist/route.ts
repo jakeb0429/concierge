@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import Anthropic from "@anthropic-ai/sdk";
 import { anthropic, CLAUDE_MODEL } from "@/lib/anthropic";
 import { retrieve } from "@/lib/brain/retrieval";
 import { getCurrentTenant } from "@/lib/tenant";
 import { findStockists, stockistLines } from "@/lib/stockists";
 import { extractProductMention } from "@/lib/product-extract";
+import { parseBody } from "@/lib/validate";
 
 /**
  * Internal assist chatbot — answers a rep's question from the Brand Brain
@@ -15,6 +17,8 @@ import { extractProductMention } from "@/lib/product-extract";
  *                    (HubSpot won-deal line items, synced nightly).
  * Body: { question: string }
  */
+
+const bodySchema = z.object({ question: z.string().trim().min(1) });
 
 const TOOLS: Anthropic.Tool[] = [
   {
@@ -33,8 +37,9 @@ const TOOLS: Anthropic.Tool[] = [
 ];
 
 export async function POST(req: Request) {
-  const { question } = (await req.json().catch(() => ({}))) as { question?: string };
-  if (!question?.trim()) return NextResponse.json({ error: "A question is required." }, { status: 400 });
+  const parsed = await parseBody(req, bodySchema);
+  if (parsed instanceof NextResponse) return parsed;
+  const { question } = parsed;
   const tenant = await getCurrentTenant();
   const items = await retrieve(tenant.id, question);
   const grounding = items.length

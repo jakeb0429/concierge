@@ -9,7 +9,15 @@ function Login() {
   const [email, setEmail] = useState("");
   const [sent, setSent] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [status, setStatus] = useState<string | null>(null);
+  // The arrival status (mid-sign-in / dead link) is knowable from the URL at
+  // first render — deriving it here keeps setState out of the effect body.
+  const [status, setStatus] = useState<string | null>(() =>
+    params.get("magic") === "verified"
+      ? "Signing you in…"
+      : params.get("error")
+        ? "That link was invalid or expired — request a new one."
+        : null
+  );
   const [usePassword, setUsePassword] = useState(false);
   const [password, setPassword] = useState("");
   const callbackUrl = params.get("callbackUrl") || "/";
@@ -20,12 +28,12 @@ function Login() {
     if (signedIn.current) return;
     if (params.get("magic") === "verified") {
       signedIn.current = true;
-      const e = params.get("email")!;
-      const t = params.get("token")!;
-      setStatus("Signing you in…");
-      signIn("credentials", { email: e, token: t, callbackUrl, redirect: true });
-    } else if (params.get("error")) {
-      setStatus("That link was invalid or expired — request a new one.");
+      signIn("credentials", {
+        email: params.get("email")!,
+        token: params.get("token")!,
+        callbackUrl,
+        redirect: true,
+      });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

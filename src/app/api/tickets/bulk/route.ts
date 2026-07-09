@@ -1,7 +1,15 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { getCurrentTenant } from "@/lib/tenant";
 import { syncArchiveToProvider } from "@/lib/archive";
+import { parseBody } from "@/lib/validate";
+
+// max(200) caps the per-call provider-archive fan-out (one Gmail call each).
+const bodySchema = z.object({
+  action: z.literal("archive"),
+  ticketIds: z.array(z.string()).min(1).max(200),
+});
 
 /**
  * Bulk archive — Jake's noise-cleanup flow: multi-select vendor pitches /
@@ -11,11 +19,9 @@ import { syncArchiveToProvider } from "@/lib/archive";
  */
 export async function POST(req: Request) {
   const tenant = await getCurrentTenant();
-  const { ticketIds, action } = (await req.json()) as { ticketIds?: string[]; action?: string };
-  if (action !== "archive" || !Array.isArray(ticketIds) || !ticketIds.length)
-    return NextResponse.json({ error: "Expected { action: 'archive', ticketIds: [...] }." }, { status: 400 });
-  if (ticketIds.length > 200)
-    return NextResponse.json({ error: "Too many tickets in one call (max 200)." }, { status: 400 });
+  const parsed = await parseBody(req, bodySchema);
+  if (parsed instanceof NextResponse) return parsed;
+  const { ticketIds } = parsed;
 
   const tickets = await prisma.ticket.findMany({
     where: { id: { in: ticketIds }, tenantId: tenant.id },

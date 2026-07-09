@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { unstable_update } from "@/lib/auth";
 import { sessionUser } from "@/lib/roles";
+import { parseBody } from "@/lib/validate";
+
+const bodySchema = z.object({ tenantSlug: z.string().min(1) });
 
 /**
  * Switch the session to another tenant where this email is provisioned
@@ -12,8 +16,9 @@ export async function POST(req: Request) {
   const u = await sessionUser();
   if (!u) return NextResponse.json({ error: "Not signed in." }, { status: 401 });
 
-  const { tenantSlug } = (await req.json().catch(() => ({}))) as { tenantSlug?: string };
-  if (!tenantSlug) return NextResponse.json({ error: "tenantSlug required." }, { status: 400 });
+  const parsed = await parseBody(req, bodySchema);
+  if (parsed instanceof NextResponse) return parsed;
+  const { tenantSlug } = parsed;
 
   const tenant = await prisma.tenant.findUnique({ where: { slug: tenantSlug } });
   if (!tenant) return NextResponse.json({ error: "Unknown tenant." }, { status: 404 });

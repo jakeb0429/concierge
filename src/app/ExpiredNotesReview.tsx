@@ -10,6 +10,13 @@ type ExpiredNote = {
   scopeLabel: string;
 };
 
+// 30 days out from the moment of the click. Module scope, not inline in the
+// component — the render-purity lint can't tell an event handler's clock read
+// from one during render.
+function extendedExpiry(): string {
+  return new Date(Date.now() + 30 * 86_400_000).toISOString();
+}
+
 /**
  * The admin's expiry prompt: a note's date passed ("PO260501 expected Aug 1"),
  * so the fact needs a decision — still true (make permanent), pushed out
@@ -29,7 +36,7 @@ export default function ExpiredNotesReview({ notes: initial }: { notes: ExpiredN
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              expiresAt: action === "permanent" ? null : new Date(Date.now() + 30 * 86_400_000).toISOString(),
+              expiresAt: action === "permanent" ? null : extendedExpiry(),
             }),
           });
     setBusy(null);

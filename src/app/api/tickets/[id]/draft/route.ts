@@ -9,6 +9,13 @@ import { findStockists, stockistLines, detectPlace } from "@/lib/stockists";
 import { extractProductMention } from "@/lib/product-extract";
 import { getCurrentTenant } from "@/lib/tenant";
 import { sessionUser } from "@/lib/roles";
+import { z } from "zod";
+import { parseBody } from "@/lib/validate";
+
+const bodySchema = z.object({
+  steerNotes: z.string().optional(),
+  regenOfDraftId: z.string().optional(),
+});
 
 /**
  * Prepare (or regenerate) a first draft for a ticket. Grounded, cited, scored.
@@ -16,10 +23,9 @@ import { sessionUser } from "@/lib/roles";
  */
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { steerNotes, regenOfDraftId } = (await req.json().catch(() => ({}))) as {
-    steerNotes?: string;
-    regenOfDraftId?: string;
-  };
+  const parsed = await parseBody(req, bodySchema);
+  if (parsed instanceof NextResponse) return parsed;
+  const { steerNotes, regenOfDraftId } = parsed;
 
   const currentTenant = await getCurrentTenant();
   const ticket = await prisma.ticket.findFirst({
@@ -32,7 +38,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   });
   if (!ticket) return NextResponse.json({ error: "Not found." }, { status: 404 });
 
-  let ticketText = ticket.messages
+  const ticketText = ticket.messages
     .map((m) => {
       const atts = (m.attachments as { filename: string }[] | null) ?? [];
       const note = atts.length ? `\n[customer attached: ${atts.map((a) => a.filename).join(", ")}]` : "";

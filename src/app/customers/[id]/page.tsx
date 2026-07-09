@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { statusChip, statusLabel } from "@/lib/ui";
 import { getCurrentTenant } from "@/lib/tenant";
 import { getCustomerInsight } from "@/lib/customer-insight";
+import { nowMs } from "@/lib/time";
 import CustomerFacts from "./CustomerFacts";
 import NotesPanel from "@/app/components/NotesPanel";
 
@@ -45,7 +46,7 @@ export default async function CustomerProfile({ params }: { params: Promise<{ id
   const firstOrder = orders.at(-1);
   const lastOrder = orders[0];
   const negatives = inquiries.filter((q) => q.endSentiment === "negative").length;
-  const now = Date.now();
+  const now = nowMs();
   const [insight, rawNotes] = await Promise.all([
     getCustomerInsight(customer.id).catch(() => null),
     prisma.contextNote.findMany({

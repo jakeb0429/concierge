@@ -1,7 +1,15 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { sendReply } from "@/lib/send";
 import { getCurrentTenant } from "@/lib/tenant";
+import { parseBody } from "@/lib/validate";
+
+// finalBody stays unconstrained beyond "is a string" — the rep owns the text.
+const bodySchema = z.object({
+  draftId: z.string().min(1),
+  finalBody: z.string(),
+});
 
 /**
  * Confirm and send. The only outbound action, always rep-triggered.
@@ -9,9 +17,9 @@ import { getCurrentTenant } from "@/lib/tenant";
  */
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { draftId, finalBody } = (await req.json().catch(() => ({}))) as { draftId?: string; finalBody?: string };
-  if (!draftId || typeof finalBody !== "string")
-    return NextResponse.json({ error: "draftId and finalBody required." }, { status: 400 });
+  const parsed = await parseBody(req, bodySchema);
+  if (parsed instanceof NextResponse) return parsed;
+  const { draftId, finalBody } = parsed;
 
   // The only outbound action — strictly scoped to the caller's tenant, and
   // the draft must belong to THIS ticket.

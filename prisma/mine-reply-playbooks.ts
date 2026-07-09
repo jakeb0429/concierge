@@ -19,6 +19,9 @@ import { hubspot as hs } from "../src/lib/hubspot";
  * Usage: tsx prisma/mine-reply-playbooks.ts
  */
 
+// idempotent: one playbook per category, upserted by (tenantId, title); the voice
+// addendum is guarded by a marker includes-check so it appends at most once.
+
 const CLAUDE_MODEL = "claude-opus-4-8";
 const prisma = new PrismaClient();
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, timeout: 300_000, maxRetries: 2 });

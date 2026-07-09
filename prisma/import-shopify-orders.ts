@@ -13,6 +13,9 @@ import { PrismaClient } from "@prisma/client";
  * Usage: tsx prisma/import-shopify-orders.ts [sinceISO=2015-01-01]
  */
 
+// idempotent: CustomerOrder rows insert ON CONFLICT (source, orderRef) with deterministic
+// ids; SalesMonthly upserts by (month, source) — re-runs converge, nothing accumulates.
+
 const prisma = new PrismaClient();
 const SHOP = (process.env.SHOPIFY_SHOP ?? "").replace(/"/g, "");
 const VERSION = process.env.SHOPIFY_API_VERSION || "2026-01";
@@ -27,6 +30,9 @@ async function mintToken(): Promise<string> {
       client_id: process.env.SHOPIFY_CLIENT_ID,
       client_secret: process.env.SHOPIFY_CLIENT_SECRET,
     }),
+    // Bounded like the order pages below; a mint failure hard-fails the run
+    // (nothing to import without a token) and the cron retries next night.
+    signal: AbortSignal.timeout(15_000),
   });
   if (!res.ok) throw new Error(`token mint failed: ${res.status} ${await res.text()}`);
   return ((await res.json()) as { access_token: string }).access_token;

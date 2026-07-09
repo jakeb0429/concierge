@@ -1,4 +1,5 @@
 import { prisma } from "../db";
+import { logger } from "../log";
 import { anthropic, CLAUDE_MODEL } from "../anthropic";
 
 /**
@@ -33,6 +34,9 @@ export async function embed(text: string, inputType: "document" | "query" = "que
       "Content-Type": "application/json",
     },
     body: JSON.stringify({ input: text, model: "voyage-3-large", input_type: inputType }),
+    // Voyage answers single-text embeds in well under 10s — a hung socket
+    // must not stall drafting or index writes.
+    signal: AbortSignal.timeout(10_000),
   });
   if (!res.ok) throw new Error(`Voyage embeddings failed: ${res.status} ${await res.text()}`);
   const json = (await res.json()) as { data: { embedding: number[] }[] };
@@ -87,22 +91,28 @@ export async function retrieve(tenantId: string, query: string, k = 6): Promise<
 
   // Smart path: pgvector similarity for whatever the fast path didn't cover.
   // Skipped gracefully until a Voyage key is configured — the canonical path still works.
+  // Enrichment, so a Voyage failure/timeout degrades to canonical-only rather
+  // than failing the whole retrieval (and with it the draft).
   if (items.length < k && process.env.VOYAGE_API_KEY) {
-    const vec = await embed(query);
-    const rows = await prisma.$queryRawUnsafe<
-      { id: string; title: string; answer: string; score: number }[]
-    >(
-      `SELECT id, title, answer, 1 - (embedding OPERATOR(extensions.<=>) $1::extensions.vector) AS score
-       FROM concierge."KnowledgeItem"
-       WHERE "tenantId" = $2 AND status = 'approved' AND embedding IS NOT NULL
-       ORDER BY embedding OPERATOR(extensions.<=>) $1::extensions.vector
-       LIMIT $3`,
-      `[${vec.join(",")}]`,
-      tenantId,
-      k - items.length
-    );
-    const seen = new Set(items.map((i) => i.id));
-    for (const r of rows) if (!seen.has(r.id)) items.push({ ...r, via: "semantic" });
+    try {
+      const vec = await embed(query);
+      const rows = await prisma.$queryRawUnsafe<
+        { id: string; title: string; answer: string; score: number }[]
+      >(
+        `SELECT id, title, answer, 1 - (embedding OPERATOR(extensions.<=>) $1::extensions.vector) AS score
+         FROM concierge."KnowledgeItem"
+         WHERE "tenantId" = $2 AND status = 'approved' AND embedding IS NOT NULL
+         ORDER BY embedding OPERATOR(extensions.<=>) $1::extensions.vector
+         LIMIT $3`,
+        `[${vec.join(",")}]`,
+        tenantId,
+        k - items.length
+      );
+      const seen = new Set(items.map((i) => i.id));
+      for (const r of rows) if (!seen.has(r.id)) items.push({ ...r, via: "semantic" });
+    } catch (e) {
+      logger.error({ err: e }, "[retrieve] semantic pass failed — returning canonical matches only");
+    }
   }
 
   return items;

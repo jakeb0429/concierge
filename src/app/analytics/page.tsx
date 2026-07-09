@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { getCurrentTenant } from "@/lib/tenant";
 import { computeResponseTimes, fmtDuration } from "@/lib/response-times";
 import { categoryLabel } from "@/lib/categories";
+import { msAgo } from "@/lib/time";
 
 export const dynamic = "force-dynamic";
 
@@ -124,7 +125,7 @@ export default async function Analytics({
   const sp = await searchParams;
   const xDim = DIMS[sp.x ?? ""] ? sp.x! : "bucket";
   const yDim = DIMS[sp.y ?? ""] && sp.y !== xDim ? sp.y! : xDim === "category" ? "sentiment" : "category";
-  const since = new Date(Date.now() - 365 * 24 * 3600 * 1000);
+  const since = msAgo(365 * 24 * 3600 * 1000);
 
   const [inquiriesAll, sales, sentDrafts] = await Promise.all([
     prisma.analyticsInquiry.findMany({

@@ -1,16 +1,18 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { getCurrentTenant } from "@/lib/tenant";
 import { requireAdmin } from "@/lib/roles";
 import { INQUIRY_CATEGORIES } from "@/lib/categories";
+import { parseBody } from "@/lib/validate";
 
-const ASSIGNABLE_ROLES = new Set(["agent", "team_lead", "brand_admin"]);
-
-function validSpecialties(input: unknown): string[] | null {
-  if (!Array.isArray(input)) return null;
-  const set = new Set(INQUIRY_CATEGORIES as readonly string[]);
-  return input.every((s) => typeof s === "string" && set.has(s)) ? input : null;
-}
+const bodySchema = z.object({
+  email: z.string().trim().toLowerCase().refine((v) => v.includes("@"), "Valid email required."),
+  name: z.string().optional(),
+  // super_admin is script-managed — never assignable from the UI.
+  role: z.enum(["agent", "team_lead", "brand_admin"]).default("agent"),
+  specialties: z.array(z.enum(INQUIRY_CATEGORIES)).default([]),
+});
 
 /** Add a teammate. The User row IS the sign-in grant (magic link). */
 export async function POST(req: Request) {
@@ -20,18 +22,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Admin access required." }, { status: 403 });
   }
   const tenant = await getCurrentTenant();
-  const body = (await req.json().catch(() => ({}))) as {
-    email?: string;
-    name?: string;
-    role?: string;
-    specialties?: unknown;
-  };
-  const email = (body.email ?? "").toLowerCase().trim();
-  if (!email.includes("@")) return NextResponse.json({ error: "Valid email required." }, { status: 400 });
-  const role = body.role ?? "agent";
-  if (!ASSIGNABLE_ROLES.has(role)) return NextResponse.json({ error: "Invalid role." }, { status: 400 });
-  const specialties = validSpecialties(body.specialties ?? []);
-  if (!specialties) return NextResponse.json({ error: "Invalid specialties." }, { status: 400 });
+  const body = await parseBody(req, bodySchema);
+  if (body instanceof NextResponse) return body;
+  const { email, role, specialties } = body;
 
   // Adding is CREATE-only — an existing teammate is edited via PATCH, which
   // carries the role-change guards (no self-demotion, no super_admin edits).

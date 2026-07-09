@@ -1,5 +1,5 @@
-// Idempotent, scoped setup: create the concierge schema + vector extension.
-// Touches nothing in public — only creates an isolated schema for this app.
+// idempotent: CREATE SCHEMA / CREATE EXTENSION run with IF NOT EXISTS only.
+// Scoped setup — touches nothing in public, only this app's isolated schema.
 const fs = require("fs");
 const { Client } = require("pg");
 

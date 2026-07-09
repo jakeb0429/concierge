@@ -9,6 +9,9 @@ import { PrismaClient } from "@prisma/client";
  * Usage: tsx prisma/seed-users.ts
  */
 
+// idempotent: User upserts by (tenantId, email); sign-in credentials are never
+// touched on update, so re-runs only re-stamp role/specialties/name.
+
 const prisma = new PrismaClient();
 
 type Seed = { email: string; name?: string; role: string; specialties: string[] };

@@ -1,18 +1,26 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { getCurrentTenant } from "@/lib/tenant";
 import { sessionUser } from "@/lib/roles";
 import { syncArchiveToProvider } from "@/lib/archive";
-import { INQUIRY_CATEGORIES } from "@/lib/triage";
+import { INQUIRY_CATEGORIES } from "@/lib/categories";
+import { parseBody } from "@/lib/validate";
 
-const ALLOWED = new Set(["new", "in_review", "resolved", "archived"]);
+const bodySchema = z.object({
+  // Only the transitions a rep sets by hand — "drafted"/"replied" are system-set.
+  status: z.enum(["new", "in_review", "resolved", "archived"]).optional(),
+  assigneeId: z.string().nullable().optional(),
+  category: z.enum(INQUIRY_CATEGORIES).optional(),
+});
 
 /** Rep ticket actions: archive / resolve / reopen, reassign, recategorize.
  *  Archiving also archives the thread in the real mailbox (best-effort). */
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const tenant = await getCurrentTenant();
-  const body = (await req.json()) as { status?: string; assigneeId?: string | null; category?: string };
+  const body = await parseBody(req, bodySchema);
+  if (body instanceof NextResponse) return body;
 
   const ticket = await prisma.ticket.findFirst({ where: { id, tenantId: tenant.id } });
   if (!ticket) return NextResponse.json({ error: "Not found." }, { status: 404 });
@@ -20,10 +28,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   const actor = await sessionUser();
   const data: { status?: string; assigneeId?: string | null; category?: string } = {};
 
-  if (body.status !== undefined) {
-    if (!ALLOWED.has(body.status)) return NextResponse.json({ error: "Invalid status." }, { status: 400 });
-    data.status = body.status;
-  }
+  if (body.status !== undefined) data.status = body.status;
   if (body.assigneeId !== undefined) {
     if (body.assigneeId !== null) {
       const assignee = await prisma.user.findFirst({ where: { id: body.assigneeId, tenantId: tenant.id } });
@@ -31,11 +36,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     }
     data.assigneeId = body.assigneeId;
   }
-  if (body.category !== undefined) {
-    if (!(INQUIRY_CATEGORIES as readonly string[]).includes(body.category))
-      return NextResponse.json({ error: "Invalid category." }, { status: 400 });
-    data.category = body.category;
-  }
+  if (body.category !== undefined) data.category = body.category;
   if (Object.keys(data).length === 0)
     return NextResponse.json({ error: "Nothing to update." }, { status: 400 });
 

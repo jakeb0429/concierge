@@ -12,6 +12,9 @@ import Anthropic from "@anthropic-ai/sdk";
  * Usage: tsx prisma/mine-hubspot.ts [maxThreads=120]
  */
 
+// idempotent: candidates whose title already exists for the tenant are skipped (and the
+// prompt lists existing entries as off-limits), so re-runs never duplicate draft rows.
+
 const CLAUDE_MODEL = "claude-opus-4-8";
 const prisma = new PrismaClient();
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -22,6 +25,9 @@ const MAX_PAIRS = 40;
 async function hs<T>(path: string): Promise<T> {
   const res = await fetch(`https://api.hubapi.com${path}`, {
     headers: { Authorization: `Bearer ${HS}` },
+    // 30s socket timeout (hubspot.ts rule) — per-thread failures are already
+    // skipped in collectPairs; a listing failure fails the run loudly.
+    signal: AbortSignal.timeout(30_000),
   });
   if (!res.ok) throw new Error(`HubSpot ${res.status}: ${await res.text()}`);
   return res.json() as Promise<T>;
@@ -148,7 +154,18 @@ async function main() {
     }[];
   };
 
+  let created = 0;
   for (const c of candidates) {
+    // The prompt-side dedup is soft — guard by title so a re-run can't pile up
+    // duplicate draft candidates.
+    const dup = await prisma.knowledgeItem.findFirst({
+      where: { tenantId: rheos.id, title: c.title },
+      select: { id: true },
+    });
+    if (dup) {
+      console.log(`  (skip, title exists) ${c.title}`);
+      continue;
+    }
     await prisma.knowledgeItem.create({
       data: {
         tenantId: rheos.id,
@@ -161,9 +178,10 @@ async function main() {
         sourceRef: `hubspot: ${c.sourceThreadIds.join(", ")}`,
       },
     });
+    created++;
   }
 
-  console.log(`\nProposed ${candidates.length} FAQ candidates (status: draft, pending approval):`);
+  console.log(`\nProposed ${created} FAQ candidates (status: draft, pending approval):`);
   for (const c of candidates) console.log(`  • [${c.category}] ${c.title}`);
 }
 

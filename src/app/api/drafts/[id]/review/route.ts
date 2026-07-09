@@ -1,7 +1,14 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { getCurrentTenant } from "@/lib/tenant";
 import { sessionUser, isAdminRole } from "@/lib/roles";
+import { parseBody } from "@/lib/validate";
+
+const bodySchema = z.object({
+  action: z.enum(["submit", "approve", "return"]),
+  note: z.string().optional(),
+});
 
 /**
  * Manager-review workflow on a draft:
@@ -12,7 +19,9 @@ import { sessionUser, isAdminRole } from "@/lib/roles";
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const tenant = await getCurrentTenant();
-  const { action, note } = (await req.json()) as { action: "submit" | "approve" | "return"; note?: string };
+  const parsed = await parseBody(req, bodySchema);
+  if (parsed instanceof NextResponse) return parsed;
+  const { action, note } = parsed;
 
   // Anyone can SUBMIT for review; only a lead or admin can approve/return.
   const actor = await sessionUser();

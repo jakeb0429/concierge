@@ -10,6 +10,9 @@ import { hashPassword } from "../src/lib/auth";
  *   role defaults to "agent"; password is generated (and printed ONCE) if omitted.
  */
 
+// idempotent: User upsert by (tenantId, email) — a re-run re-stamps the hash (a fresh
+// generated password each run is the point); the per-run AuditEvent is the log.
+
 const prisma = new PrismaClient();
 const [email, role = "agent", supplied] = process.argv.slice(2);
 

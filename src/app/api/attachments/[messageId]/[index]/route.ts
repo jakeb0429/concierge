@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { gmailFor, extractAttachments, type AttachmentMeta } from "@/lib/gmail-client";
 import { getCurrentTenant } from "@/lib/tenant";
@@ -9,9 +10,26 @@ import { getCurrentTenant } from "@/lib/tenant";
  * Addressed by index into the message's attachment metadata (stable), because
  * Gmail's attachmentIds rotate — we refresh them from the live message.
  */
+
+// Route params are boundary input too — the index must actually address the
+// attachment array (a non-negative integer, not NaN or a negative slice).
+const paramsSchema = z.object({
+  messageId: z.string().min(1),
+  index: z.coerce.number().int().min(0),
+});
+
 export async function GET(_req: Request, { params }: { params: Promise<{ messageId: string; index: string }> }) {
-  const { messageId, index } = await params;
-  const idx = Number(index);
+  const parsed = paramsSchema.safeParse(await params);
+  if (!parsed.success) {
+    return NextResponse.json(
+      {
+        error: "Invalid request.",
+        fields: parsed.error.issues.map((i) => ({ path: i.path.join("."), message: i.message })),
+      },
+      { status: 400 }
+    );
+  }
+  const { messageId, index: idx } = parsed.data;
 
   const tenant = await getCurrentTenant();
   const message = await prisma.message.findFirst({

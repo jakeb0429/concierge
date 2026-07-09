@@ -1,6 +1,9 @@
 import { PrismaClient } from "@prisma/client";
 import { RHEOS_VOICE_GUIDE, RHEOS_SEED } from "./seed/rheos-brand-brain";
 
+// idempotent: tenants/channels upsert by natural keys; seed knowledge items are
+// created only when the (tenant, title) is absent — in-app edits are never clobbered.
+
 const prisma = new PrismaClient();
 
 async function main() {
@@ -26,6 +29,13 @@ async function main() {
 
   // Day-one Brand Brain from approved collateral (embeddings added by the ingest job).
   for (const item of RHEOS_SEED) {
+    // Create-if-missing: a re-seed must not duplicate entries or overwrite
+    // answers that were since refined in the Brain manager.
+    const exists = await prisma.knowledgeItem.findFirst({
+      where: { tenantId: rheos.id, title: item.title },
+      select: { id: true },
+    });
+    if (exists) continue;
     await prisma.knowledgeItem.create({
       data: {
         tenantId: rheos.id,

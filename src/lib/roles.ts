@@ -1,5 +1,6 @@
 import { cache } from "react";
 import { auth } from "./auth";
+import { logger } from "./log";
 
 /**
  * Role model. brand_admin (and super_admin) = the triage admin: sees every
@@ -26,6 +27,9 @@ export const sessionUser = cache(async (): Promise<SessionUser | null> => {
 export async function requireAdmin(): Promise<SessionUser> {
   const u = await sessionUser();
   if (!u || !isAdminRole(u.role)) {
+    // Auth denials warn (standards §3) — a burst here is a probing client or
+    // a role misconfiguration, and the 403 body carries no identifying detail.
+    logger.warn({ userId: u?.id ?? null, role: u?.role ?? null }, "[roles] admin access denied");
     const err = new Error("Admin access required.") as Error & { status: number };
     err.status = 403;
     throw err;

@@ -17,6 +17,9 @@ import { getOrderContext } from "../src/lib/shipstation";
  * Usage: tsx prisma/detect-handled.ts   (cron: hourly at :40)
  */
 
+// idempotent: tickets already tagged "maybe_handled" are filtered out (tags-includes
+// guard), so re-runs never re-push the tag or duplicate the audit event.
+
 const prisma = new PrismaClient();
 
 async function main() {

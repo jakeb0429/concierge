@@ -1,8 +1,20 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { getCurrentTenant } from "@/lib/tenant";
 import { sessionUser, isAdminRole } from "@/lib/roles";
 import { reindexKnowledgeItem } from "@/lib/brain/index-write";
+import { parseBody } from "@/lib/validate";
+
+// Brain categories are free-form (Policies, Products, ...), unlike ticket
+// inquiry categories; triggerPhrases arrives comma-separated from the form.
+const bodySchema = z.object({
+  title: z.string().min(1),
+  answer: z.string().min(1),
+  category: z.string().optional(),
+  kind: z.string().optional(),
+  triggerPhrases: z.string().optional(),
+});
 
 export async function GET() {
   const tenant = await getCurrentTenant();
@@ -21,13 +33,8 @@ export async function POST(req: Request) {
   if (!isAdminRole(actor?.role) && actor?.role !== "team_lead")
     return NextResponse.json({ error: "Only a team lead or admin can edit the Brain directly." }, { status: 403 });
 
-  const b = (await req.json()) as {
-    title: string;
-    answer: string;
-    category?: string;
-    kind?: string;
-    triggerPhrases?: string;
-  };
+  const b = await parseBody(req, bodySchema);
+  if (b instanceof NextResponse) return b;
   const item = await prisma.knowledgeItem.create({
     data: {
       tenantId: tenant.id,

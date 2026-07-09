@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { getCurrentTenant } from "@/lib/tenant";
 import { cleanEmailText } from "@/lib/email-clean";
+import { parseBody } from "@/lib/validate";
+
+const bodySchema = z.object({ draftId: z.string().min(1) });
 
 /**
  * Promote a sent reply into the Brand Brain — the flywheel's UI arm.
@@ -10,7 +14,9 @@ import { cleanEmailText } from "@/lib/email-clean";
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const tenant = await getCurrentTenant();
-  const { draftId } = (await req.json()) as { draftId: string };
+  const parsed = await parseBody(req, bodySchema);
+  if (parsed instanceof NextResponse) return parsed;
+  const { draftId } = parsed;
 
   const ticket = await prisma.ticket.findFirst({
     where: { id, tenantId: tenant.id },

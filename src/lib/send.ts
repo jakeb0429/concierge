@@ -1,4 +1,5 @@
 import { getChannelAdapter } from "./channels";
+import { logger } from "./log";
 import type { Channel } from "@prisma/client";
 
 /**
@@ -26,8 +27,16 @@ export async function sendReply(args: {
   const creds =
     !isMock && process.env.CONCIERGE_LIVE_SEND === "true" ? credentialsFor(args.channel.provider) : null;
   if (!creds) {
-    console.log(
-      `[send:${isMock ? "mock" : "stub"}] would send via ${args.channel.provider} from ${args.channel.supportAddress} to ${args.to} — "${args.subject}"`
+    logger.info(
+      {
+        to: args.to,
+        live: false,
+        mode: isMock ? "mock" : "stub",
+        provider: args.channel.provider,
+        from: args.channel.supportAddress,
+        subject: args.subject,
+      },
+      "[send] logged instead of sending"
     );
     return { providerMessageId: `stub-${Date.now()}`, live: false };
   }
@@ -46,6 +55,10 @@ export async function sendReply(args: {
     subject: args.subject,
     html: args.html,
   });
+  logger.info(
+    { to: args.to, live: true, provider: args.channel.provider, providerMessageId: res.providerMessageId },
+    "[send] reply transmitted"
+  );
   return { providerMessageId: res.providerMessageId, live: true };
 }
 

@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { getCurrentTenant } from "@/lib/tenant";
 import { routeSignalAssignee } from "@/lib/assign";
 import { anthropic, CLAUDE_MODEL } from "@/lib/anthropic";
+import { parseBody } from "@/lib/validate";
+import { logger } from "@/lib/log";
 
 /**
  * Teach the Brain from the reply page: a rep submits a correction to a cited
@@ -43,15 +46,18 @@ const ENTRY_TOOL = {
   },
 };
 
+const bodySchema = z.object({
+  note: z.string().trim().min(1),
+  knowledgeItemId: z.string().optional(),
+  draftId: z.string().optional(),
+});
+
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id: ticketId } = await params;
   const tenant = await getCurrentTenant();
-  const { note, knowledgeItemId, draftId } = (await req.json()) as {
-    note?: string;
-    knowledgeItemId?: string;
-    draftId?: string;
-  };
-  if (!note?.trim()) return NextResponse.json({ error: "A note is required." }, { status: 400 });
+  const parsed = await parseBody(req, bodySchema);
+  if (parsed instanceof NextResponse) return parsed;
+  const { note, knowledgeItemId, draftId } = parsed;
 
   // Training questions route to the specialist for the ticket's category —
   // the person answering those tickets judges the proposed knowledge change.
@@ -107,7 +113,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         rationale = out.rationale;
       }
     } catch (e) {
-      console.error("[teach] revision synthesis failed, storing raw note:", e);
+      logger.error({ err: e }, "[teach] revision synthesis failed, storing raw note");
     }
 
     const evidence = {
@@ -171,7 +177,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       category = out.category ?? null;
     }
   } catch (e) {
-    console.error("[teach] entry synthesis failed, storing raw note:", e);
+    logger.error({ err: e }, "[teach] entry synthesis failed, storing raw note");
   }
 
   const signal = await prisma.learningSignal.create({

@@ -1,7 +1,19 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { getCurrentTenant } from "@/lib/tenant";
 import { sessionUser } from "@/lib/roles";
+import { parseBody } from "@/lib/validate";
+
+// expiresAt is a date-only string or full ISO — parsed below, where the
+// date-only form gets its end-of-day semantics.
+const bodySchema = z.object({
+  body: z.string().trim().min(1),
+  ticketId: z.string().optional(),
+  customerId: z.string().optional(),
+  productFamily: z.string().optional(),
+  expiresAt: z.string().nullable().optional(),
+});
 
 /**
  * Add a context note — scoped to one ticket OR to the customer. Optional
@@ -12,14 +24,9 @@ import { sessionUser } from "@/lib/roles";
 export async function POST(req: Request) {
   const tenant = await getCurrentTenant();
   const actor = await sessionUser();
-  const { body, ticketId, customerId, productFamily, expiresAt } = (await req.json().catch(() => ({}))) as {
-    body?: string;
-    ticketId?: string;
-    customerId?: string;
-    productFamily?: string;
-    expiresAt?: string | null;
-  };
-  if (!body?.trim()) return NextResponse.json({ error: "The note text is required." }, { status: 400 });
+  const parsed = await parseBody(req, bodySchema);
+  if (parsed instanceof NextResponse) return parsed;
+  const { body, ticketId, customerId, productFamily, expiresAt } = parsed;
   const scopes = [ticketId, customerId, productFamily].filter(Boolean).length;
   if (scopes !== 1)
     return NextResponse.json({ error: "Scope the note to a ticket, a customer, OR a product." }, { status: 400 });

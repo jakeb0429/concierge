@@ -1,3 +1,6 @@
+/* eslint-disable @typescript-eslint/no-unused-vars --
+   Scaffold: method signatures mirror ChannelAdapter verbatim (the point of the
+   file); the params go live with the bodies at Stingray onboarding. */
 import type {
   ChannelAdapter,
   ChannelConfig,

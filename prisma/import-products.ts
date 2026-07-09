@@ -16,6 +16,9 @@ import { PrismaClient } from "@prisma/client";
  * Usage: tsx prisma/import-products.ts
  */
 
+// idempotent: KnowledgeItem entries upsert by (tenantId, title), ProductFamily by name;
+// the end-of-run sweep deletes only uncited titles that were not re-written this run.
+
 const prisma = new PrismaClient();
 const HS = process.env.HUBSPOT_TOKEN!;
 
@@ -64,9 +67,11 @@ async function hubspotCatalog(): Promise<Map<string, HubProduct>> {
     "rhe_frametype,rhe_gender,rhe_lenssize,rhe_basecurve,rhe_category_tags";
   let after: string | undefined;
   do {
+    // Bounded; HubSpot is the catalog spine, so a failure here hard-fails the
+    // run (a partial spine would let the stale-entry sweep delete good entries).
     const res = await fetch(
       `https://api.hubapi.com/crm/v3/objects/products?limit=100&properties=${props}${after ? `&after=${after}` : ""}`,
-      { headers: { Authorization: `Bearer ${HS}` } }
+      { headers: { Authorization: `Bearer ${HS}` }, signal: AbortSignal.timeout(30_000) }
     );
     if (!res.ok) throw new Error(`HubSpot ${res.status}`);
     const json = (await res.json()) as {
@@ -104,8 +109,16 @@ async function shopifyCatalog(): Promise<{
   const titles: string[] = [];
   const attrs = new Map<string, { style: string | null; gender: string | null }>();
   for (let page = 1; page <= 5; page++) {
-    const res = await fetch(`https://rheosgear.com/products.json?limit=250&page=${page}`);
-    if (!res.ok) break;
+    // Public endpoint, enrichment (retail price / product_type / tags) — a
+    // timeout or network error degrades to partial data, same as the existing
+    // break on a non-OK response.
+    const res = await fetch(`https://rheosgear.com/products.json?limit=250&page=${page}`, {
+      signal: AbortSignal.timeout(15_000),
+    }).catch((e: unknown) => {
+      console.warn(`Shopify catalog page ${page} failed (${(e as Error).message}) — continuing with partial data`);
+      return null;
+    });
+    if (!res || !res.ok) break;
     const json = (await res.json()) as {
       products: { title: string; product_type: string; tags: string[]; variants: { sku: string | null; price: string }[] }[];
     };

@@ -65,7 +65,7 @@ export async function findStockists(opts: {
     if (r.productFamily && !hit.products.includes(r.productFamily)) hit.products.push(r.productFamily);
     byCompany.set(key, hit);
   }
-  let hits = [...byCompany.values()].sort((a, b) => b.lastOrderedAt.getTime() - a.lastOrderedAt.getTime());
+  const hits = [...byCompany.values()].sort((a, b) => b.lastOrderedAt.getTime() - a.lastOrderedAt.getTime());
 
   // A city match ("Charleston") should surface the AREA too — Sullivan's
   // Island, Mount Pleasant, typo'd cities — so backfill remaining slots with

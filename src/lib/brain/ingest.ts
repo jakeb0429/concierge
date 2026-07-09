@@ -37,10 +37,13 @@ export async function mineHubspotTickets(_tenantId: string): Promise<FaqCandidat
   //    from the best real replies, in Rheos voice, citing the ticket ids.
   void anthropic;
   void CLAUDE_MODEL;
+  void _tenantId;
   throw new Error("mineHubspotTickets() not wired — Phase 1: confirm HubSpot Conversations scope.");
 }
 
 /** Crawl rheosgear.com policy/FAQ/product pages into reference KnowledgeItems. */
 export async function crawlWebsite(_tenantId: string, _startUrls: string[]): Promise<FaqCandidate[]> {
+  void _tenantId;
+  void _startUrls;
   throw new Error("crawlWebsite() not wired — Phase 1.");
 }

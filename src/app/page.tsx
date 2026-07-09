@@ -5,6 +5,7 @@ import { sessionUser, isAdminRole } from "@/lib/roles";
 import { computeReplyState, REPLY_STATE_LABEL, type ReplyState } from "@/lib/reply-state";
 import { NOISE_CATEGORIES } from "@/lib/triage";
 import { categoryLabel } from "@/lib/categories";
+import { msAgo, nowMs } from "@/lib/time";
 import InboxList, { type Row } from "./InboxList";
 import InboxFilters from "./InboxFilters";
 import ExpiredNotesReview from "./ExpiredNotesReview";
@@ -51,7 +52,7 @@ export default async function Inbox({
     ...(sp.cat ? { category: sp.cat } : {}),
     ...(sp.assignee === "none" ? { assigneeId: null } : sp.assignee ? { assigneeId: sp.assignee } : {}),
     ...(sp.priority === "high" ? { priority: "high" } : {}),
-    ...(sinceHours ? { createdAt: { gte: new Date(Date.now() - sinceHours * 3_600_000) } } : {}),
+    ...(sinceHours ? { createdAt: { gte: msAgo(sinceHours * 3_600_000) } } : {}),
     // Time-window filters mean "real inquiries that arrived" — keep auto-
     // archived noise out unless the Noise view is explicitly selected.
     ...(sinceHours && view !== "noise" ? { NOT: { tags: { hasSome: [...NOISE_CATEGORIES] } } } : {}),
@@ -142,7 +143,7 @@ export default async function Inbox({
   const unassignedCount = assignedCounts.find((c) => c.assigneeId === null)?._count ?? 0;
 
   const noiseCats = new Set<string>(NOISE_CATEGORIES);
-  const now = Date.now();
+  const now = nowMs();
   let rows: Row[] = tickets.map((t) => {
     const lastInbound = [...t.messages].reverse().find((m) => m.direction === "inbound");
     const replyState = computeReplyState(t.messages);

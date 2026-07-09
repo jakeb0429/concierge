@@ -2,6 +2,8 @@
  * Mailgun sender — reuses the Scribe Mailgun account (same as the JFF apps).
  * Logs instead of sending when creds are absent, so dev never fails on email.
  */
+import { logger } from "./log";
+
 const MAILGUN_BASE = "https://api.mailgun.net";
 
 /**
@@ -24,10 +26,12 @@ export async function sendEmail({
   const domain = process.env.MAILGUN_DOMAIN;
   const from = process.env.EMAIL_FROM || `Concierge <no-reply@${domain}>`;
   if (!apiKey || !domain) {
-    console.log(`[email:stub] "${subject}" to ${to.join(", ")}\n${text.slice(0, 500)}`);
+    logger.info({ to, subject, live: false, preview: text.slice(0, 500) }, "[email] Mailgun not configured, logged instead of sending");
     return false;
   }
   const body = new URLSearchParams({ from, to: to.join(","), subject, text, html });
+  // Bounded: a hung Mailgun socket must not stall the caller. Failures still
+  // throw — the send is load-bearing, callers decide what a lost email means.
   const res = await fetch(`${MAILGUN_BASE}/v3/${domain}/messages`, {
     method: "POST",
     headers: {
@@ -35,6 +39,7 @@ export async function sendEmail({
       "Content-Type": "application/x-www-form-urlencoded",
     },
     body,
+    signal: AbortSignal.timeout(15_000),
   });
   if (!res.ok) throw new Error(`Mailgun ${res.status}: ${await res.text()}`);
   return true;
@@ -55,11 +60,16 @@ export async function sendMagicLink({ email, url }: { email: string; url: string
   // In development, never transmit — the link is logged to the console instead.
   // Prevents real emails with localhost URLs landing in inboxes during dev/testing.
   if (process.env.NODE_ENV !== "production" || !apiKey || !domain) {
-    console.log(`[email:${process.env.NODE_ENV !== "production" ? "dev" : "stub"}] magic link for ${email}: ${url}`);
+    logger.info(
+      { email, url, live: false, mode: process.env.NODE_ENV !== "production" ? "dev" : "stub" },
+      "[email] magic link logged instead of sent"
+    );
     return;
   }
 
   const body = new URLSearchParams({ from, to: email, subject, text, html });
+  // Bounded + still throwing: a magic link that silently never sends would
+  // strand the user on "check your email", so the route must see the failure.
   const res = await fetch(`${MAILGUN_BASE}/v3/${domain}/messages`, {
     method: "POST",
     headers: {
@@ -67,6 +77,7 @@ export async function sendMagicLink({ email, url }: { email: string; url: string
       "Content-Type": "application/x-www-form-urlencoded",
     },
     body,
+    signal: AbortSignal.timeout(15_000),
   });
   if (!res.ok) throw new Error(`Mailgun ${res.status}: ${await res.text()}`);
 }

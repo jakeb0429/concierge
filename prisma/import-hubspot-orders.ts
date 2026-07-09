@@ -16,17 +16,32 @@ import { extractProductMention } from "../src/lib/product-extract";
  *   --full  = every won deal (backfill)
  */
 
+// idempotent: every write is an upsert on a natural key — CustomerOrder (source, orderRef=deal id),
+// StockistSale (dealId, itemName), SalesSource (tenantId, key) — so re-runs update in place.
+
 const prisma = new PrismaClient();
 const FULL = process.argv.includes("--full");
 const TOKEN = process.env.HUBSPOT_TOKEN;
 const BASE = "https://api.hubapi.com";
 
+// Same reliability rules as src/lib/hubspot.ts (30s socket timeout — hung
+// sockets stalled whole backfills — plus bounded retries); local because this
+// variant also POSTs search/batch bodies.
 async function hs<T>(path: string, body?: unknown, attempt = 0): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     method: body ? "POST" : "GET",
     headers: { Authorization: `Bearer ${TOKEN}`, "Content-Type": "application/json" },
     body: body ? JSON.stringify(body) : undefined,
+    signal: AbortSignal.timeout(30_000),
+  }).catch((e) => {
+    if (attempt >= 5) throw e;
+    return null;
   });
+  if (!res) {
+    console.warn(`HubSpot ${path} timed out / network error — retry ${attempt + 1}/5`);
+    await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
+    return hs(path, body, attempt + 1);
+  }
   if (res.status === 429 && attempt < 5) {
     await new Promise((r) => setTimeout(r, 1500 * (attempt + 1)));
     return hs(path, body, attempt + 1);

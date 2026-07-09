@@ -1,4 +1,5 @@
 import { prisma } from "../db";
+import { logger } from "../log";
 import { embed } from "./retrieval";
 
 /**
@@ -17,6 +18,6 @@ export async function reindexKnowledgeItem(id: string, title: string, answer: st
       id
     );
   } catch (e) {
-    console.error("[reindex] embedding failed (entry still usable via fast path):", e);
+    logger.error({ err: e, knowledgeItemId: id }, "[reindex] embedding failed, entry still usable via lexical fast path");
   }
 }

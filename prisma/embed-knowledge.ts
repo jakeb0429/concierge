@@ -8,6 +8,9 @@ import { PrismaClient } from "@prisma/client";
  * Usage: tsx prisma/embed-knowledge.ts
  */
 
+// idempotent: only rows WHERE embedding IS NULL are selected — writing the vector
+// removes a row from the next run's work set, so re-runs converge to zero.
+
 const prisma = new PrismaClient();
 
 async function main() {
@@ -30,6 +33,8 @@ async function main() {
     const chunk = items.slice(i, i + BATCH);
     let json: { data: { index: number; embedding: number[] }[] } | null = null;
     for (let attempt = 0; attempt < 5 && !json; attempt++) {
+      // Bounded + network errors retried like 429s — a hung socket must not
+      // stall the cron, and a blip shouldn't kill a mostly-done backfill.
       const res = await fetch("https://api.voyageai.com/v1/embeddings", {
         method: "POST",
         headers: {
@@ -41,7 +46,15 @@ async function main() {
           model: "voyage-3-large",
           input_type: "document",
         }),
+        signal: AbortSignal.timeout(60_000),
+      }).catch((e: unknown) => {
+        console.log(`  network/timeout error (${(e as Error).message}), waiting 10s (attempt ${attempt + 1}/5)…`);
+        return null;
       });
+      if (!res) {
+        await new Promise((r) => setTimeout(r, 10_000));
+        continue;
+      }
       if (res.status === 429) {
         console.log(`  rate-limited, waiting 65s (attempt ${attempt + 1}/5)…`);
         await new Promise((r) => setTimeout(r, 65_000));

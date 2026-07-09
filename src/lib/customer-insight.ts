@@ -2,6 +2,7 @@ import { after } from "next/server";
 import { prisma } from "./db";
 import { anthropic } from "./anthropic";
 import { cleanEmailText } from "./email-clean";
+import { logger } from "./log";
 
 /**
  * The AI customer read — a 2–3 sentence interpretation of everything the
@@ -74,7 +75,9 @@ export async function getCustomerInsight(customerId: string): Promise<string | n
 
   // Stale: serve what we have, regenerate out-of-band.
   after(() =>
-    regenerateInsight(customerId, basis).catch((e) => console.error("[customer-insight] refresh failed:", e))
+    regenerateInsight(customerId, basis).catch((e) =>
+      logger.error({ err: e, customerId }, "[customer-insight] refresh failed")
+    )
   );
   return customer.insight ?? null;
 }

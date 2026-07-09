@@ -1,0 +1,29 @@
+# CI quality gate (DEVELOPMENT-STANDARDS): typecheck → lint → test → build.
+# Deploys are manual (rsync + deploy-birdseye.sh) but MUST follow a green run
+# of `npm run predeploy-check`, which is this same sequence locally.
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    env:
+      # Build-time stand-ins — no route executes at build (all force-dynamic).
+      DATABASE_URL: "postgresql://ci:ci@localhost:5432/ci?schema=concierge"
+      DIRECT_URL: "postgresql://ci:ci@localhost:5432/ci?schema=concierge"
+      AUTH_SECRET: "ci-secret"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npx prisma generate
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run test
+      - run: npm run build

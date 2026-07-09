@@ -18,6 +18,9 @@ import { hubspot as hs } from "../src/lib/hubspot";
  *          Categories and product enrichment are left untouched.
  */
 
+// idempotent: already-imported threadIds are skipped up front and rows upsert by unique
+// threadId; --reclassify only rewrites endSentiment in place (no rows added or doubled).
+
 const prisma = new PrismaClient();
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY, timeout: 120_000, maxRetries: 2 });
 

@@ -10,6 +10,9 @@ import { autoAssign } from "../src/lib/assign";
  * Usage: tsx prisma/backfill-ticket-categories.ts [maxRows=200]
  */
 
+// idempotent: selects only rows with category IS NULL — stamping the category removes
+// a ticket from the next run's work set; assignment only fills empty assigneeId.
+
 const prisma = new PrismaClient();
 const MAX = Number(process.argv[2] ?? 200);
 

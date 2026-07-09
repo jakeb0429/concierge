@@ -1,3 +1,4 @@
+// idempotent: SalesMonthly writes are INSERT … ON CONFLICT (month, source) DO UPDATE.
 const fs=require("fs");const {Client}=require("pg");
 const env=fs.readFileSync(__dirname+"/../.env","utf8");
 const url=env.match(/^DATABASE_URL="(.+)"/m)[1].replace(/[?&]schema=concierge/,"");

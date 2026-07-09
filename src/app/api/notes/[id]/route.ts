@@ -1,7 +1,15 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { getCurrentTenant } from "@/lib/tenant";
 import { sessionUser } from "@/lib/roles";
+import { parseBody } from "@/lib/validate";
+
+// expiresAt: null makes the note permanent; omitting it leaves the date alone.
+const bodySchema = z.object({
+  body: z.string().trim().min(1).optional(),
+  expiresAt: z.string().nullable().optional(),
+});
 
 /** Edit a context note — body text and/or expiration. Passing expiresAt: null
  *  makes the note permanent (the "keep it, drop the date" review action). */
@@ -11,12 +19,10 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   const note = await prisma.contextNote.findFirst({ where: { id, tenantId: tenant.id } });
   if (!note) return NextResponse.json({ error: "Note not found." }, { status: 404 });
 
-  const body = (await req.json().catch(() => ({}))) as { body?: string; expiresAt?: string | null };
+  const body = await parseBody(req, bodySchema);
+  if (body instanceof NextResponse) return body;
   const data: { body?: string; expiresAt?: Date | null } = {};
-  if (body.body !== undefined) {
-    if (!body.body.trim()) return NextResponse.json({ error: "The note text can't be empty." }, { status: 400 });
-    data.body = body.body.trim();
-  }
+  if (body.body !== undefined) data.body = body.body;
   if (body.expiresAt !== undefined) {
     const d = body.expiresAt
       ? new Date(/^\d{4}-\d{2}-\d{2}$/.test(body.expiresAt) ? `${body.expiresAt}T23:59:59.000Z` : body.expiresAt)
