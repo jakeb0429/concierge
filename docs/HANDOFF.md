@@ -235,6 +235,16 @@ this database project WITHOUT these defenses (59+ PM2 restarts historically) —
   cell drilling to the underlying inquiries
 - **Customer profiles** (`/customers/[id]`) — LTV, full order history, support history with
   per-inquiry sentiment and days-after-purchase, negative-outcome flag
+- **Related customers** (`src/lib/related-customers.ts`, panel on the profile) — when a
+  customer's email has no (or few) orders, surfaces orders under OTHER emails that share
+  their last name (in the email local part or the buyer/ship-to name) or ship to the same
+  address as one of their own orders. Powered by buyer + ship-to identity columns on
+  CustomerOrder (`buyerName`, `shipName`, `shipAddress1/City/State/Zip`), captured by the
+  Shopify import (2026-07-09; the import also stamps `tenantId` now). Heuristic and
+  rep-facing only — match reasons are shown, nothing is merged automatically, and a
+  too-common surname (>25 name-only hits) suppresses name matches, keeping address hits.
+  Example that motivated it: langliekristoffer@gmail.com (0 orders) → klanglie21@gmail.com
+  (order #80986).
 
 ## PERFORMANCE — the geography problem (read before touching DB config)
 

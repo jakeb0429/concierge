@@ -27,7 +27,7 @@
     "db:seed-sales-sources": "tsx prisma/seed-sales-sources.ts",
     "send-digest": "tsx prisma/send-digest.ts",
     "db:detect-handled": "tsx prisma/detect-handled.ts",
-    "db:migrate:new": "prisma migrate diff --from-migrations prisma/migrations --to-schema-datamodel prisma/schema.prisma --script",
+    "db:migrate:new": "prisma migrate diff --from-schema-datasource prisma/schema.prisma --to-schema-datamodel prisma/schema.prisma --script",
     "db:migrate:deploy": "prisma migrate deploy",
     "db:migrate:status": "prisma migrate status",
     "db:push:UNSAFE": "echo 'db push is banned against the shared DB (DEVELOPMENT-STANDARDS \u00a74). Author a migration: npm run db:migrate:new > prisma/migrations/<ts>_<name>/migration.sql, review it, then db:migrate:deploy.' && exit 1",

@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { statusChip, statusLabel } from "@/lib/ui";
 import { getCurrentTenant } from "@/lib/tenant";
 import { getCustomerInsight } from "@/lib/customer-insight";
+import { findRelatedCustomers } from "@/lib/related-customers";
 import { nowMs } from "@/lib/time";
 import CustomerFacts from "./CustomerFacts";
 import NotesPanel from "@/app/components/NotesPanel";
@@ -47,12 +48,13 @@ export default async function CustomerProfile({ params }: { params: Promise<{ id
   const lastOrder = orders[0];
   const negatives = inquiries.filter((q) => q.endSentiment === "negative").length;
   const now = nowMs();
-  const [insight, rawNotes] = await Promise.all([
+  const [insight, rawNotes, related] = await Promise.all([
     getCustomerInsight(customer.id).catch(() => null),
     prisma.contextNote.findMany({
       where: { tenantId: customer.tenantId, customerId: customer.id },
       orderBy: { createdAt: "desc" },
     }),
+    findRelatedCustomers(customer, tenant.id, orders).catch(() => []),
   ]);
   const notes = rawNotes.map((n) => ({
     id: n.id,
@@ -111,6 +113,38 @@ export default async function CustomerProfile({ params }: { params: Promise<{ id
           <div className="text-2xl font-semibold">{inquiries.length + tickets.length}</div>
         </div>
       </div>
+
+      {related.length > 0 && (
+        <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50/40 p-4">
+          <div className="text-sm font-medium">Possible related customers</div>
+          <p className="mt-0.5 text-xs text-neutral-500">
+            Orders under other emails that share this customer&apos;s name or shipping address — likely the
+            same person or household. Heuristic matches: verify before acting on them.
+          </p>
+          <div className="mt-2 divide-y divide-amber-100">
+            {related.map((r) => (
+              <div key={r.email} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2 text-sm">
+                {r.customerId ? (
+                  <Link href={`/customers/${r.customerId}`} className="font-medium text-blue-700 hover:underline">
+                    {r.name ?? r.email}
+                  </Link>
+                ) : (
+                  <span className="font-medium text-neutral-800">{r.name ?? r.email}</span>
+                )}
+                <span className="text-neutral-500">{r.email}</span>
+                {r.reasons.map((reason) => (
+                  <span key={reason} className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] text-amber-800">
+                    {reason === "address" ? "same address" : reason === "name" ? "name match" : "similar email"}
+                  </span>
+                ))}
+                <span className="ml-auto text-xs text-neutral-500">
+                  {r.orderCount} order{r.orderCount === 1 ? "" : "s"} · {money(r.ltv)} · last {fmtDate(r.lastOrderedAt)}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="mt-4 grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
         {/* Orders */}

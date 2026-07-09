@@ -323,10 +323,19 @@ model CustomerOrder {
   orderRef    String
   source      String   // "shopify-live" | "hubspot-b2b" | ...
   refunded    Boolean  @default(false) // refunded or partially refunded
+  // --- buyer + ship-to identity (Shopify import) — powers related-customer
+  // matching: family members / alternate emails via shared name or address ---
+  buyerName    String? // Shopify customer first+last (the account holder)
+  shipName     String? // shipping_address.name (recipient — differs on gifts)
+  shipAddress1 String?
+  shipCity     String?
+  shipState    String? // province_code
+  shipZip      String?
 
   @@unique([source, orderRef])
   @@index([email])
   @@index([tenantId, source]) // sources panel groupBy over ~80k rows
+  @@index([shipZip]) // related-customer address matching
   @@schema("concierge")
 }
 

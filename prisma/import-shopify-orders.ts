@@ -38,15 +38,29 @@ async function mintToken(): Promise<string> {
   return ((await res.json()) as { access_token: string }).access_token;
 }
 
-type Order = { id: number; email: string | null; created_at: string; total_price: string; order_number: number; cancelled_at: string | null; financial_status: string | null };
+type Order = {
+  id: number; email: string | null; created_at: string; total_price: string;
+  order_number: number; cancelled_at: string | null; financial_status: string | null;
+  customer: { first_name: string | null; last_name: string | null } | null;
+  shipping_address: {
+    name: string | null; address1: string | null; city: string | null;
+    province_code: string | null; zip: string | null;
+  } | null;
+};
+
+const trimOrNull = (s: string | null | undefined): string | null => {
+  const t = (s ?? "").trim();
+  return t || null;
+};
 
 async function main() {
   const token = await mintToken();
+  const rheos = await prisma.tenant.findUniqueOrThrow({ where: { slug: "rheos" } });
   console.log("token minted; paging orders since", SINCE.slice(0, 10));
 
   let url: string | null =
     `https://${SHOP}/admin/api/${VERSION}/orders.json?status=any&limit=250&created_at_min=${encodeURIComponent(SINCE)}` +
-    `&fields=id,email,created_at,total_price,order_number,cancelled_at,financial_status`;
+    `&fields=id,email,created_at,total_price,order_number,cancelled_at,financial_status,customer,shipping_address`;
   let fetched = 0;
   let withEmail = 0;
   const monthly = new Map<string, { orders: number; revenue: number }>();
@@ -77,14 +91,31 @@ async function main() {
       const values: string[] = [];
       const params: unknown[] = [];
       emailRows.forEach((o, i) => {
-        const b = i * 5;
-        values.push(`('co_' || md5($${b + 1} || $${b + 2}), $${b + 1}, $${b + 3}::timestamptz, $${b + 4}::numeric, $${b + 2}, 'shopify-live', $${b + 5}::boolean)`);
+        const b = i * 12;
+        values.push(
+          `('co_' || md5($${b + 1} || $${b + 2}), $${b + 1}, $${b + 3}::timestamptz, $${b + 4}::numeric, $${b + 2}, 'shopify-live', $${b + 5}::boolean, ` +
+          `$${b + 6}, $${b + 7}, $${b + 8}, $${b + 9}, $${b + 10}, $${b + 11}, $${b + 12})`
+        );
+        const buyer = trimOrNull([o.customer?.first_name, o.customer?.last_name].filter(Boolean).join(" "));
         params.push(o.email!.toLowerCase(), String(o.order_number), o.created_at, o.total_price,
-          ["refunded", "partially_refunded"].includes(o.financial_status ?? ""));
+          ["refunded", "partially_refunded"].includes(o.financial_status ?? ""),
+          rheos.id, buyer, trimOrNull(o.shipping_address?.name), trimOrNull(o.shipping_address?.address1),
+          trimOrNull(o.shipping_address?.city), trimOrNull(o.shipping_address?.province_code),
+          trimOrNull(o.shipping_address?.zip));
       });
       await prisma.$executeRawUnsafe(
-        `INSERT INTO concierge."CustomerOrder" (id, email, "orderedAt", "totalAmount", "orderRef", source, refunded)
-         VALUES ${values.join(",")} ON CONFLICT (source, "orderRef") DO UPDATE SET refunded = EXCLUDED.refunded`,
+        `INSERT INTO concierge."CustomerOrder" (id, email, "orderedAt", "totalAmount", "orderRef", source, refunded,
+           "tenantId", "buyerName", "shipName", "shipAddress1", "shipCity", "shipState", "shipZip")
+         VALUES ${values.join(",")}
+         ON CONFLICT (source, "orderRef") DO UPDATE SET
+           refunded = EXCLUDED.refunded,
+           "tenantId" = EXCLUDED."tenantId",
+           "buyerName" = EXCLUDED."buyerName",
+           "shipName" = EXCLUDED."shipName",
+           "shipAddress1" = EXCLUDED."shipAddress1",
+           "shipCity" = EXCLUDED."shipCity",
+           "shipState" = EXCLUDED."shipState",
+           "shipZip" = EXCLUDED."shipZip"`,
         ...params
       );
       withEmail += emailRows.length;
