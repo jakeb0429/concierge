@@ -27,7 +27,8 @@
     "db:backfill-categories": "tsx prisma/backfill-ticket-categories.ts",
     "db:import-hubspot-orders": "tsx prisma/import-hubspot-orders.ts",
     "db:seed-sales-sources": "tsx prisma/seed-sales-sources.ts",
-    "send-digest": "tsx prisma/send-digest.ts"
+    "send-digest": "tsx prisma/send-digest.ts",
+    "db:detect-handled": "tsx prisma/detect-handled.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

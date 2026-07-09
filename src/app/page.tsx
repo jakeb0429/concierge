@@ -30,6 +30,7 @@ export default async function Inbox({
     since?: string;
     needs?: string;
     sort?: string;
+    dir?: string;
   }>;
 }) {
   const [tenant, me] = await Promise.all([getCurrentTenant(), sessionUser()]);
@@ -56,7 +57,9 @@ export default async function Inbox({
     ...(sinceHours && view !== "noise" ? { NOT: { tags: { hasSome: [...NOISE_CATEGORIES] } } } : {}),
   };
   const needsFilter = sp.needs === "1" ? true : sp.needs === "0" ? false : null;
-  const sort = ["newest", "oldest", "waiting"].includes(sp.sort ?? "") ? sp.sort! : null;
+  const SORT_KEYS = ["newest", "oldest", "waiting", "received", "lastreply", "activity", "customer", "category", "status", "assignee"];
+  const sort = SORT_KEYS.includes(sp.sort ?? "") ? sp.sort! : null;
+  const dir = sp.dir === "asc" ? "asc" : "desc";
   const flat = Object.keys(filterWhere).length > 0 || needsFilter !== null || sort !== null;
 
   const VIEWS: Record<ViewKey, { label: string; where: Prisma.TicketWhereInput }> = {
@@ -146,12 +149,17 @@ export default async function Inbox({
     const coarseTag = t.tags.find((tag) => !tag.startsWith("product:")) ?? null;
     const open = !["archived", "resolved", "replied"].includes(t.status);
     const needsReply = replyState === "first_contact" || replyState === "follow_up";
+    const lastOutbound = [...t.messages].reverse().find((m) => m.direction === "outbound");
+    const lastMsg = t.messages[t.messages.length - 1];
     return {
       id: t.id,
       name: t.customer.displayName ?? "Customer",
       subject: t.subject ?? "",
       snippet: snippetOf.get(t.id) ?? "",
       status: t.status,
+      lastReplyAt: lastOutbound ? lastOutbound.sentAt.getTime() : null,
+      lastActivityAt: lastMsg ? lastMsg.sentAt.getTime() : t.createdAt.getTime(),
+      maybeHandled: t.tags.includes("maybe_handled"),
       category: t.category ? categoryLabel(t.category) : (coarseTag?.replace(/_/g, " ") ?? null),
       wholesale: t.channelRef?.supportAddress?.startsWith("wholesale") ?? false,
       urgent: t.priority === "high" && open,
@@ -168,9 +176,18 @@ export default async function Inbox({
   if (needsFilter !== null) rows = rows.filter((r) => r.needsReply === needsFilter);
   // Importance order: urgent → needs a reply → been waiting longest. The
   // triage admin works this list top to bottom. An explicit sort overrides.
+  const flip = dir === "asc" ? -1 : 1;
+  const cmpStr = (a: string | null, b: string | null) => (a ?? "\uffff").localeCompare(b ?? "\uffff");
   if (sort === "newest") rows.sort((a, b) => b.createdAt - a.createdAt);
   else if (sort === "oldest") rows.sort((a, b) => a.createdAt - b.createdAt);
-  else if (sort === "waiting") rows.sort((a, b) => (b.waitingDays ?? -1) - (a.waitingDays ?? -1) || a.createdAt - b.createdAt);
+  else if (sort === "received") rows.sort((a, b) => flip * (b.createdAt - a.createdAt));
+  else if (sort === "lastreply") rows.sort((a, b) => flip * ((b.lastReplyAt ?? -1) - (a.lastReplyAt ?? -1)));
+  else if (sort === "activity") rows.sort((a, b) => flip * (b.lastActivityAt - a.lastActivityAt));
+  else if (sort === "customer") rows.sort((a, b) => -flip * cmpStr(a.name, b.name));
+  else if (sort === "category") rows.sort((a, b) => -flip * cmpStr(a.category, b.category));
+  else if (sort === "status") rows.sort((a, b) => -flip * cmpStr(a.status, b.status));
+  else if (sort === "assignee") rows.sort((a, b) => -flip * cmpStr(a.assigneeLabel, b.assigneeLabel));
+  else if (sort === "waiting") rows.sort((a, b) => flip * ((b.waitingDays ?? -1) - (a.waitingDays ?? -1)) || a.createdAt - b.createdAt);
   else
     rows.sort(
       (a, b) =>
@@ -273,6 +290,8 @@ export default async function Inbox({
         rows={rows}
         view={view}
         flat={flat}
+        sort={sort}
+        dir={dir}
         canAssign={admin}
         users={users.map((u) => ({ id: u.id, label: u.name ?? u.email.split("@")[0] }))}
       />

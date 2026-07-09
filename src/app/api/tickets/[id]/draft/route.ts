@@ -52,15 +52,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     liveContext.push(
       `Known purchase channel: ${ticket.customer.purchaseChannel}${ticket.customer.channelName ? ` — ${ticket.customer.channelName}` : ""}`
     );
-  const notes = await groundingNotes(ticket.tenantId, ticket.id, ticket.customerId);
+  const detected = await extractProductMention(`${ticket.subject ?? ""}\n${ticketText.slice(0, 2000)}`);
+  const notes = await groundingNotes(ticket.tenantId, ticket.id, ticket.customerId, detected.productFamily);
   if (notes.length) liveContext.push(`Team notes (rep-vetted facts): ${notes.join(" | ")}`);
   // "Where can I buy X in person?" → real stockist data (wholesale accounts
   // that recently ordered it), scoped to a place they named if we recognize one.
   if (/in[- ]?person|near\s?(me|by)|\blocal|\bstore\b|\bstores\b|\bretail|where .{0,30}(buy|find|get)|stockist|carr(y|ies)/i.test(ticketText)) {
-    const [pm, place] = await Promise.all([
-      extractProductMention(ticketText),
-      detectPlace(ticket.tenantId, ticketText),
-    ]);
+    const pm = detected;
+    const place = await detectPlace(ticket.tenantId, ticketText);
     const hits = await findStockists({
       tenantId: ticket.tenantId,
       productFamily: pm.productFamily,

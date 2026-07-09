@@ -64,6 +64,7 @@ echo "== cron (idempotent) =="
 0 11 * * * cd $APP_DIR && npx tsx prisma/send-digest.ts daily >> /root/concierge-digest.log 2>&1
 5 11 * * 1 cd $APP_DIR && npx tsx prisma/send-digest.ts weekly >> /root/concierge-digest.log 2>&1
 0 2 * * * bash $APP_DIR/scripts/backup-db.sh >> /root/concierge-backup.log 2>&1
+40 * * * * cd $APP_DIR && npx tsx prisma/detect-handled.ts >> /root/concierge-handled.log 2>&1
 CRON
 ) | crontab -
 

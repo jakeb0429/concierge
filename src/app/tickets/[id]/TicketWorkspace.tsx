@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { coverageChip, statusChip, statusLabel } from "@/lib/ui";
 import NotesPanel, { type NoteRow } from "@/app/components/NotesPanel";
+import ContextComposer from "./ContextComposer";
 import { REPLY_STATE_CHIP, REPLY_STATE_LABEL, type ReplyState } from "@/lib/reply-state";
 
 type Citation = {
@@ -48,6 +49,8 @@ type Assign = {
   users: { id: string; label: string }[];
 };
 
+export type TimelineStep = { label: string; at: string | null; done: boolean };
+
 type CustomerStats = {
   orders: number;
   totalSpend: number;
@@ -73,6 +76,9 @@ export default function TicketWorkspace({
   replyState,
   gmailUrl,
   assign,
+  timeline = [],
+  detectedFamily = null,
+  handledEvidence = null,
 }: {
   ticket: Ticket;
   messages: Msg[];
@@ -85,6 +91,9 @@ export default function TicketWorkspace({
   replyState?: ReplyState;
   gmailUrl?: string | null;
   assign?: Assign;
+  timeline?: TimelineStep[];
+  detectedFamily?: string | null;
+  handledEvidence?: string[] | null;
 }) {
   const [draft, setDraft] = useState<Draft | null>(initialDraft);
   const [body, setBody] = useState(initialDraft?.body ?? "");
@@ -290,6 +299,22 @@ export default function TicketWorkspace({
         </div>
       </div>
 
+      {/* sequence — where this ticket is in its life */}
+      {timeline.length > 0 && (
+        <div className="mb-3 flex items-center gap-0 overflow-x-auto rounded-xl border border-neutral-200 bg-white px-4 py-2.5">
+          {timeline.map((st, i) => (
+            <div key={st.label} className="flex items-center">
+              {i > 0 && <div className={`mx-2 h-px w-6 sm:w-10 ${st.done ? "bg-gold" : "bg-neutral-200"}`} />}
+              <div className="flex items-center gap-1.5 whitespace-nowrap">
+                <span className={`inline-block h-2.5 w-2.5 rounded-full ${st.done ? "bg-gold" : "border border-neutral-300 bg-white"}`} />
+                <span className={`text-[11px] ${st.done ? "font-medium text-neutral-800" : "text-neutral-400"}`}>{st.label}</span>
+                {st.at && <span className="text-[10px] text-neutral-400">{st.at}</span>}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* customer key stats — what the rep should know before replying */}
       <div className="mb-3 flex flex-wrap items-center gap-x-5 gap-y-1 rounded-xl border border-neutral-200 bg-white px-4 py-2.5 text-xs">
         {customerStats.orders > 0 ? (
@@ -345,7 +370,7 @@ export default function TicketWorkspace({
       )}
 
       {/* rep-pinned facts, scoped to this ticket or the customer; feed drafts until they expire */}
-      <NotesPanel notes={contextNotes} ticketId={ticket.id} customerId={ticket.customerId} />
+      <NotesPanel key={contextNotes.length} notes={contextNotes} ticketId={ticket.id} customerId={ticket.customerId} />
 
       {/* order context — live from the fulfillment system (ShipStation) */}
       {orderLoading && (
@@ -373,94 +398,59 @@ export default function TicketWorkspace({
         </div>
       )}
 
-      <div className="grid grid-cols-1 items-start gap-3 md:grid-cols-2">
-        {/* conversation */}
-        <div className="rounded-xl border border-neutral-200 bg-white p-4">
-          <div className="mb-2 flex items-baseline justify-between text-xs text-neutral-400">
-            <span>Conversation</span>
-            {gmailUrl && (
-              <a
-                href={gmailUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="text-blue-600 hover:underline"
-                title="Open the original thread in Gmail for additional review"
-              >
-                View original in Gmail ↗
-              </a>
-            )}
-          </div>
-          <div className="space-y-3">
-            {thread.map((m, i) =>
-              m.direction === "inbound" ? (
-                <div key={i} className="rounded-lg bg-neutral-50 p-3 text-sm leading-relaxed">
-                  <div className="mb-1 flex items-baseline justify-between">
-                    <span className="text-xs font-medium text-neutral-500">{ticket.customerName}</span>
-                    <span className="text-[11px] text-neutral-400">{fmtTime(m.sentAt)}</span>
-                  </div>
-                  <p className="whitespace-pre-wrap text-neutral-800">{m.text}</p>
-                  <AttachmentStrip msg={m} />
-                </div>
-              ) : (
-                <div key={i} className="rounded-lg bg-green-50 p-3 text-sm leading-relaxed">
-                  <div className="mb-1 flex items-baseline justify-between">
-                    <span className="text-xs font-medium text-green-700">Rheos support</span>
-                    <span className="text-[11px] text-green-700/70">{fmtTime(m.sentAt)}</span>
-                  </div>
-                  <p className="whitespace-pre-wrap text-neutral-800">{m.text}</p>
-                  <AttachmentStrip msg={m} />
-                </div>
-              )
-            )}
-          </div>
+      {/* likely already handled — evidence from orders/fulfillment */}
+      {handledEvidence && handledEvidence.length > 0 && !sent && (
+        <div className="mb-3 rounded-xl border border-teal-200 bg-teal-50 px-4 py-2.5 text-sm text-teal-800">
+          <span className="font-medium">Possibly already handled: </span>
+          {handledEvidence.join("; ")}. Confirm with the customer, then resolve.
+        </div>
+      )}
+
+      {/* the reply — first and full width; everything a rep needs to answer */}
+      <div className="rounded-xl border border-neutral-200 bg-white p-4">
+        <div className="mb-2 flex items-center justify-between">
+          <div className="text-xs text-neutral-400">{sent ? "Sent" : "First draft · edit inline"}</div>
+          {draft && (
+            <span className={`rounded-full px-2 py-0.5 text-[11px] ${coverageChip(draft.coverage)}`}>
+              {draft.coverage === "full" ? "fully covered" : draft.coverage === "partial" ? "partial" : "not covered"}
+            </span>
+          )}
         </div>
 
-        {/* draft */}
-        <div className="rounded-xl border border-neutral-200 bg-white p-4">
-          <div className="mb-2 flex items-center justify-between">
-            <div className="text-xs text-neutral-400">{sent ? "Sent" : "First draft · edit inline"}</div>
-            {draft && (
-              <span className={`rounded-full px-2 py-0.5 text-[11px] ${coverageChip(draft.coverage)}`}>
-                {draft.coverage === "full" ? "fully covered" : draft.coverage === "partial" ? "partial" : "not covered"}
-              </span>
-            )}
+        {!draft && !generating && ticket.status === "archived" ? (
+          <div className="py-8 text-center">
+            <p className="mb-3 text-sm text-neutral-400">
+              Archived as noise — no draft was prepared automatically.
+            </p>
+            <button
+              onClick={() => generate()}
+              className="rounded-lg border border-neutral-300 px-3 py-2 text-sm hover:bg-neutral-50"
+            >
+              Prepare a draft anyway
+            </button>
           </div>
+        ) : generating && !draft ? (
+          <div className="py-10 text-center text-sm text-neutral-400">Preparing draft…</div>
+        ) : (
+          <textarea
+            value={body}
+            onChange={(e) => setBody(e.target.value)}
+            disabled={sent}
+            rows={8}
+            className="w-full resize-none rounded-lg border border-neutral-200 bg-neutral-50 p-3 text-sm leading-relaxed text-neutral-800 outline-none focus:border-neutral-300 disabled:opacity-70"
+          />
+        )}
 
-          {!draft && !generating && ticket.status === "archived" ? (
-            <div className="py-8 text-center">
-              <p className="mb-3 text-sm text-neutral-400">
-                Archived as noise — no draft was prepared automatically.
-              </p>
-              <button
-                onClick={() => generate()}
-                className="rounded-lg border border-neutral-300 px-3 py-2 text-sm hover:bg-neutral-50"
-              >
-                Prepare a draft anyway
-              </button>
-            </div>
-          ) : generating && !draft ? (
-            <div className="py-10 text-center text-sm text-neutral-400">Preparing draft…</div>
-          ) : (
-            <textarea
-              value={body}
-              onChange={(e) => setBody(e.target.value)}
-              disabled={sent}
-              rows={8}
-              className="w-full resize-none rounded-lg border border-neutral-200 bg-neutral-50 p-3 text-sm leading-relaxed text-neutral-800 outline-none focus:border-neutral-300 disabled:opacity-70"
-            />
-          )}
-
-          {draft?.coverageNote && (
-            <div className="mt-2 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
-              {draft.coverageNote}
-            </div>
-          )}
-          {draft?.policyFlags?.map((f, i) => (
-            <div key={i} className="mt-2 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
-              ⚠ {f}
-            </div>
-          ))}
-        </div>
+        {draft?.coverageNote && (
+          <div className="mt-2 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
+            {draft.coverageNote}
+          </div>
+        )}
+        {draft?.policyFlags?.map((f, i) => (
+          <div key={i} className="mt-2 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800">
+            ⚠ {f}
+          </div>
+        ))}
       </div>
 
       {/* steer */}
@@ -575,6 +565,59 @@ export default function TicketWorkspace({
           {promoted && <span className="text-xs">Saved — pending approval in the Brain manager.</span>}
         </div>
       )}
+
+      {/* add context — one composer for ticket/customer/product facts + FAQ proposals */}
+      {!sent && (
+        <ContextComposer
+          ticketId={ticket.id}
+          customerId={ticket.customerId}
+          productFamily={detectedFamily}
+          onSaved={(regen) => {
+            if (regen) generate("Incorporate the newly added context.");
+          }}
+        />
+      )}
+
+      {/* conversation — full width, the complete thread */}
+      <div className="mt-3 rounded-xl border border-neutral-200 bg-white p-4">
+        <div className="mb-2 flex items-baseline justify-between text-xs text-neutral-400">
+          <span>Conversation</span>
+          {gmailUrl && (
+            <a
+              href={gmailUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="text-blue-600 hover:underline"
+              title="Open the original thread in Gmail for additional review"
+            >
+              View original in Gmail ↗
+            </a>
+          )}
+        </div>
+        <div className="space-y-3">
+          {thread.map((m, i) =>
+            m.direction === "inbound" ? (
+              <div key={i} className="rounded-lg bg-neutral-50 p-3 text-sm leading-relaxed">
+                <div className="mb-1 flex items-baseline justify-between">
+                  <span className="text-xs font-medium text-neutral-500">{ticket.customerName}</span>
+                  <span className="text-[11px] text-neutral-400">{fmtTime(m.sentAt)}</span>
+                </div>
+                <p className="whitespace-pre-wrap text-neutral-800">{m.text}</p>
+                <AttachmentStrip msg={m} />
+              </div>
+            ) : (
+              <div key={i} className="rounded-lg bg-green-50 p-3 text-sm leading-relaxed">
+                <div className="mb-1 flex items-baseline justify-between">
+                  <span className="text-xs font-medium text-green-700">Rheos support</span>
+                  <span className="text-[11px] text-green-700/70">{fmtTime(m.sentAt)}</span>
+                </div>
+                <p className="whitespace-pre-wrap text-neutral-800">{m.text}</p>
+                <AttachmentStrip msg={m} />
+              </div>
+            )
+          )}
+        </div>
+      </div>
 
       <Assist />
     </div>

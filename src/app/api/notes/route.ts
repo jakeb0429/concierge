@@ -12,22 +12,27 @@ import { sessionUser } from "@/lib/roles";
 export async function POST(req: Request) {
   const tenant = await getCurrentTenant();
   const actor = await sessionUser();
-  const { body, ticketId, customerId, expiresAt } = (await req.json().catch(() => ({}))) as {
+  const { body, ticketId, customerId, productFamily, expiresAt } = (await req.json().catch(() => ({}))) as {
     body?: string;
     ticketId?: string;
     customerId?: string;
+    productFamily?: string;
     expiresAt?: string | null;
   };
   if (!body?.trim()) return NextResponse.json({ error: "The note text is required." }, { status: 400 });
-  if (!!ticketId === !!customerId)
-    return NextResponse.json({ error: "Scope the note to a ticket OR a customer." }, { status: 400 });
+  const scopes = [ticketId, customerId, productFamily].filter(Boolean).length;
+  if (scopes !== 1)
+    return NextResponse.json({ error: "Scope the note to a ticket, a customer, OR a product." }, { status: 400 });
 
   if (ticketId) {
     const t = await prisma.ticket.findFirst({ where: { id: ticketId, tenantId: tenant.id }, select: { id: true } });
     if (!t) return NextResponse.json({ error: "Ticket not found." }, { status: 404 });
-  } else {
+  } else if (customerId) {
     const c = await prisma.customer.findFirst({ where: { id: customerId, tenantId: tenant.id }, select: { id: true } });
     if (!c) return NextResponse.json({ error: "Customer not found." }, { status: 404 });
+  } else if (productFamily) {
+    const f = await prisma.productFamily.findFirst({ where: { name: { equals: productFamily, mode: "insensitive" } } });
+    if (!f) return NextResponse.json({ error: `Unknown product family "${productFamily}".` }, { status: 404 });
   }
   // A date-only expiry means "valid through the end of that day" — store
   // end-of-day UTC so it doesn't expire (or display) a day early in ET.
@@ -42,6 +47,7 @@ export async function POST(req: Request) {
       tenantId: tenant.id,
       ticketId: ticketId ?? null,
       customerId: customerId ?? null,
+      productFamily: productFamily ?? null,
       body: body.trim(),
       expiresAt: expires,
       createdBy: actor?.id ?? null,
@@ -52,9 +58,11 @@ export async function POST(req: Request) {
       tenantId: tenant.id,
       actorId: actor?.id,
       action: "note_added",
-      entity: ticketId ? `ticket:${ticketId}` : `customer:${customerId}`,
+      entity: ticketId ? `ticket:${ticketId}` : customerId ? `customer:${customerId}` : `product:${productFamily}`,
       meta: { noteId: note.id, expiresAt: expires?.toISOString() ?? null },
     },
   });
-  return NextResponse.json({ note: { id: note.id, body: note.body, expiresAt: note.expiresAt, ticketId, customerId } });
+  return NextResponse.json({
+    note: { id: note.id, body: note.body, expiresAt: note.expiresAt, ticketId, customerId, productFamily },
+  });
 }

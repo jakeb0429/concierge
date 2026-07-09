@@ -6,6 +6,7 @@ import { computeReplyState } from "@/lib/reply-state";
 import { categoryLabel } from "@/lib/categories";
 import { getCustomerInsight } from "@/lib/customer-insight";
 import { notesForTicket } from "@/lib/notes";
+import { extractProductMention } from "@/lib/product-extract";
 import { getCurrentTenant } from "@/lib/tenant";
 import TicketWorkspace from "./TicketWorkspace";
 
@@ -63,11 +64,51 @@ export default async function TicketDetail({ params }: { params: Promise<{ id: s
       orderBy: { email: "asc" },
     }),
   ]);
-  // AI customer read (cached; stale reads refresh AFTER the response) + notes.
-  const [customerInsight, contextNotes] = await Promise.all([
+  // Which product family this ticket is about (deterministic extractor) —
+  // drives product-scoped notes and the composer's product option.
+  const firstInboundMsg = ticket.messages.find((m) => m.direction === "inbound");
+  const pm = await extractProductMention(`${ticket.subject ?? ""}\n${firstInboundMsg?.text ?? ""}`);
+
+  // AI customer read (cached; stale reads refresh AFTER the response) + notes
+  // + the audit events that draw the sequence timeline.
+  const [customerInsight, contextNotes, ticketEvents] = await Promise.all([
     getCustomerInsight(ticket.customer.id).catch(() => null),
-    notesForTicket(ticket.tenantId, ticket.id, ticket.customer.id),
+    notesForTicket(ticket.tenantId, ticket.id, ticket.customer.id, pm.productFamily),
+    prisma.auditEvent.findMany({
+      where: { tenantId: ticket.tenantId, entity: `ticket:${ticket.id}` },
+      orderBy: { createdAt: "asc" },
+      select: { action: true, createdAt: true, meta: true },
+    }),
   ]);
+
+  // Sequence: received → assigned → drafted → replied → resolved.
+  const fmtStep = (d: Date | null | undefined) =>
+    d ? d.toLocaleDateString("en-US", { month: "short", day: "numeric" }) : null;
+  const firstEvent = (...actions: string[]) => ticketEvents.find((e) => actions.includes(e.action))?.createdAt ?? null;
+  const firstOutbound = ticket.messages.find((m) => m.direction === "outbound");
+  const repliedAt = firstOutbound?.sentAt ?? firstEvent("reply_sent", "ticket_replied_external");
+  const resolvedAt = ["resolved", "archived"].includes(ticket.status)
+    ? (ticketEvents.filter((e) => ["ticket_resolved", "ticket_archived"].includes(e.action)).at(-1)?.createdAt ?? null)
+    : null;
+  const handledEvidence = ticket.tags.includes("maybe_handled")
+    ? (([...ticketEvents].reverse().find((e) => e.action === "ticket_maybe_handled")?.meta as { evidence?: string[] } | null)
+        ?.evidence ?? null)
+    : null;
+  const timeline = [
+    { label: "Received", at: fmtStep(ticket.createdAt), done: true },
+    {
+      label: "Assigned",
+      at: fmtStep(firstEvent("auto_assigned", "ticket_reassigned")),
+      done: !!ticket.assigneeId || !!firstEvent("auto_assigned", "ticket_reassigned"),
+    },
+    { label: "Drafted", at: fmtStep(firstEvent("draft_generated")), done: !!firstEvent("draft_generated") },
+    { label: "Replied", at: fmtStep(repliedAt), done: !!repliedAt },
+    {
+      label: ticket.status === "archived" ? "Archived" : "Resolved",
+      at: fmtStep(resolvedAt),
+      done: ["resolved", "archived"].includes(ticket.status),
+    },
+  ];
   const replyState = computeReplyState(ticket.messages);
   const inqTotal = inquiryCounts.reduce((s, c) => s + c._count, 0) + ticketCount;
 
@@ -155,6 +196,9 @@ export default async function TicketDetail({ params }: { params: Promise<{ id: s
         }
         replyState={replyState}
         gmailUrl={gmailUrl}
+        timeline={timeline}
+        detectedFamily={pm.productFamily}
+        handledEvidence={handledEvidence}
       />
     </div>
   );

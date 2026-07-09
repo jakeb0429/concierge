@@ -395,8 +395,9 @@ model ContextNote {
   id         String    @id @default(cuid())
   tenantId   String
   tenant     Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  customerId String?   // customer scope — exactly one of customerId/ticketId is set
+  customerId String?   // customer scope — exactly one of customer/ticket/product is set
   ticketId   String?   // ticket scope
+  productFamily String? // product scope — grounds every ticket mentioning this family
   body       String    @db.Text
   expiresAt  DateTime?
   createdBy  String?   // user id (loose ref — notes outlive team changes)
@@ -405,6 +406,7 @@ model ContextNote {
 
   @@index([tenantId, customerId])
   @@index([tenantId, ticketId])
+  @@index([tenantId, productFamily])
   @@index([tenantId, expiresAt])
   @@schema("concierge")
 }

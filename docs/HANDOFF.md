@@ -284,6 +284,34 @@ half mechanical.
 9. **PM2 single instance, no CI** — deploys are manual/rsync; GitHub is source-of-truth but
    nothing auto-deploys on push.
 
+## FUTURE: returns & exchange process (Jake-approved direction, 2026-07-08)
+
+Build the return/exchange flow INTO the ticket workspace, staged so each phase ships value:
+
+**Phase A — guided returns (no new integrations).** A "Start return/exchange" action on
+returns_exchange tickets: eligibility check runs automatically against data we already
+have (their order from CustomerOrder/ShipStation, purchase date vs the 365-day Saltwater
+Promise, refund history, the AI customer read for abuse signals). Output = an eligibility
+verdict + a pre-filled reply (return instructions / exchange offer) grounded in the Brain's
+return policy. The rep confirms and sends, and the ticket gains a `return_started` state.
+
+**Phase B — label + tracking.** Generate the return label via ShipStation (we already have
+API creds; POST /shipments/createlabel) or Shopify's return APIs, attach it to the outgoing
+reply, and track the inbound package — the likely-handled detector grows a "return package
+delivered" signal that surfaces the ticket for refund action.
+
+**Phase C — money movement.** Refund or exchange execution via the Shopify Admin API
+(client-credentials app already minted — needs write_orders scope added). ALWAYS
+human-confirmed, same as send: Concierge prepares, a rep clicks. Exchange = draft order +
+refund; refund = refund API against the original transaction. Audit every step.
+
+**Data notes:** Ticket gains returnStatus (requested → approved → label_sent →
+package_received → refunded/exchanged); the digest gets a returns-in-flight tile; analytics
+already tracks returns_exchange categories + refund flags for the KPI side.
+**Decision points for Jake:** whether exchanges ship before the return lands (trust
+tiers by customer LTV — the customer read can gate this), restocking-fee policy, and
+whether B2B/wholesale returns follow the same flow or route to jake@.
+
 ## 8. Roadmap suggestions (in rough priority)
 
 1. **Dogfood week** — run real Rheos support in it; the acceptance KPI + learning signals only

@@ -5,7 +5,8 @@ import { useState } from "react";
 export type NoteRow = {
   id: string;
   body: string;
-  scope: "ticket" | "customer";
+  scope: "ticket" | "customer" | "product";
+  productFamily?: string | null;
   expiresAt: string | null;
   expired: boolean;
 };
@@ -125,7 +126,7 @@ export default function NotesPanel({
             >
               <span className="flex-1 leading-relaxed text-neutral-700">{n.body}</span>
               <span className="rounded-full bg-white px-2 py-0.5 text-[10px] text-neutral-400">
-                {n.scope === "ticket" ? "this ticket" : "customer"}
+                {n.scope === "ticket" ? "this ticket" : n.scope === "product" ? `product: ${n.productFamily ?? "?"}` : "customer"}
               </span>
               {n.expiresAt && (
                 <span
