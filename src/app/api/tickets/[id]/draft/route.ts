@@ -25,8 +25,10 @@ const RETURN_STEER =
   "The customer wants a return or exchange. Use the system-computed return eligibility " +
   "facts from live context: if eligible, lay out the clear next steps to start the return " +
   "or exchange, and offer an exchange first where it feels natural; if not eligible or " +
-  "flagged for review, kindly explain what we can and cannot do. Never promise a specific " +
-  "refund amount or timeline that is not in the grounding.";
+  "flagged for review, kindly explain what we can and cannot do. Where the live context " +
+  "includes return-path guidance for the purchase channel (rheosgear.com, Amazon, or a " +
+  "retail partner), walk the customer through THAT path step by step. Never promise a " +
+  "specific refund amount or timeline that is not in the grounding.";
 
 /**
  * Prepare (or regenerate) a first draft for a ticket. Grounded, cited, scored.
@@ -91,8 +93,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       );
     }
   }
-  // Guided return: eligibility verdict + facts join the trusted context.
-  const eligibility = startReturn ? await checkReturnEligibility(ticket.customer, ticket.tenantId) : null;
+  // Guided return: eligibility verdict + channel-aware guidance join the
+  // trusted context (ticketText lets it spot "bought on Amazon" etc.).
+  const eligibility = startReturn
+    ? await checkReturnEligibility(ticket.customer, ticket.tenantId, ticketText)
+    : null;
   if (eligibility) liveContext.push(...eligibility.liveContext);
 
   const prior = regenOfDraftId
@@ -169,7 +174,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         actorId: me?.id,
         action: "return_started",
         entity: `ticket:${ticket.id}`,
-        meta: { draftId: draft.id, verdict: eligibility.verdict, reasons: eligibility.reasons },
+        meta: {
+          draftId: draft.id,
+          verdict: eligibility.verdict,
+          reasons: eligibility.reasons,
+          channel: eligibility.facts.channel,
+        },
       },
     });
   }
@@ -181,7 +191,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     coverageNote: result.coverageNote ?? null,
     policyFlags: result.policyFlags,
     suggested: result.suggested,
-    returnEligibility: eligibility ? { verdict: eligibility.verdict, reasons: eligibility.reasons } : null,
+    returnEligibility: eligibility
+      ? {
+          verdict: eligibility.verdict,
+          reasons: eligibility.reasons,
+          channel: eligibility.facts.channel,
+          channelBasis: eligibility.facts.channelBasis,
+        }
+      : null,
     citations: result.citations
       .filter((c) => validIds.has(c.knowledgeItemId))
       .map((c) => {

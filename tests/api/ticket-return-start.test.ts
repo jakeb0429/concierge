@@ -44,7 +44,7 @@ const params = { params: Promise.resolve({ id: "tk1" }) };
 const ELIGIBILITY = {
   verdict: "eligible" as const,
   reasons: ["most recent order #80986 placed May 18, 2026 (52 days ago), inside the 365-day Saltwater Promise window"],
-  facts: {},
+  facts: { channel: "rheosgear", channelBasis: "orders on file under this email" },
   liveContext: ["Return eligibility (system-computed, rep-confirmed before anything is promised): ELIGIBLE — in window."],
 };
 
@@ -101,12 +101,19 @@ describe("POST /api/tickets/[id]/draft with startReturn", () => {
     const res = await POST(req({ startReturn: true }), params);
     expect(res.status).toBe(200);
     const json = await res.json();
-    expect(json.returnEligibility).toEqual({ verdict: "eligible", reasons: ELIGIBILITY.reasons });
+    expect(json.returnEligibility).toEqual({
+      verdict: "eligible",
+      reasons: ELIGIBILITY.reasons,
+      channel: "rheosgear",
+      channelBasis: "orders on file under this email",
+    });
 
-    // Eligibility computed for THIS customer in THIS tenant.
+    // Eligibility computed for THIS customer in THIS tenant, with the thread
+    // text so channel mentions ("bought on Amazon") are detectable.
     expect(checkReturnEligibility).toHaveBeenCalledWith(
       expect.objectContaining({ email: "kris@x.com" }),
-      "t1"
+      "t1",
+      expect.stringContaining("return my sunglasses")
     );
     // Verdict lines reach the engine as trusted liveContext, plus a returns steer.
     const draftInput = generateDraft.mock.calls[0][0];

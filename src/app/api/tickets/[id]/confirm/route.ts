@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { sendReply } from "@/lib/send";
 import { getCurrentTenant } from "@/lib/tenant";
+import { sessionUser } from "@/lib/roles";
 import { parseBody } from "@/lib/validate";
 
 // finalBody stays unconstrained beyond "is a string" — the rep owns the text.
@@ -88,9 +89,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     },
   });
   await prisma.ticket.update({ where: { id: ticket.id }, data: { status: "replied" } });
+  // actorId makes per-rep send metrics possible (analytics "who sent what").
+  const me = await sessionUser();
   await prisma.auditEvent.create({
     data: {
       tenantId: ticket.tenantId,
+      actorId: me?.id,
       action: "reply_sent",
       entity: `ticket:${ticket.id}`,
       meta: { draftId: draft.id, live: sent.live },

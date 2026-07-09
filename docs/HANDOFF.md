@@ -229,10 +229,18 @@ this database project WITHOUT these defenses (59+ PM2 restarts historically) —
 - **Reviews** (`/reviews`) — manager queue: approve (unlocks send) or return with a note
 - **Brand Brain** (`/brain`) — entries with version + citation counts, pending-approval queue
   (mined FAQ + promoted answers), learning-signal proposals panel
-- **Analytics** (`/analytics`) — 365-day classified history: request types, outcome sentiment
-  (noise excluded), inquiries-vs-sales overlay, time-from-purchase histogram, drafts-sent-
-  unedited KPI, Explore cross-tabs (time×category×sentiment×silhouette×style×color), every
-  cell drilling to the underlying inquiries
+- **Analytics** (`/analytics`, rebuilt 2026-07-09) — role-aware dashboard. Every rep gets a
+  "My work" row first (open queue, in-review, replies sent 30d via reply_sent actorId —
+  stamped from 7/9 onward, returns in flight, personal median first reply). Admins add:
+  weekly ticket-flow trend (new vs answered, shared-scale SVG lines), open-by-category and
+  arriving-mailbox bars, a returns-pipeline panel (returnStatus stages, links to the inbox
+  saved filter), drafts-sent-unedited, and inquiries-vs-sales (two aligned rows, one month
+  axis). Everyone gets response times (by-person admin-only, sortable by volume/speed),
+  request types (sortable by volume/negative rate), sentiment, time-from-purchase, and the
+  Explore cross-tab + drill. Filters are Link-driven query params (`days`, `cats`, `rts`,
+  `x/y/xv/yv`) — no client JS. Aggregation lives in `src/lib/analytics.ts` (pure helpers
+  tested in tests/domain/analytics.test.ts); shared tiles/bars/trend chart in
+  `src/app/components/analytics-ui.tsx` (series colors scribe-blue/gold, CVD-validated)
 - **Customer profiles** (`/customers/[id]`) — LTV, full order history, support history with
   per-inquiry sentiment and days-after-purchase, negative-outcome flag
 - **Related customers** (`src/lib/related-customers.ts`, panel on the profile) — when a
@@ -306,7 +314,18 @@ review/wholesale), no orders → review with a related-customer household hint
 (`findRelatedCustomers`). The verdict + facts go to the draft engine as liveContext via
 `POST /api/tickets/[id]/draft {startReturn:true}` (plus a returns steer), the ticket gains
 `returnStatus="requested"` (chip in the status header), and a `return_started` AuditEvent
-records the verdict. Rep confirms and sends as usual — eligibility never auto-approves.
+records the verdict + channel. Rep confirms and sends as usual — eligibility never
+auto-approves.
+**Channel-aware (added same day):** `detectPurchaseChannel` works out WHERE the purchase
+happened — the customer's message wins (an "amazon" mention or a 111-1234567-1234567 order
+id), then orders on file (shopify-live → rheosgear, hubspot-b2b-only → wholesale), then the
+rep-recorded `Customer.purchaseChannel` (retail/dealer), else unknown. Amazon and retail
+purchases verdict "review" with `channelGuidance` liveContext walking the customer down the
+right path (Amazon: Your Orders for returns, us for warranty w/ proof of purchase; retail:
+the store for returns, us for warranty); unknown asks where they bought. The verdict banner
+shows the detected channel + basis. Note: Amazon exists only as SalesMonthly aggregates (no
+per-order emails), so Amazon buyers never match CustomerOrder — text detection is the only
+Amazon signal.
 NOTE for the Brain: the seeded "Saltwater Promise" KnowledgeItem covers lens-replacement
 warranty ($20 fee), not general return instructions — until a returns-policy item is
 taught/approved, return drafts lean on the eligibility liveContext and may score partial

@@ -22,6 +22,10 @@ const REFUND_REVIEW_THRESHOLD = 2;
 
 export type ReturnVerdict = "eligible" | "ineligible" | "review";
 
+/** Where this purchase appears to have happened — drives the guidance the
+ *  draft gives the customer (each channel has a different return path). */
+export type PurchaseChannel = "rheosgear" | "amazon" | "retail" | "wholesale" | "unknown";
+
 export type ReturnFacts = {
   orderCount: number;
   /** most recent order, when any exist */
@@ -33,7 +37,71 @@ export type ReturnFacts = {
   b2bCount: number;
   /** one-line hint about possible household orders under other emails */
   relatedHint: string | null;
+  channel: PurchaseChannel;
+  /** how the channel was determined, e.g. "mentioned in the customer's message" */
+  channelBasis: string;
+  /** retailer/dealer name when the reps recorded one */
+  channelName: string | null;
 };
+
+/** Amazon order ids look like 111-1234567-1234567. */
+const AMAZON_ORDER_ID = /\b\d{3}-\d{7}-\d{7}\b/;
+
+/**
+ * Where did this purchase happen? Priority: what the customer's message says
+ * (they know where THIS purchase was made) → orders on file → the rep-recorded
+ * purchase channel → unknown.
+ */
+export function detectPurchaseChannel(input: {
+  ticketText: string;
+  purchaseChannel: string | null;
+  channelName: string | null;
+  d2cCount: number;
+  b2bCount: number;
+}): { channel: PurchaseChannel; basis: string } {
+  if (/\bamazon\b/i.test(input.ticketText) || AMAZON_ORDER_ID.test(input.ticketText))
+    return { channel: "amazon", basis: "mentioned in the customer's message" };
+  if (input.d2cCount > 0) return { channel: "rheosgear", basis: "orders on file under this email" };
+  if (input.b2bCount > 0) return { channel: "wholesale", basis: "wholesale (B2B) orders on file" };
+  if (input.purchaseChannel === "retail" || input.purchaseChannel === "dealer")
+    return {
+      channel: "retail",
+      basis: `rep-recorded purchase channel${input.channelName ? ` (${input.channelName})` : ""}`,
+    };
+  if (input.purchaseChannel === "direct")
+    return { channel: "rheosgear", basis: "rep-recorded purchase channel" };
+  return { channel: "unknown", basis: "no order match and no channel on record" };
+}
+
+/** Rep-facing guidance per channel — the draft walks the customer through it. */
+export function channelGuidance(channel: PurchaseChannel, channelName: string | null): string | null {
+  switch (channel) {
+    case "amazon":
+      return (
+        "Purchase appears to be from Amazon. Returns and refunds for Amazon orders are handled " +
+        "through the customer's Amazon account (Your Orders, then Return or Replace Items) — we " +
+        "cannot process an Amazon refund from here. If this is a warranty claim (Saltwater " +
+        "Promise) rather than a return, we handle that directly: ask for proof of purchase. " +
+        "Guide the customer through the right path."
+      );
+    case "retail":
+      return (
+        `Purchase was made through a retail partner${channelName ? ` (${channelName})` : ""}. ` +
+        "Returns and exchanges of retail purchases are handled by the retailer under the store's " +
+        "own policy — direct the customer back to the store for a return or size exchange. " +
+        "Warranty claims under the Saltwater Promise come to us directly: ask for a receipt or " +
+        "proof of purchase."
+      );
+    case "unknown":
+      return (
+        "We could not tell where this purchase was made. Ask the customer where they bought " +
+        "(rheosgear.com, Amazon, or a retail store) and for an order number or receipt, then " +
+        "we can point them down the right return path."
+      );
+    default:
+      return null; // rheosgear/wholesale: the eligibility reasons carry the story
+  }
+}
 
 export type ReturnEligibility = {
   verdict: ReturnVerdict;
@@ -48,6 +116,24 @@ const fmtDate = (d: Date) =>
 
 /** Pure rule evaluation — testable without a database. */
 export function evaluateReturnEligibility(facts: ReturnFacts): { verdict: ReturnVerdict; reasons: string[] } {
+  // Channel first: an Amazon or retail purchase has a different return path
+  // regardless of what our own order history says.
+  if (facts.channel === "amazon") {
+    return {
+      verdict: "review",
+      reasons: [
+        `purchase appears to be from Amazon (${facts.channelBasis}) — returns run through Amazon; warranty claims come to us with proof of purchase`,
+      ],
+    };
+  }
+  if (facts.channel === "retail") {
+    return {
+      verdict: "review",
+      reasons: [
+        `purchase was through a retail partner${facts.channelName ? ` (${facts.channelName})` : ""} — returns/exchanges go through the retailer; warranty claims come to us with a receipt`,
+      ],
+    };
+  }
   if (facts.orderCount === 0) {
     const reasons = ["no orders found under this email"];
     if (facts.relatedHint) reasons.push(facts.relatedHint);
@@ -89,7 +175,10 @@ export function evaluateReturnEligibility(facts: ReturnFacts): { verdict: Return
 export function eligibilityLiveContext(e: { verdict: ReturnVerdict; reasons: string[]; facts: ReturnFacts }): string[] {
   const lines = [
     `Return eligibility (system-computed, rep-confirmed before anything is promised): ${e.verdict.toUpperCase()} — ${e.reasons.join("; ")}.`,
+    `Purchase channel: ${e.facts.channel} (${e.facts.channelBasis}).`,
   ];
+  const guidance = channelGuidance(e.facts.channel, e.facts.channelName);
+  if (guidance) lines.push(`Return-path guidance for this channel: ${guidance}`);
   if (e.facts.orderCount > 0) {
     lines.push(
       `Purchase history relevant to this return: ${e.facts.orderCount} order${e.facts.orderCount === 1 ? "" : "s"} on file` +
@@ -104,8 +193,15 @@ export function eligibilityLiveContext(e: { verdict: ReturnVerdict; reasons: str
 
 /** Fetches the facts and evaluates. `email` may be null (verdict: review). */
 export async function checkReturnEligibility(
-  customer: { email: string | null; displayName: string | null },
-  tenantId: string
+  customer: {
+    email: string | null;
+    displayName: string | null;
+    purchaseChannel?: string | null;
+    channelName?: string | null;
+  },
+  tenantId: string,
+  /** the cleaned inbound thread — used to spot "bought on Amazon" etc. */
+  ticketText = ""
 ): Promise<ReturnEligibility> {
   const email = customer.email?.toLowerCase() ?? null;
   const orders = email
@@ -132,15 +228,27 @@ export async function checkReturnEligibility(
   }
 
   const newest = orders[0] ?? null;
+  const d2cCount = orders.filter((o) => o.source !== "hubspot-b2b").length;
+  const b2bCount = orders.filter((o) => o.source === "hubspot-b2b").length;
+  const detected = detectPurchaseChannel({
+    ticketText,
+    purchaseChannel: customer.purchaseChannel ?? null,
+    channelName: customer.channelName ?? null,
+    d2cCount,
+    b2bCount,
+  });
   const facts: ReturnFacts = {
     orderCount: orders.length,
     newestRef: newest?.orderRef ?? null,
     newestAt: newest?.orderedAt ?? null,
     daysSinceNewest: newest ? Math.floor((nowMs() - newest.orderedAt.getTime()) / 86_400_000) : null,
     refundedCount: orders.filter((o) => o.refunded).length,
-    d2cCount: orders.filter((o) => o.source !== "hubspot-b2b").length,
-    b2bCount: orders.filter((o) => o.source === "hubspot-b2b").length,
+    d2cCount,
+    b2bCount,
     relatedHint,
+    channel: detected.channel,
+    channelBasis: detected.basis,
+    channelName: customer.channelName ?? null,
   };
   const { verdict, reasons } = evaluateReturnEligibility(facts);
   return { verdict, reasons, facts, liveContext: eligibilityLiveContext({ verdict, reasons, facts }) };

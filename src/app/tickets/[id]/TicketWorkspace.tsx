@@ -47,7 +47,20 @@ type Ticket = {
   returnStatus?: string | null;
 };
 
-type ReturnEligibility = { verdict: "eligible" | "ineligible" | "review"; reasons: string[] };
+type ReturnEligibility = {
+  verdict: "eligible" | "ineligible" | "review";
+  reasons: string[];
+  channel?: string;
+  channelBasis?: string;
+};
+
+const CHANNEL_LABEL: Record<string, string> = {
+  rheosgear: "rheosgear.com",
+  amazon: "Amazon",
+  retail: "retail partner",
+  wholesale: "wholesale (B2B)",
+  unknown: "unknown",
+};
 
 type Assign = {
   assigneeId: string | null;
@@ -472,6 +485,12 @@ export default function TicketWorkspace({
                   {": "}
                 </span>
                 {returnVerdict.reasons.join("; ")}. The draft below is grounded in these facts.
+                {returnVerdict.channel && (
+                  <div className="mt-1 text-xs opacity-80">
+                    Purchase channel: {CHANNEL_LABEL[returnVerdict.channel] ?? returnVerdict.channel}
+                    {returnVerdict.channelBasis ? ` — ${returnVerdict.channelBasis}` : ""}
+                  </div>
+                )}
               </div>
             ) : (
               <div className="flex flex-wrap items-center gap-3">
