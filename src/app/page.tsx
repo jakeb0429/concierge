@@ -32,6 +32,7 @@ export default async function Inbox({
     needs?: string;
     sort?: string;
     dir?: string;
+    mbx?: string;
   }>;
 }) {
   const [tenant, me] = await Promise.all([getCurrentTenant(), sessionUser()]);
@@ -52,6 +53,8 @@ export default async function Inbox({
     ...(sp.cat ? { category: sp.cat } : {}),
     ...(sp.assignee === "none" ? { assigneeId: null } : sp.assignee ? { assigneeId: sp.assignee } : {}),
     ...(sp.priority === "high" ? { priority: "high" } : {}),
+    // Single-mailbox view (hello@ vs marketing@ vs wholesale@) by address.
+    ...(sp.mbx ? { channelRef: { supportAddress: sp.mbx } } : {}),
     ...(sinceHours ? { createdAt: { gte: msAgo(sinceHours * 3_600_000) } } : {}),
     // Time-window filters mean "real inquiries that arrived" — keep auto-
     // archived noise out unless the Noise view is explicitly selected.
@@ -81,7 +84,7 @@ export default async function Inbox({
     // message of 100 tickets were the inbox's heaviest payload.
     messages: { orderBy: { sentAt: "asc" as const }, select: { direction: true, sentAt: true } },
   };
-  const [urgentTickets, restTickets, counts, users, assignedCounts, mineCount] = await Promise.all([
+  const [urgentTickets, restTickets, counts, users, assignedCounts, mineCount, mailboxes] = await Promise.all([
     // Urgent first and UNCAPPED by the main window — an old urgent ticket
     // must never fall off the list.
     prisma.ticket.findMany({
@@ -115,6 +118,12 @@ export default async function Inbox({
     me?.id
       ? prisma.ticket.count({ where: { tenantId: tenant.id, ...VIEWS.mine.where } })
       : Promise.resolve(0),
+    // The tenant's mailboxes power the single-mailbox filter (shown when >1).
+    prisma.channel.findMany({
+      where: { tenantId: tenant.id },
+      select: { supportAddress: true },
+      orderBy: { supportAddress: "asc" },
+    }),
   ]);
   const tickets = [...urgentTickets, ...restTickets];
   // Snippets: the first inbound message per ticket (DISTINCT ON), truncated
@@ -291,7 +300,10 @@ export default async function Inbox({
         ))}
       </div>
 
-      <InboxFilters users={users.map((u) => ({ id: u.id, label: u.name ?? u.email.split("@")[0] }))} />
+      <InboxFilters
+        users={users.map((u) => ({ id: u.id, label: u.name ?? u.email.split("@")[0] }))}
+        mailboxes={mailboxes.map((c) => c.supportAddress)}
+      />
 
       <InboxList
         rows={rows}

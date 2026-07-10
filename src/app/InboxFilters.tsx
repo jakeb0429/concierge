@@ -11,7 +11,7 @@ export type FilterUsers = { id: string; label: string }[];
  * here the same way. Active filters switch the list to a flat sorted view;
  * clearing them returns to the grouped importance view.
  */
-export default function InboxFilters({ users }: { users: FilterUsers }) {
+export default function InboxFilters({ users, mailboxes = [] }: { users: FilterUsers; mailboxes?: string[] }) {
   const router = useRouter();
   const params = useSearchParams();
 
@@ -21,7 +21,7 @@ export default function InboxFilters({ users }: { users: FilterUsers }) {
     else next.delete(key);
     router.push(`/?${next.toString()}`);
   };
-  const active = ["cat", "assignee", "priority", "since", "needs", "sort"].some((k) => params.get(k));
+  const active = ["cat", "assignee", "priority", "since", "needs", "sort", "mbx"].some((k) => params.get(k));
 
   const sel = "rounded-lg border border-neutral-200 bg-white px-2 py-1 text-xs text-neutral-600";
 
@@ -36,6 +36,16 @@ export default function InboxFilters({ users }: { users: FilterUsers }) {
           </option>
         ))}
       </select>
+      {mailboxes.length > 1 && (
+        <select value={params.get("mbx") ?? ""} onChange={(e) => set("mbx", e.target.value)} className={sel} title="Mailbox">
+          <option value="">any mailbox</option>
+          {mailboxes.map((m) => (
+            <option key={m} value={m}>
+              {m}
+            </option>
+          ))}
+        </select>
+      )}
       <select value={params.get("assignee") ?? ""} onChange={(e) => set("assignee", e.target.value)} className={sel} title="Assignee">
         <option value="">any assignee</option>
         <option value="none">unassigned</option>
