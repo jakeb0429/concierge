@@ -266,22 +266,17 @@ export default async function Inbox({
       <div className="mb-3 flex items-baseline justify-between">
         <div className="flex items-baseline gap-4">
           <h1 className="page-title">Inbox</h1>
-          <nav className="flex gap-2 text-sm">
+          {/* Tabs change WHAT you look at; the pill chips below only filter it. */}
+          <nav className="flex gap-4 text-sm">
             {visibleViews.map((k) => (
-              <Link
-                key={k}
-                href={viewHref(k)}
-                className={`rounded-full px-3 py-1 ${
-                  view === k ? "bg-neutral-900 text-white" : "text-neutral-500 hover:bg-neutral-100"
-                }`}
-              >
+              <Link key={k} href={viewHref(k)} className={`tab ${view === k ? "tab-active" : ""}`}>
                 {VIEWS[k].label}
-                {countOf(k)}
+                <span className="ml-1 text-xs text-neutral-400 tabular-nums">{countOf(k)}</span>
               </Link>
             ))}
           </nav>
         </div>
-        <span className="text-sm text-neutral-500">{rows.length} shown</span>
+        <span className="hidden text-sm text-neutral-500 tabular-nums sm:inline">{rows.length} shown</span>
       </div>
 
       {/* threads archived in Gmail that still looked like live work */}

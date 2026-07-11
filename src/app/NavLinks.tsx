@@ -21,11 +21,7 @@ export default function NavLinks({ items }: { items: NavItem[] }) {
           }`}
         >
           {it.label}
-          {it.badge ? (
-            <span className="rounded-full bg-amber-100 px-1.5 text-[11px] font-medium text-amber-800">
-              {it.badge}
-            </span>
-          ) : null}
+          {it.badge ? <span className="nav-badge">{it.badge}</span> : null}
         </Link>
       ))}
     </nav>

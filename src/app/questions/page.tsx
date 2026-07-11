@@ -21,7 +21,13 @@ type QRow = {
 };
 
 function QuestionList({ rows, empty }: { rows: QRow[]; empty: string }) {
-  if (rows.length === 0) return <p className="px-4 py-6 text-center text-sm text-neutral-400">{empty}</p>;
+  if (rows.length === 0)
+    return (
+      <div className="px-4 py-10 text-center">
+        <p className="empty-title">All clear</p>
+        <p className="mt-1 text-sm text-neutral-400">{empty}</p>
+      </div>
+    );
   return (
     <div className="divide-y divide-neutral-100">
       {rows.map((q) => (

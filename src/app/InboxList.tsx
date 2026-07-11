@@ -229,8 +229,9 @@ export default function InboxList({
             ))}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={9} className="px-4 py-10 text-center text-sm text-neutral-400">
-                  Nothing here.
+                <td colSpan={9} className="px-4 py-12 text-center">
+                  <p className="empty-title">All clear</p>
+                  <p className="mt-1 text-sm text-neutral-400">Nothing in this view.</p>
                 </td>
               </tr>
             )}
@@ -289,7 +290,7 @@ function TableGroup({
       {g.rows.map((t) => (
         <tr
           key={t.id}
-          className={`border-b border-neutral-100 last:border-0 hover:bg-neutral-50 ${
+          className={`border-b border-neutral-100 transition-colors last:border-0 hover:bg-cream/40 ${
             t.urgent ? "border-l-4 border-l-red-500" : ""
           }`}
         >
@@ -392,7 +393,7 @@ function TableGroup({
               ))}
             </select>
           </td>
-          <td className="px-2 py-2 align-middle text-xs text-neutral-500" title={new Date(t.createdAt).toLocaleString()}>
+          <td className="px-2 py-2 align-middle text-xs text-neutral-500 tabular-nums" title={new Date(t.createdAt).toLocaleString()}>
             {fmtDate(t.createdAt)}
           </td>
           <td className="px-2 py-2 align-middle text-xs">

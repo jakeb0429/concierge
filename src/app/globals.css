@@ -1,7 +1,12 @@
 @import "tailwindcss";
 
-/* Scribe CHS basics (ops/scribe-pitch-delivery-style-guide.md): gold accent,
-   cream fills, warm grey fine print, Arial throughout. */
+/* Scribe CHS design system (ops/scribe-pitch-delivery-style-guide.md + docs/DESIGN.md):
+   gold accent, cream fills, warm grey fine print, Arial throughout.
+
+   The grammar in one breath — gold is wayfinding (where you are, what needs
+   you, the primary action); cream is brand surface (identity block, table
+   headers, active nav — never page background); elevation is a hairline
+   border, never a shadow; density is the feature. */
 @theme {
   --color-gold: #a8882e;
   --color-gold-dark: #8f7326;
@@ -16,6 +21,18 @@ body {
   font-family: var(--font-sans);
 }
 
+/* Keyboard focus speaks brand — every link, select, and input inherits it. */
+:focus-visible {
+  outline: 2px solid var(--color-gold);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Text selection in the house palette. */
+::selection {
+  background: color-mix(in srgb, var(--color-gold) 25%, white);
+}
+
 /* The Scribe section-heading signature: gold, ALL CAPS, hairline underline —
    used as every page title so the product reads as a Scribe document. */
 .page-title {
@@ -26,4 +43,48 @@ body {
    stay; everything "the main thing to click" is gold. */
 .btn-primary {
   @apply rounded-lg bg-gold font-medium text-white transition-colors hover:bg-gold-dark disabled:opacity-50;
+}
+
+/* Sidebar group label — the page-title voice at rail scale. */
+.nav-group-label {
+  @apply px-3 pb-1 pt-5 text-[10px] font-bold uppercase tracking-[0.14em] text-warm-grey/70;
+}
+
+/* Rail item: active = cream fill + gold spine (the ticket page's zone-band
+   gesture, quoted by the chrome so the whole app speaks one language). */
+.nav-item {
+  @apply relative flex items-center gap-2 rounded-md px-3 py-1.5 text-[13px] text-neutral-500 transition-colors hover:bg-neutral-50 hover:text-neutral-900;
+}
+.nav-item-active {
+  @apply bg-cream font-semibold text-neutral-900;
+}
+.nav-item-active::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 4px;
+  bottom: 4px;
+  width: 3px;
+  border-radius: 9999px;
+  background: var(--color-gold);
+}
+
+/* Count badge — gold means "your work is waiting". Amber stays reserved for
+   needs-attention states inside content, never the chrome. */
+.nav-badge {
+  @apply min-w-[18px] rounded-full bg-gold px-1 text-center text-[10px] font-bold tabular-nums text-white;
+}
+
+/* Underline tabs (inbox views): tabs change WHAT you look at; the pill chips
+   below them only filter it. */
+.tab {
+  @apply border-b-2 border-transparent pb-1 text-sm text-neutral-500 transition-colors hover:text-neutral-900;
+}
+.tab-active {
+  @apply border-gold font-semibold text-neutral-900;
+}
+
+/* Empty-state signature: one gold micro-caps line, one quiet sentence. */
+.empty-title {
+  @apply text-[11px] font-bold uppercase tracking-[0.14em] text-gold;
 }
