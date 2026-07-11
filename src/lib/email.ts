@@ -6,6 +6,17 @@ import { logger } from "./log";
 
 const MAILGUN_BASE = "https://api.mailgun.net";
 
+/** Escape text for interpolation into an email's HTML part — bodies, subjects,
+ *  and names are user/customer-controlled and must never inject markup. */
+export function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 /**
  * General sender (digests, reports). Sends whenever Mailgun creds exist —
  * scripts run outside NODE_ENV=production, so unlike sendMagicLink this

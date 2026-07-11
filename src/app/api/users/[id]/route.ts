@@ -11,6 +11,8 @@ const bodySchema = z.object({
   // super_admin is script-managed — never assignable from the UI.
   role: z.enum(["agent", "team_lead", "brand_admin"]).optional(),
   specialties: z.array(z.enum(INQUIRY_CATEGORIES)).optional(),
+  // "simple" lands the user on the Q&A view by default (onboarding mode).
+  preferredView: z.enum(["full", "simple"]).optional(),
 });
 
 /** Edit a teammate's name, role, or specialties (which tickets auto-route to them). */
@@ -28,7 +30,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
   const body = await parseBody(req, bodySchema);
   if (body instanceof NextResponse) return body;
-  const data: { name?: string; role?: string; specialties?: string[] } = {};
+  const data: { name?: string; role?: string; specialties?: string[]; preferredView?: string } = {};
   if (body.name !== undefined) data.name = body.name;
   if (body.role !== undefined) {
     if (id === admin.id) return NextResponse.json({ error: "You can't change your own role." }, { status: 400 });
@@ -36,6 +38,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     data.role = body.role;
   }
   if (body.specialties !== undefined) data.specialties = [...body.specialties];
+  if (body.preferredView !== undefined) data.preferredView = body.preferredView;
   if (Object.keys(data).length === 0) return NextResponse.json({ error: "Nothing to update." }, { status: 400 });
 
   await prisma.user.update({ where: { id }, data });

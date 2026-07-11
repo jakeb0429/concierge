@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { coverageChip, statusChip, statusOptions } from "@/lib/ui";
 import NotesPanel, { type NoteRow } from "@/app/components/NotesPanel";
+import QuestionsPanel, { type QuestionRow } from "@/app/components/QuestionsPanel";
 import ContextComposer from "./ContextComposer";
 import { categoryChipClass } from "@/lib/categories";
 import { REPLY_STATE_CHIP, REPLY_STATE_LABEL, type ReplyState } from "@/lib/reply-state";
@@ -110,6 +111,8 @@ export default function TicketWorkspace({
   timeline = [],
   detectedFamily = null,
   handledEvidence = null,
+  meId = null,
+  questions = [],
 }: {
   ticket: Ticket;
   messages: Msg[];
@@ -125,6 +128,8 @@ export default function TicketWorkspace({
   timeline?: TimelineStep[];
   detectedFamily?: string | null;
   handledEvidence?: string[] | null;
+  meId?: string | null;
+  questions?: QuestionRow[];
 }) {
   const [draft, setDraft] = useState<Draft | null>(initialDraft);
   const [body, setBody] = useState(initialDraft?.body ?? "");
@@ -480,6 +485,8 @@ export default function TicketWorkspace({
       )}
 
       <ZoneLabel dot="bg-amber-400" text="Added context" hint="facts your team pinned — these ground the draft" />
+      {/* internal Q&A — ask a teammate; they answer from the simple view */}
+      <QuestionsPanel ticketId={ticket.id} meId={meId} users={assign?.users ?? []} questions={questions} />
       {/* rep-pinned facts: this ticket, this customer, or a product */}
       <NotesPanel key={contextNotes.length} notes={contextNotes} ticketId={ticket.id} customerId={ticket.customerId} />
       {!sent && (

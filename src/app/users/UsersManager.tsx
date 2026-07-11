@@ -10,6 +10,7 @@ type UserRow = {
   name: string | null;
   role: string;
   specialties: string[];
+  preferredView: string;
   lastLogin: string | null;
   openTickets: number;
   openSignals: number;
@@ -84,6 +85,24 @@ export default function UsersManager({
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ...(e.role !== u.role ? { role: e.role } : {}), specialties: e.specialties }),
+    });
+    setBusy(null);
+    if (!res.ok) {
+      setNotice((await res.json().catch(() => ({ error: "Save failed." }))).error);
+      return;
+    }
+    setNotice(null);
+    router.refresh();
+  }
+
+  // Applies immediately — the default view is an onboarding switch, not part
+  // of the role/specialties edit-then-save flow.
+  async function setView(u: UserRow, preferredView: string) {
+    setBusy(u.id);
+    const res = await fetch(`/api/users/${u.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ preferredView }),
     });
     setBusy(null);
     if (!res.ok) {
@@ -232,6 +251,16 @@ export default function UsersManager({
                     <option value="brand_admin">Admin (triage)</option>
                   </select>
                 )}
+                <select
+                  value={u.preferredView}
+                  onChange={(ev) => setView(u, ev.target.value)}
+                  disabled={busy === u.id}
+                  title="Which view they land on after signing in — Simple = the Q&A-only onboarding view"
+                  className={`rounded-lg border px-2 py-1 text-xs ${u.preferredView === "simple" ? "border-gold bg-cream text-neutral-700" : "border-neutral-300"}`}
+                >
+                  <option value="full">Full workspace</option>
+                  <option value="simple">Simple Q&A view</option>
+                </select>
                 {isDirty(u) && (
                   <button
                     onClick={() => save(u)}

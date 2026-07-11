@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import Image from "next/image";
 import { unstable_cache } from "next/cache";
+import { cookies } from "next/headers";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { isAdminRole } from "@/lib/roles";
@@ -22,54 +23,73 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   let myBrands: { slug: string; name: string }[] = [];
   let currentSlug = "";
   let myTraining = 0;
+  let myQuestions = 0;
+  let preferredView = "full";
   if (me?.tenantId) {
     // Tenant identity + brand memberships almost never change but were paying
     // a cross-continent DB round trip on EVERY page — cache 60s. The training
     // badge stays fresher (30s) since specialists watch it.
     const getChrome = unstable_cache(
       async (tenantId: string, email: string) => {
-        const [tenant, rows] = await Promise.all([
+        const [tenant, rows, viewer] = await Promise.all([
           prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true, slug: true } }),
           email
             ? prisma.user.findMany({ where: { email }, select: { tenant: { select: { slug: true, name: true } } } })
             : Promise.resolve([]),
+          email
+            ? prisma.user.findFirst({ where: { tenantId, email }, select: { preferredView: true } })
+            : Promise.resolve(null),
         ]);
-        return { tenant, brands: rows.map((r) => r.tenant) };
+        return { tenant, brands: rows.map((r) => r.tenant), preferredView: viewer?.preferredView ?? "full" };
       },
       ["layout-chrome"],
       { revalidate: 60 }
     );
-    const getTraining = unstable_cache(
+    const getBadges = unstable_cache(
       async (tenantId: string, userId: string) =>
-        prisma.learningSignal.count({ where: { tenantId, assigneeId: userId, status: "open" } }),
-      ["layout-training"],
+        Promise.all([
+          prisma.learningSignal.count({ where: { tenantId, assigneeId: userId, status: "open" } }),
+          prisma.ticketQuestion.count({ where: { tenantId, assigneeId: userId, status: "open" } }),
+        ]),
+      ["layout-badges"],
       { revalidate: 30 }
     );
-    const [chrome, trainingCount] = await Promise.all([
+    const [chrome, [trainingCount, questionCount]] = await Promise.all([
       getChrome(me.tenantId, me.email ?? ""),
-      me.id ? getTraining(me.tenantId, me.id) : Promise.resolve(0),
+      me.id ? getBadges(me.tenantId, me.id) : Promise.resolve([0, 0] as [number, number]),
     ]);
     tenantName = chrome.tenant?.name ?? null;
     currentSlug = chrome.tenant?.slug ?? "";
     myBrands = chrome.brands;
     myTraining = trainingCount;
+    myQuestions = questionCount;
+    preferredView = chrome.preferredView;
   }
 
-  const navItems: NavItem[] = [
-    { href: "/", label: "Inbox" },
-    { href: "/brain", label: "Brand Brain" },
-    { href: "/analytics", label: "Analytics" },
-    { href: "/reviews", label: "Reviews" },
-    { href: "/training", label: "Training", badge: myTraining },
-    ...(isAdminRole(me?.role)
-      ? [
-          { href: "/digest", label: "Digest" },
-          { href: "/users", label: "Team" },
-          { href: "/sources", label: "Sources" },
-          { href: "/audit", label: "Audit" },
-        ]
-      : []),
-  ];
+  // The Simple (Q&A) view: minimal nav for teammates who only answer internal
+  // questions. Cookie (set by the header toggle) overrides the stored default.
+  const cookieView = (await cookies()).get("concierge-view")?.value;
+  const view = cookieView === "simple" || cookieView === "full" ? cookieView : preferredView;
+
+  const navItems: NavItem[] =
+    view === "simple"
+      ? [{ href: "/questions", label: "Questions", badge: myQuestions }]
+      : [
+          { href: "/", label: "Inbox" },
+          { href: "/questions", label: "Questions", badge: myQuestions },
+          { href: "/brain", label: "Brand Brain" },
+          { href: "/analytics", label: "Analytics" },
+          { href: "/reviews", label: "Reviews" },
+          { href: "/training", label: "Training", badge: myTraining },
+          ...(isAdminRole(me?.role)
+            ? [
+                { href: "/digest", label: "Digest" },
+                { href: "/users", label: "Team" },
+                { href: "/sources", label: "Sources" },
+                { href: "/audit", label: "Audit" },
+              ]
+            : []),
+        ];
 
   return (
     <html lang="en">
@@ -85,6 +105,17 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             </Link>
             {me && <NavLinks items={navItems} />}
             <span className="ml-auto flex items-center gap-3 text-xs text-warm-grey">
+              {me && (
+                <form action={`/view/${view === "simple" ? "full" : "simple"}`} method="post">
+                  <button
+                    type="submit"
+                    className="rounded-full border border-neutral-200 px-2.5 py-1 hover:bg-neutral-50"
+                    title={view === "simple" ? "Open the full workspace" : "Switch to the simple Q&A view"}
+                  >
+                    {view === "simple" ? "Full view" : "Simple view"}
+                  </button>
+                </form>
+              )}
               {myBrands.length > 1 ? (
                 <BrandSwitcher current={currentSlug} tenants={myBrands} />
               ) : (

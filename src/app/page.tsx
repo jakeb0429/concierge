@@ -1,4 +1,7 @@
 import Link from "next/link";
+import { unstable_cache } from "next/cache";
+import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { getCurrentTenant } from "@/lib/tenant";
 import { sessionUser, isAdminRole } from "@/lib/roles";
@@ -39,6 +42,22 @@ export default async function Inbox({
   }>;
 }) {
   const [tenant, me] = await Promise.all([getCurrentTenant(), sessionUser()]);
+  // Simple-view users land on the Q&A queue instead of the workspace inbox;
+  // an explicit "full" cookie (the header toggle) overrides their default.
+  // Cached 60s — cookie-less full-view users hit this on the app's hottest
+  // page, and an uncached lookup would add a full DB round trip every load.
+  const cookieView = (await cookies()).get("concierge-view")?.value;
+  if (cookieView !== "full" && me?.id) {
+    const getPreferredView = unstable_cache(
+      async (userId: string) =>
+        (await prisma.user.findUnique({ where: { id: userId }, select: { preferredView: true } }))?.preferredView ??
+        "full",
+      ["inbox-preferred-view"],
+      { revalidate: 60 }
+    );
+    const pref = cookieView === "simple" ? "simple" : await getPreferredView(me.id);
+    if (pref === "simple") redirect("/questions");
+  }
   const admin = isAdminRole(me?.role);
   const sp = await searchParams;
   const { view: rawView, reply: rawReply } = sp;

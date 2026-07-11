@@ -163,8 +163,9 @@ model Ticket {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  messages Message[]
-  drafts   Draft[]
+  messages  Message[]
+  drafts    Draft[]
+  questions TicketQuestion[]
 
   @@unique([tenantId, providerThreadId])
   @@index([tenantId, status])
@@ -195,6 +196,48 @@ model Message {
 
   @@unique([tenantId, providerMessageId])
   @@index([ticketId, sentAt]) // thread ordering
+  @@schema("concierge")
+}
+
+/// Internal Q&A on a ticket — the Simple View's core object. A CS rep asks a
+/// teammate a targeted question ("who can help with the American flag
+/// graphic?"); the teammate answers from the stripped-down Q&A view without
+/// ever seeing drafts, Brain training, or the full workspace. Never
+/// customer-facing; the CS rep folds the answer into the reply themselves.
+model TicketQuestion {
+  id         String   @id @default(cuid())
+  tenantId   String
+  ticketId   String
+  ticket     Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  askedById  String
+  askedBy    User     @relation("QuestionAskedBy", fields: [askedById], references: [id])
+  assigneeId String? // who should answer; null = anyone on the team
+  assignee   User?    @relation("QuestionAssignee", fields: [assigneeId], references: [id])
+  body       String   @db.Text
+  status     String   @default("open") // open | answered (someone replied) | closed (asker got what they needed)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  replies TicketQuestionReply[]
+
+  @@index([tenantId, assigneeId, status]) // the "waiting on you" queue
+  @@index([tenantId, status])
+  @@index([ticketId])
+  @@schema("concierge")
+}
+
+/// One message in a question's internal discussion thread.
+model TicketQuestionReply {
+  id         String         @id @default(cuid())
+  tenantId   String
+  questionId String
+  question   TicketQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  authorId   String
+  author     User           @relation("QuestionReplyAuthor", fields: [authorId], references: [id])
+  body       String         @db.Text
+  createdAt  DateTime       @default(now())
+
+  @@index([questionId, createdAt])
   @@schema("concierge")
 }
 
@@ -264,13 +307,20 @@ model User {
   // brand_admin without seeing the business's numbers)
   canViewSales     Boolean   @default(false)
   specialties      String[]  // inquiry categories this user handles — drives auto-assign suggestions
+  // "simple" lands this user on the Ticket Q&A view with minimal nav — for
+  // teammates who only answer internal questions (onboarding mode). Either
+  // user can still switch views; this is the default, not a permission.
+  preferredView    String    @default("full") // full|simple
   magicLinkToken   String? // sha256 hash of the current magic-link/one-time token
   magicLinkExpires DateTime?
   passwordHash     String? // PBKDF2 (pbkdf2$iter$salt$hash); null = magic-link only
   lastLogin        DateTime?
   createdAt        DateTime  @default(now())
 
-  assignedTickets Ticket[] @relation("Assignee")
+  assignedTickets   Ticket[]              @relation("Assignee")
+  questionsAsked    TicketQuestion[]      @relation("QuestionAskedBy")
+  questionsAssigned TicketQuestion[]      @relation("QuestionAssignee")
+  questionReplies   TicketQuestionReply[] @relation("QuestionReplyAuthor")
 
   @@unique([tenantId, email])
   @@index([email]) // cross-tenant lookups (magic-link grant, brand switcher)

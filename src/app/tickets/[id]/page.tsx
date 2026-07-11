@@ -8,6 +8,7 @@ import { getCustomerInsight } from "@/lib/customer-insight";
 import { notesForTicket } from "@/lib/notes";
 import { extractProductMention } from "@/lib/product-extract";
 import { getCurrentTenant } from "@/lib/tenant";
+import { sessionUser } from "@/lib/roles";
 import TicketWorkspace from "./TicketWorkspace";
 
 export const dynamic = "force-dynamic";
@@ -70,14 +71,24 @@ export default async function TicketDetail({ params }: { params: Promise<{ id: s
   const pm = await extractProductMention(`${ticket.subject ?? ""}\n${firstInboundMsg?.text ?? ""}`);
 
   // AI customer read (cached; stale reads refresh AFTER the response) + notes
-  // + the audit events that draw the sequence timeline.
-  const [customerInsight, contextNotes, ticketEvents] = await Promise.all([
+  // + the audit events that draw the sequence timeline + internal Q&A.
+  const [customerInsight, contextNotes, ticketEvents, me, questions] = await Promise.all([
     getCustomerInsight(ticket.customer.id).catch(() => null),
     notesForTicket(ticket.tenantId, ticket.id, ticket.customer.id, pm.productFamily),
     prisma.auditEvent.findMany({
       where: { tenantId: ticket.tenantId, entity: `ticket:${ticket.id}` },
       orderBy: { createdAt: "asc" },
       select: { action: true, createdAt: true, meta: true },
+    }),
+    sessionUser(),
+    prisma.ticketQuestion.findMany({
+      where: { ticketId: ticket.id, tenantId: tenant.id },
+      include: {
+        askedBy: { select: { name: true, email: true } },
+        assignee: { select: { name: true, email: true } },
+        replies: { orderBy: { createdAt: "asc" }, include: { author: { select: { name: true, email: true } } } },
+      },
+      orderBy: { createdAt: "asc" },
     }),
   ]);
 
@@ -182,8 +193,9 @@ export default async function TicketDetail({ params }: { params: Promise<{ id: s
           subject: m.subject,
           text: cleanEmailText(m.text),
           sentAt: m.sentAt.toISOString(),
-          attachments: ((m.attachments as { filename: string; mimeType: string }[] | null) ?? []).map(
-            (a, i) => ({ index: i, filename: a.filename, isImage: a.mimeType.startsWith("image/") })
+          attachments: ((m.attachments as { filename: string; mimeType: string | null }[] | null) ?? []).map(
+            // Old Graph rows can carry a null mimeType — never crash the page on it.
+            (a, i) => ({ index: i, filename: a.filename, isImage: (a.mimeType ?? "").startsWith("image/") })
           ),
         }))}
         initialDraft={initialDraft}
@@ -201,6 +213,27 @@ export default async function TicketDetail({ params }: { params: Promise<{ id: s
         timeline={timeline}
         detectedFamily={pm.productFamily}
         handledEvidence={handledEvidence}
+        meId={me?.id ?? null}
+        questions={questions.map((q) => {
+          const label = (u: { name: string | null; email: string }) => u.name ?? u.email.split("@")[0];
+          return {
+            id: q.id,
+            body: q.body,
+            status: q.status,
+            askedById: q.askedById,
+            askedByLabel: label(q.askedBy),
+            assigneeId: q.assigneeId,
+            assigneeLabel: q.assignee ? label(q.assignee) : null,
+            createdAt: q.createdAt.toISOString(),
+            replies: q.replies.map((r) => ({
+              id: r.id,
+              authorId: r.authorId,
+              authorLabel: label(r.author),
+              body: r.body,
+              createdAt: r.createdAt.toISOString(),
+            })),
+          };
+        })}
       />
     </div>
   );

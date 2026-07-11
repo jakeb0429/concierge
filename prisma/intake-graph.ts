@@ -121,13 +121,24 @@ async function intakeMailbox(tenantId: string, tenantSlug: string, channelId: st
 
     for (const m of msgs) {
       let attachments: AttachmentMeta[] = [];
-      if (m.hasAttachments) {
-        const atts = await graphGet<{ value: { id: string; name: string; contentType: string; size: number }[] }>(
+      // Outlook quirk: hasAttachments stays FALSE when the only attachments
+      // are inline images pasted into the body (referenced by cid: in the
+      // HTML) — which is exactly how customers send photos. Fetch the
+      // attachment list whenever either signal fires.
+      const hasInlineRefs =
+        m.body?.contentType?.toLowerCase() === "html" && (m.body.content ?? "").includes("cid:");
+      if (m.hasAttachments || hasInlineRefs) {
+        const atts = await graphGet<{
+          value: { id: string; name: string | null; contentType: string | null; size: number | null }[];
+        }>(
           adapter, mailbox,
           `/messages/${encodeURIComponent(m.id)}/attachments?$select=id,name,contentType,size`
         );
-        attachments = (atts.value ?? []).map((a) => ({
-          filename: a.name, mimeType: a.contentType, size: a.size, attachmentId: a.id,
+        attachments = (atts.value ?? []).map((a, i) => ({
+          filename: a.name || `inline-${i + 1}.${(a.contentType ?? "image/jpeg").split("/")[1] ?? "bin"}`,
+          mimeType: a.contentType ?? "application/octet-stream",
+          size: a.size ?? 0,
+          attachmentId: a.id,
         }));
         attachmentsFound += attachments.length;
       }

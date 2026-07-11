@@ -40,6 +40,7 @@ export default async function UsersPage() {
         name: u.name,
         role: u.role,
         specialties: u.specialties,
+        preferredView: u.preferredView,
         lastLogin: u.lastLogin?.toISOString() ?? null,
         openTickets: openBy.get(u.id) ?? 0,
         openSignals: signalsBy.get(u.id) ?? 0,

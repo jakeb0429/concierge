@@ -160,6 +160,27 @@ this database project WITHOUT these defenses (59+ PM2 restarts historically) —
 
 ## 6. Feature inventory (all live)
 
+- **Ticket Q&A + Simple View (shipped 2026-07-11)** — internal question layer for
+  onboarding teammates (Jake's flow: CS asks Jim "who can help with the American flag
+  graphic?", Jim answers internally, CS folds it into the reply). Models
+  `TicketQuestion`/`TicketQuestionReply` (migration `20260711180000`); ask from the
+  workspace's Team Q&A panel (assignee optional → email via Mailgun with a deep link),
+  answer from **`/questions`** (per-user queue, nav badge) or **`/tickets/[id]/qa`** —
+  a stripped page with the questions, an expandable email thread (images included), and
+  the queued draft reply once it's `pending_review`/`approved`. NO drafts/AI/Brain chrome,
+  and opening it never generates a draft. Status machine: open → answered (teammate
+  reply) → closed (asker/admin only — server-enforced 403). `User.preferredView`
+  ("full"|"simple", admin-set on /users) decides the post-login landing + minimal nav;
+  a header toggle sets a "concierge-view" cookie override (POST /view/[mode], GET is a
+  cookie-less redirect for the login-bounce case). Email HTML escapes all user text
+  (`escapeHtml` in src/lib/email.ts). Routes audited: question_asked/answered/
+  followed_up/closed/reopened.
+- **Graph inline images fixed (2026-07-11)** — Outlook reports `hasAttachments:false`
+  when a message's only attachments are inline (pasted) images, so Stingray photos never
+  got metadata. intake-graph now also fetches the attachment list when the HTML body
+  references `cid:`; filenames/mime fall back safely (old rows may carry null mimeType —
+  render paths guard). Re-run `tsx prisma/intake-graph.ts 50` after deploy to re-stamp
+  recent conversations.
 - **Four-level priority, rep-editable (shipped 2026-07-11)** — `urgent | high | medium |
   normal` (`src/lib/priority.ts`) replaces the old binary scale where "high" rendered as
   URGENT and nothing could demote a mis-flag (the trigger: triage marked a routine
