@@ -33,7 +33,7 @@ async function main() {
       where: { id: t.id },
       data: { status: res.isNoise ? "archived" : "new", priority: res.priority, tags: [res.category] },
     });
-    console.log(`  ${res.isNoise ? "ARCHIVE" : "KEEP  "} [${res.category}${res.priority === "high" ? ", high" : ""}] ${t.customer.email} — ${(t.subject ?? "").slice(0, 55)}`);
+    console.log(`  ${res.isNoise ? "ARCHIVE" : "KEEP  "} [${res.category}${res.priority !== "normal" ? `, ${res.priority}` : ""}] ${t.customer.email} — ${(t.subject ?? "").slice(0, 55)}`);
   }
   console.log(`Re-triaged ${tickets.length} tickets.`);
 }

@@ -20,7 +20,7 @@ export interface DraftResult {
   suggested: {
     tag?: string;
     folder?: string;
-    priority?: "low" | "normal" | "high" | "vip";
+    priority?: "urgent" | "high" | "medium" | "normal";
   };
   /** Steer asks the knowledge doesn't support — routed for human approval, never promised. */
   policyFlags: string[];
@@ -67,7 +67,7 @@ const DRAFT_TOOL = {
         properties: {
           tag: { type: "string" },
           folder: { type: "string" },
-          priority: { type: "string", enum: ["low", "normal", "high", "vip"] },
+          priority: { type: "string", enum: ["urgent", "high", "medium", "normal"] },
         },
       },
       policyFlags: {

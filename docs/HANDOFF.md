@@ -160,6 +160,36 @@ this database project WITHOUT these defenses (59+ PM2 restarts historically) —
 
 ## 6. Feature inventory (all live)
 
+- **Four-level priority, rep-editable (shipped 2026-07-11)** — `urgent | high | medium |
+  normal` (`src/lib/priority.ts`) replaces the old binary scale where "high" rendered as
+  URGENT and nothing could demote a mis-flag (the trigger: triage marked a routine
+  American-flag-graphics parts question urgent). Priority is now editable from the inbox
+  row (Urgency column) and the ticket header chip — PATCH `/api/tickets/[id]` with
+  `{priority}`, audited as `ticket_reprioritized` (from→to). Triage classifies into the
+  four levels with calibrated guidance (parts/product questions with no deadline are never
+  urgent); the deterministic urgency floor (address changes etc.) now sets `urgent`. Only
+  `urgent` gets the red band/pin; `high`/`medium` get heat-colored chips and weight into
+  the importance sort. Inbox filter offers all four; digest "Urgent open" tile links
+  `priority=urgent`. **DEPLOY NOTE: run `npm run db:migrate:deploy` with this release** —
+  migration `20260711130000_priority_four_levels` renames stored `high` → `urgent` (the
+  legacy meaning). Until it runs, old urgent rows show as High. The archive sweep's
+  "did you miss this?" heuristic flags both urgent and high (covers pre-migration rows).
+- **Gmail archive sync-in + "Did you miss this?" (shipped 2026-07-11)** — the intake cron
+  now sweeps every open Gmail ticket after each mailbox pass (`syncExternalArchives` in
+  `prisma/intake-gmail.ts`; pure logic in `src/lib/external-archive.ts`): a thread with no
+  INBOX label left (or deleted outright) toggles its ticket to `archived` with a
+  `gmail_archived` tag + `external_archive_synced` audit event — so working the real
+  mailbox keeps Concierge clean. If the ticket still looked like live work (customer
+  awaiting a reply, urgent, or a return in flight — never triage noise), it ALSO gets
+  `missed_archive` and surfaces in a red **"Did you miss this?"** banner atop the inbox
+  (all roles). Actions via `POST /api/tickets/[id]/missed`: **Restore to inbox** (reopens
+  the ticket AND re-adds INBOX in Gmail via the new `ChannelAdapter.unarchiveThread`,
+  implemented for Gmail + Graph) or **Archived on purpose** (clears the warning, keeps
+  `gmail_archived` provenance). Transient thread-fetch failures never archive on a guess;
+  the sweep caps at 300 oldest open tickets per mailbox and failures don't block the next
+  mailbox. Related fix: a customer writing back to an ARCHIVED non-noise ticket now
+  reopens it (previously only `resolved` reopened), clearing the archive marks — the
+  Graph intake does not run the sweep yet (Gmail-only by request).
 - **Multi-user routing (shipped 2026-07-08)** — intake triage (now `claude-sonnet-5`,
   thinking disabled — the forced-tool-choice trap) classifies every real inquiry into the
   canonical fine-grained taxonomy (`src/lib/categories.ts`: warranty, replacement_parts,

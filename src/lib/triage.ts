@@ -33,6 +33,7 @@ export const NOISE_CATEGORIES: TriageCategory[] = [
 
 import { INQUIRY_CATEGORIES, type InquiryCategory } from "./categories";
 export { INQUIRY_CATEGORIES, INQUIRY_CATEGORY_LABEL, type InquiryCategory } from "./categories";
+import { PRIORITIES, type Priority } from "./priority";
 
 /** Per-tenant triage context — what the classifier needs to know about the brand. */
 export type BrandContext = {
@@ -121,7 +122,7 @@ const TRIAGE_TOOL = {
         description:
           "For real inquiries only (customer_inquiry / order_issue / wholesale_inquiry): the specific topic. Omit for noise.",
       },
-      priority: { type: "string", enum: ["normal", "high"] },
+      priority: { type: "string", enum: [...PRIORITIES] },
     },
     required: ["category", "priority"],
   },
@@ -130,7 +131,7 @@ const TRIAGE_TOOL = {
 export type TriageResult = {
   category: TriageCategory;
   inquiryCategory: InquiryCategory | null;
-  priority: "normal" | "high";
+  priority: Priority;
   isNoise: boolean;
 };
 
@@ -139,7 +140,7 @@ export async function triageLLM(
   subject: string | null,
   text: string,
   brand: BrandContext
-): Promise<{ category: TriageCategory; inquiryCategory: InquiryCategory | null; priority: "normal" | "high" }> {
+): Promise<{ category: TriageCategory; inquiryCategory: InquiryCategory | null; priority: Priority }> {
   const res = await anthropic.messages.create({
     model: TRIAGE_MODEL,
     max_tokens: 256,
@@ -149,8 +150,12 @@ export async function triageLLM(
     system:
       `You triage the support inbox of ${brand.name}, ${brand.blurb}. ` +
       "customer_inquiry = a real customer asking about products/warranty/shipping/fit. " +
-      "order_issue = an upset or time-sensitive order problem (wrong address, missing order, damaged) — mark priority high. " +
-      "ANY address-change request, fulfillment problem, or urgent-sounding ask is priority high — those race against shipment. " +
+      "order_issue = an upset or time-sensitive order problem (wrong address, missing order, damaged). " +
+      "Priority is a four-level scale — most mail is normal: " +
+      "urgent = racing the clock: address changes, cancel-before-ship, wrong/missing orders, explicit ASAP. " +
+      "high = time-sensitive or an upset customer, but nothing is racing a shipment. " +
+      "medium = a real question worth answering soon (availability, parts, sizing before an order). " +
+      "normal = everything else. A parts-availability or general product question with no deadline is NEVER urgent. " +
       `wholesale_inquiry = a shop/dealer asking about wholesale, bulk, or dealer terms. ` +
       `vendor_outreach = someone selling THEIR service to ${brand.name} (marketing agencies, SaaS pitches, recruiters, link builders). ` +
       "automated_notification = machine-generated (receipts, platform alerts, voicemail transcriptions). " +
@@ -180,13 +185,16 @@ export async function triageLLM(
   const input = call.input as {
     category: TriageCategory;
     inquiryCategory?: string;
-    priority: "normal" | "high";
+    priority: string;
   };
   // Tool enums are not server-enforced — guard against out-of-set values.
   const inquiryCategory = (INQUIRY_CATEGORIES as readonly string[]).includes(input.inquiryCategory ?? "")
     ? (input.inquiryCategory as InquiryCategory)
     : null;
-  return { category: input.category, inquiryCategory, priority: input.priority };
+  const priority = (PRIORITIES as readonly string[]).includes(input.priority)
+    ? (input.priority as Priority)
+    : "normal";
+  return { category: input.category, inquiryCategory, priority };
 }
 
 export async function triage(
@@ -202,7 +210,7 @@ export async function triage(
   const isNoise = NOISE_CATEGORIES.includes(result.category);
   // Deterministic urgency floor — applies to real inquiries regardless of what
   // the model said (never elevates noise).
-  const priority = !isNoise && urgencyDeterministic(subject, text) ? "high" : result.priority;
+  const priority = !isNoise && urgencyDeterministic(subject, text) ? "urgent" : result.priority;
   const inquiryCategory = isNoise ? null : (result.inquiryCategory ?? "other");
   return { category: result.category, inquiryCategory, priority, isNoise };
 }

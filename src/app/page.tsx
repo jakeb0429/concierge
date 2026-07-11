@@ -6,9 +6,12 @@ import { computeReplyState, REPLY_STATE_LABEL, type ReplyState } from "@/lib/rep
 import { NOISE_CATEGORIES } from "@/lib/triage";
 import { categoryLabel } from "@/lib/categories";
 import { msAgo, nowMs } from "@/lib/time";
+import { MISSED_ARCHIVE_TAG } from "@/lib/external-archive";
+import { isPriority, priorityWeight } from "@/lib/priority";
 import InboxList, { type Row } from "./InboxList";
 import InboxFilters from "./InboxFilters";
 import ExpiredNotesReview from "./ExpiredNotesReview";
+import MissedArchiveReview from "./MissedArchiveReview";
 
 export const dynamic = "force-dynamic";
 
@@ -49,10 +52,11 @@ export default async function Inbox({
   // Toolbar filters — every combination is a shareable saved-filter URL (the
   // digest tiles deep-link here). Any active filter/sort flattens the list.
   const sinceHours = SINCE_HOURS[sp.since ?? ""] ?? null;
+  const priorityFilter = isPriority(sp.priority) ? sp.priority : null;
   const filterWhere: Prisma.TicketWhereInput = {
     ...(sp.cat ? { category: sp.cat } : {}),
     ...(sp.assignee === "none" ? { assigneeId: null } : sp.assignee ? { assigneeId: sp.assignee } : {}),
-    ...(sp.priority === "high" ? { priority: "high" } : {}),
+    ...(priorityFilter ? { priority: priorityFilter } : {}),
     // Single-mailbox view (hello@ vs marketing@ vs wholesale@) by address.
     ...(sp.mbx ? { channelRef: { supportAddress: sp.mbx } } : {}),
     ...(sinceHours ? { createdAt: { gte: msAgo(sinceHours * 3_600_000) } } : {}),
@@ -61,7 +65,7 @@ export default async function Inbox({
     ...(sinceHours && view !== "noise" ? { NOT: { tags: { hasSome: [...NOISE_CATEGORIES] } } } : {}),
   };
   const needsFilter = sp.needs === "1" ? true : sp.needs === "0" ? false : null;
-  const SORT_KEYS = ["newest", "oldest", "waiting", "received", "lastreply", "activity", "customer", "category", "status", "assignee"];
+  const SORT_KEYS = ["newest", "oldest", "waiting", "received", "lastreply", "activity", "customer", "category", "status", "assignee", "priority"];
   const sort = SORT_KEYS.includes(sp.sort ?? "") ? sp.sort! : null;
   const dir = sp.dir === "asc" ? "asc" : "desc";
   const flat = Object.keys(filterWhere).length > 0 || needsFilter !== null || sort !== null;
@@ -86,19 +90,26 @@ export default async function Inbox({
   };
   const [urgentTickets, restTickets, counts, users, assignedCounts, mineCount, mailboxes] = await Promise.all([
     // Urgent first and UNCAPPED by the main window — an old urgent ticket
-    // must never fall off the list.
-    prisma.ticket.findMany({
-      where: { tenantId: tenant.id, ...VIEWS[view].where, ...filterWhere, priority: "high" },
-      include: ticketInclude,
-      orderBy: { createdAt: "desc" },
-      take: 50,
-    }),
-    // With the urgent-only filter active this second query must return
-    // nothing — its { not: "high" } clause would otherwise override the filter.
-    sp.priority === "high"
+    // must never fall off the list. A non-urgent priority filter skips this
+    // query; the trailing priority clause would otherwise override the filter.
+    priorityFilter && priorityFilter !== "urgent"
       ? Promise.resolve([])
       : prisma.ticket.findMany({
-          where: { tenantId: tenant.id, ...VIEWS[view].where, ...filterWhere, priority: { not: "high" } },
+          where: { tenantId: tenant.id, ...VIEWS[view].where, ...filterWhere, priority: "urgent" },
+          include: ticketInclude,
+          orderBy: { createdAt: "desc" },
+          take: 50,
+        }),
+    // And the urgent-only filter skips the rest-of-the-list query.
+    priorityFilter === "urgent"
+      ? Promise.resolve([])
+      : prisma.ticket.findMany({
+          where: {
+            tenantId: tenant.id,
+            ...VIEWS[view].where,
+            ...filterWhere,
+            ...(priorityFilter ? {} : { priority: { not: "urgent" } }),
+          },
           include: ticketInclude,
           orderBy: { createdAt: "desc" },
           take: 100,
@@ -128,7 +139,7 @@ export default async function Inbox({
   const tickets = [...urgentTickets, ...restTickets];
   // Snippets: the first inbound message per ticket (DISTINCT ON), truncated
   // in SQL-adjacent JS — one slim row per ticket instead of whole threads.
-  const [firstInbounds, expiredNotes] = await Promise.all([
+  const [firstInbounds, expiredNotes, missedTickets] = await Promise.all([
     prisma.message.findMany({
       where: { ticketId: { in: tickets.map((t) => t.id) }, direction: "inbound" },
       orderBy: [{ ticketId: "asc" }, { sentAt: "asc" }],
@@ -144,6 +155,21 @@ export default async function Inbox({
           take: 20,
         })
       : Promise.resolve([]),
+    // "Did you miss this?" — threads archived in Gmail while their ticket
+    // still looked like live work. Shown to everyone: a missed customer
+    // email is whoever-sees-it-first's problem.
+    prisma.ticket.findMany({
+      where: { tenantId: tenant.id, tags: { has: MISSED_ARCHIVE_TAG } },
+      orderBy: { updatedAt: "desc" },
+      take: 20,
+      select: {
+        id: true,
+        subject: true,
+        priority: true,
+        customer: { select: { displayName: true } },
+        messages: { where: { direction: "inbound" }, orderBy: { sentAt: "desc" }, take: 1, select: { sentAt: true } },
+      },
+    }),
   ]);
   const snippetOf = new Map(firstInbounds.map((m) => [m.ticketId, m.text.slice(0, 110)]));
 
@@ -175,7 +201,8 @@ export default async function Inbox({
       // every ticket shows its mailbox in the feed (hello, marketing,
       // wholesale, ...) so multi-inbox brands can tell them apart at a glance
       mailboxTag: t.channelRef?.supportAddress?.split("@")[0] ?? null,
-      urgent: t.priority === "high" && open,
+      urgent: t.priority === "urgent" && open,
+      priority: t.priority,
       replyState,
       looksNoise: coarseTag !== null && noiseCats.has(coarseTag),
       assigneeId: t.assignee?.id ?? null,
@@ -200,12 +227,14 @@ export default async function Inbox({
   else if (sort === "category") rows.sort((a, b) => -flip * cmpStr(a.category, b.category));
   else if (sort === "status") rows.sort((a, b) => -flip * cmpStr(a.status, b.status));
   else if (sort === "assignee") rows.sort((a, b) => -flip * cmpStr(a.assigneeLabel, b.assigneeLabel));
+  else if (sort === "priority") rows.sort((a, b) => flip * (priorityWeight(b.priority) - priorityWeight(a.priority)) || a.createdAt - b.createdAt);
   else if (sort === "waiting") rows.sort((a, b) => flip * ((b.waitingDays ?? -1) - (a.waitingDays ?? -1)) || a.createdAt - b.createdAt);
   else
     rows.sort(
       (a, b) =>
         Number(b.urgent) - Number(a.urgent) ||
         Number(b.needsReply) - Number(a.needsReply) ||
+        priorityWeight(b.priority) - priorityWeight(a.priority) ||
         (a.needsReply ? a.createdAt - b.createdAt : b.createdAt - a.createdAt)
     );
 
@@ -235,6 +264,21 @@ export default async function Inbox({
         </div>
         <span className="text-sm text-neutral-500">{rows.length} shown</span>
       </div>
+
+      {/* threads archived in Gmail that still looked like live work */}
+      <MissedArchiveReview
+        tickets={missedTickets.map((t) => {
+          const lastInbound = t.messages[0]?.sentAt ?? null;
+          return {
+            id: t.id,
+            subject: t.subject ?? "",
+            name: t.customer.displayName ?? "Customer",
+            urgent: t.priority === "urgent",
+            lastInboundAt: lastInbound ? lastInbound.toISOString() : null,
+            waitingDays: lastInbound ? Math.floor((now - lastInbound.getTime()) / 86_400_000) : null,
+          };
+        })}
+      />
 
       {/* triage admin: expired context notes need a decision */}
       {admin && (

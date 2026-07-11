@@ -103,7 +103,7 @@ export default async function DigestPage({
       <div className="mb-1 text-xs font-medium uppercase tracking-wide text-neutral-400">Right now</div>
       <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-5">
         {tile("Need a reply", d.needsReply, { inbox: "needs=1&sort=waiting" }, d.needsReply > 0 ? "amber" : undefined)}
-        {tile("Urgent open", d.urgentOpen, { inbox: "priority=high&sort=oldest" }, d.urgentOpen > 0 ? "red" : undefined)}
+        {tile("Urgent open", d.urgentOpen, { inbox: "priority=urgent&sort=oldest" }, d.urgentOpen > 0 ? "red" : undefined)}
         {tile("Unassigned", d.unassigned, { inbox: "assignee=none&sort=oldest" }, d.unassigned > 0 ? "amber" : undefined)}
         {tile("Training pending", d.trainingOpen, { drill: "training" })}
         {tile("Expired notes", d.expiredNotes, { drill: "expired" }, d.expiredNotes > 0 ? "amber" : undefined)}

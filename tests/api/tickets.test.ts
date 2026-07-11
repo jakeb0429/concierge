@@ -48,6 +48,28 @@ describe("PATCH /api/tickets/[id]", () => {
     expect(prisma.ticket.update).not.toHaveBeenCalled();
   });
 
+  it("rejects an out-of-scale priority with 400 before touching the DB", async () => {
+    const res = await PATCH(req({ priority: "vip" }), params); // pre-2026-07-11 value, retired
+    expect(res.status).toBe(400);
+    expect(prisma.ticket.findFirst).not.toHaveBeenCalled();
+  });
+
+  it("reprioritizes (the triage-over-flagged corrective) and audits from→to", async () => {
+    prisma.ticket.findFirst.mockResolvedValue({ id: "tk1", tenantId: "t1", priority: "urgent", assigneeId: null, category: "replacement_parts" });
+    prisma.ticket.update.mockResolvedValue({ id: "tk1" });
+    const res = await PATCH(req({ priority: "normal" }), params);
+    expect(res.status).toBe(200);
+    expect(prisma.ticket.update).toHaveBeenCalledWith({ where: { id: "tk1" }, data: { priority: "normal" } });
+    expect(prisma.auditEvent.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: "ticket_reprioritized",
+        entity: "ticket:tk1",
+        meta: { fromPriority: "urgent", toPriority: "normal" },
+      }),
+    });
+    expect(syncArchiveToProvider).not.toHaveBeenCalled();
+  });
+
   it("reassigns to a tenant teammate and writes the audit trail", async () => {
     prisma.ticket.findFirst.mockResolvedValue({ id: "tk1", tenantId: "t1", assigneeId: "u1", category: "warranty" });
     prisma.user.findFirst.mockResolvedValue({ id: "u2", tenantId: "t1" });

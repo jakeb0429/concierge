@@ -93,7 +93,7 @@ export async function buildDigest(tenantId: string, period: DigestPeriod): Promi
     repliesSent: replyEvents,
     brainChanges: brainEvents,
     needsReply: openTickets.filter((t) => t.messages[0]?.direction === "inbound").length,
-    urgentOpen: openTickets.filter((t) => t.priority === "high").length,
+    urgentOpen: openTickets.filter((t) => t.priority === "urgent").length,
     unassigned,
     trainingOpen,
     expiredNotes,
@@ -214,7 +214,7 @@ export async function digestRecords(tenantId: string, period: DigestPeriod, key:
       const rows = await prisma.ticket.findMany({
         where: {
           ...openWhere,
-          ...(key === "urgent" ? { priority: "high" } : {}),
+          ...(key === "urgent" ? { priority: "urgent" } : {}),
           ...(key === "unassigned" ? { assigneeId: null } : {}),
         },
         select: { ...ticketSelect, messages: { orderBy: { sentAt: "desc" as const }, take: 1, select: { direction: true } } },

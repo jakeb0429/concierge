@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { statusChip, statusLabel } from "@/lib/ui";
 import { REPLY_STATE_CHIP, REPLY_STATE_LABEL, type ReplyState } from "@/lib/reply-state";
 import { categoryChipClass } from "@/lib/categories";
+import { PRIORITIES, PRIORITY_LABEL, priorityChip } from "@/lib/priority";
 
 export type Row = {
   id: string;
@@ -17,6 +18,7 @@ export type Row = {
   categoryKey?: string | null;
   mailboxTag: string | null;
   urgent: boolean;
+  priority: string;
   replyState: ReplyState;
   looksNoise: boolean;
   assigneeId: string | null;
@@ -214,6 +216,7 @@ export default function InboxList({
                 Subject
               </th>
               {th("Category", "category", "w-36")}
+              {th("Urgency", "priority", "w-24")}
               {th("Assignee", "assignee", "w-32")}
               {th("Status", "status", "w-32")}
               {th("Received", "received", "w-20")}
@@ -236,7 +239,7 @@ export default function InboxList({
             ))}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={8} className="px-4 py-10 text-center text-sm text-neutral-400">
+                <td colSpan={9} className="px-4 py-10 text-center text-sm text-neutral-400">
                   Nothing here.
                 </td>
               </tr>
@@ -272,7 +275,7 @@ function TableGroup({
       {g.title && (
         <tr>
           <td
-            colSpan={8}
+            colSpan={9}
             className={`border-b border-neutral-100 px-3 py-1.5 text-xs font-medium ${
               g.tone === "urgent" ? "bg-red-50 text-red-700" : "bg-cream text-warm-grey"
             }`}
@@ -341,6 +344,22 @@ function TableGroup({
                 {t.category.replace(/_/g, " ")}
               </span>
             )}
+          </td>
+          <td className="px-2 py-2 align-middle">
+            <select
+              value={t.priority}
+              onChange={(e) => {
+                if (e.target.value !== t.priority) patchTicket(t.id, { priority: e.target.value });
+              }}
+              title="Change urgency"
+              className={`w-full cursor-pointer rounded-lg border border-transparent px-1.5 py-1 text-[11px] hover:border-neutral-300 ${priorityChip(t.priority)}`}
+            >
+              {PRIORITIES.map((p) => (
+                <option key={p} value={p}>
+                  {PRIORITY_LABEL[p]}
+                </option>
+              ))}
+            </select>
           </td>
           <td className="px-2 py-2 align-middle">
             {canAssign && view !== "noise" && !t.looksNoise ? (

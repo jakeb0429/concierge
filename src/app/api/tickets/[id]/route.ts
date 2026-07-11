@@ -5,6 +5,7 @@ import { getCurrentTenant } from "@/lib/tenant";
 import { sessionUser } from "@/lib/roles";
 import { syncArchiveToProvider } from "@/lib/archive";
 import { INQUIRY_CATEGORIES } from "@/lib/categories";
+import { PRIORITIES } from "@/lib/priority";
 import { parseBody } from "@/lib/validate";
 
 const bodySchema = z.object({
@@ -12,9 +13,11 @@ const bodySchema = z.object({
   status: z.enum(["new", "in_review", "resolved", "archived"]).optional(),
   assigneeId: z.string().nullable().optional(),
   category: z.enum(INQUIRY_CATEGORIES).optional(),
+  priority: z.enum(PRIORITIES).optional(),
 });
 
-/** Rep ticket actions: archive / resolve / reopen, reassign, recategorize.
+/** Rep ticket actions: archive / resolve / reopen, reassign, recategorize,
+ *  reprioritize (triage over-flags; the rep is the corrective).
  *  Archiving also archives the thread in the real mailbox (best-effort). */
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -26,7 +29,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   if (!ticket) return NextResponse.json({ error: "Not found." }, { status: 404 });
 
   const actor = await sessionUser();
-  const data: { status?: string; assigneeId?: string | null; category?: string } = {};
+  const data: { status?: string; assigneeId?: string | null; category?: string; priority?: string } = {};
 
   if (body.status !== undefined) data.status = body.status;
   if (body.assigneeId !== undefined) {
@@ -37,6 +40,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     data.assigneeId = body.assigneeId;
   }
   if (body.category !== undefined) data.category = body.category;
+  if (body.priority !== undefined) data.priority = body.priority;
   if (Object.keys(data).length === 0)
     return NextResponse.json({ error: "Nothing to update." }, { status: 400 });
 
@@ -47,7 +51,9 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       ? `ticket_${data.status}`
       : data.assigneeId !== undefined
         ? "ticket_reassigned"
-        : "ticket_recategorized";
+        : data.priority !== undefined
+          ? "ticket_reprioritized"
+          : "ticket_recategorized";
   await prisma.auditEvent.create({
     data: {
       tenantId: tenant.id,
@@ -57,6 +63,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
       meta: {
         ...(data.assigneeId !== undefined ? { from: ticket.assigneeId, to: data.assigneeId } : {}),
         ...(data.category !== undefined ? { fromCategory: ticket.category, toCategory: data.category } : {}),
+        ...(data.priority !== undefined ? { fromPriority: ticket.priority, toPriority: data.priority } : {}),
       },
     },
   });

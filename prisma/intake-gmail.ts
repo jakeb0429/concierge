@@ -4,6 +4,13 @@ import { triage, brandContextFor } from "../src/lib/triage";
 import { autoAssign } from "../src/lib/assign";
 import { gmailFor, extractAttachments } from "../src/lib/gmail-client";
 import { extractProductMention } from "../src/lib/product-extract";
+import {
+  gmailThreadIsArchived,
+  classifyExternalArchive,
+  hasNoiseTag,
+  GMAIL_ARCHIVED_TAG,
+  MISSED_ARCHIVE_TAG,
+} from "../src/lib/external-archive";
 
 /**
  * Live Gmail intake — pulls recent INBOX messages into real tickets, for every
@@ -116,24 +123,36 @@ async function intakeMailbox(tenantId: string, tenantSlug: string, channelId: st
     // gains messages. Noise is archived with its category tag, never drafted.
     const existing = await prisma.ticket.findUnique({
       where: { tenantId_providerThreadId: { tenantId, providerThreadId: threadId } },
-      select: { id: true, status: true },
+      select: { id: true, status: true, tags: true },
     });
     let ticketId: string;
     if (existing) {
-      // A customer writing back to a RESOLVED ticket reopens it — otherwise
-      // "actually this didn't fix it" lands invisibly outside the open views.
+      // A customer writing back to a RESOLVED or ARCHIVED ticket reopens it —
+      // otherwise "actually this didn't fix it" lands invisibly outside the
+      // open views. Noise stays archived: a vendor pitching again is not work.
       const lastMsg = msgs[msgs.length - 1];
       const lastFrom = parseAddr(header(lastMsg?.payload?.headers ?? [], "from"));
-      const reopen = existing.status === "resolved" && lastFrom.email?.toLowerCase() !== mailbox;
+      const reopen =
+        lastFrom.email?.toLowerCase() !== mailbox &&
+        (existing.status === "resolved" || (existing.status === "archived" && !hasNoiseTag(existing.tags)));
       await prisma.ticket.update({
         where: { id: existing.id },
-        data: { channelId, ...(reopen ? { status: "new" } : {}) },
+        data: {
+          channelId,
+          ...(reopen
+            ? {
+                status: "new",
+                // The thread is live again — clear any external-archive marks.
+                tags: existing.tags.filter((t) => t !== GMAIL_ARCHIVED_TAG && t !== MISSED_ARCHIVE_TAG),
+              }
+            : {}),
+        },
       });
       if (reopen) {
         await prisma.auditEvent.create({
-          data: { tenantId, action: "ticket_reopened", entity: `ticket:${existing.id}`, meta: { reason: "customer replied after resolve" } },
+          data: { tenantId, action: "ticket_reopened", entity: `ticket:${existing.id}`, meta: { reason: `customer replied after ${existing.status === "resolved" ? "resolve" : "archive"}` } },
         });
-        console.log(`    ↺ reopened resolved ticket (customer wrote back)`);
+        console.log(`    ↺ reopened ${existing.status} ticket (customer wrote back)`);
       }
       ticketId = existing.id;
     } else {
@@ -191,6 +210,89 @@ async function intakeMailbox(tenantId: string, tenantSlug: string, channelId: st
   );
 }
 
+/**
+ * Mailbox→Concierge archive sync — the inverse of the bulk-archive flow.
+ * Intake only lists INBOX, so a thread archived in Gmail simply goes dark;
+ * this sweep checks every open ticket's thread and toggles the ticket off
+ * when the mailbox side archived (or deleted) it. Archives that still looked
+ * like live work (awaiting a reply, urgent, return in flight) get the
+ * MISSED_ARCHIVE_TAG so the inbox shows them in "Did you miss this?" instead
+ * of hiding them silently. Idempotent: archived tickets leave the candidate
+ * set, and a reopen clears the tags (restore also re-inboxes the thread).
+ */
+async function syncExternalArchives(tenantId: string, channelId: string, mailbox: string) {
+  const gmail = gmailFor(mailbox);
+  const candidates = await prisma.ticket.findMany({
+    where: {
+      tenantId,
+      channelId,
+      status: { notIn: ["archived", "resolved"] },
+      NOT: { providerThreadId: { startsWith: "mock-" } },
+    },
+    select: {
+      id: true,
+      subject: true,
+      status: true,
+      priority: true,
+      tags: true,
+      returnStatus: true,
+      providerThreadId: true,
+      messages: { orderBy: { sentAt: "desc" }, take: 1, select: { direction: true } },
+    },
+    orderBy: { createdAt: "asc" },
+    take: 300,
+  });
+  if (candidates.length === 300) console.log(`    (archive sweep capped at 300 oldest open tickets)`);
+
+  let archived = 0;
+  let flagged = 0;
+  for (const t of candidates) {
+    let gone = false;
+    let labels: { labelIds?: string[] | null }[] = [];
+    try {
+      const thread = await gmail.users.threads.get({ userId: "me", id: t.providerThreadId, format: "minimal" });
+      labels = (thread.data.messages ?? []).map((m) => ({ labelIds: m.labelIds }));
+    } catch (e) {
+      const status = (e as { status?: number; code?: number }).status ?? Number((e as { code?: unknown }).code);
+      if (status === 404) gone = true; // deleted/expunged — gone from the mailbox too
+      else {
+        console.error(`    archive sweep: threads.get failed for ticket ${t.id}: ${e}`);
+        continue; // transient failure — never archive on a guess
+      }
+    }
+    if (!gone && !gmailThreadIsArchived(labels)) continue;
+
+    const { flag, reasons } = classifyExternalArchive({
+      status: t.status,
+      priority: t.priority,
+      tags: t.tags,
+      returnStatus: t.returnStatus,
+      lastMessageDirection: t.messages[0]?.direction ?? null,
+    });
+    await prisma.ticket.update({
+      where: { id: t.id },
+      data: {
+        status: "archived",
+        tags: [...new Set([...t.tags, GMAIL_ARCHIVED_TAG, ...(flag ? [MISSED_ARCHIVE_TAG] : [])])],
+      },
+    });
+    await prisma.auditEvent.create({
+      data: {
+        tenantId,
+        action: "external_archive_synced",
+        entity: `ticket:${t.id}`,
+        meta: { mailbox, flagged: flag, reasons, ...(gone ? { threadGone: true } : {}) },
+      },
+    });
+    archived++;
+    if (flag) {
+      flagged++;
+      console.log(`    ⚑ archived in Gmail but looks live — "did you miss this?": ${(t.subject ?? "(no subject)").slice(0, 50)} (${reasons.join("; ")})`);
+    }
+  }
+  if (archived) console.log(`    ⇤ ${mailbox}: ${archived} ticket(s) archived from the Gmail side, ${flagged} flagged for review`);
+}
+
 async function main() {
   // Every tenant with an active Gmail channel — Stingray joins via the Graph
   // adapter later, so today this still resolves to Rheos's two mailboxes.
@@ -203,7 +305,13 @@ async function main() {
     include: { tenant: { select: { id: true, slug: true } } },
   });
   console.log(`Live intake across ${channels.length} Gmail channel(s):`);
-  for (const ch of channels) await intakeMailbox(ch.tenant.id, ch.tenant.slug, ch.id, ch.supportAddress);
+  for (const ch of channels) {
+    await intakeMailbox(ch.tenant.id, ch.tenant.slug, ch.id, ch.supportAddress);
+    // Sweep failures must not block the next mailbox's intake.
+    await syncExternalArchives(ch.tenant.id, ch.id, ch.supportAddress).catch((e) =>
+      console.error(`  archive sweep failed for ${ch.supportAddress}:`, e)
+    );
+  }
 
   const total = await prisma.ticket.count({ where: { channel: "gmail" } });
   console.log(`Gmail tickets now: ${total}.`);

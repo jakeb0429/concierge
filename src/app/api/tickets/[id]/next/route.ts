@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { getCurrentTenant } from "@/lib/tenant";
 import { getOrderContext } from "@/lib/shipstation";
 import { getCustomerInsight } from "@/lib/customer-insight";
+import { priorityWeight } from "@/lib/priority";
 
 /**
  * The next ticket to work: oldest open ticket still awaiting a reply,
@@ -31,8 +32,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     take: 50,
   });
   const needing = candidates.filter((t) => t.messages[0]?.direction === "inbound");
-  // Urgent first, then longest-waiting — same priority order as the inbox.
-  needing.sort((a, b) => Number(b.priority === "high") - Number(a.priority === "high") || a.createdAt.getTime() - b.createdAt.getTime());
+  // Most urgent first, then longest-waiting — same priority order as the inbox.
+  needing.sort((a, b) => priorityWeight(b.priority) - priorityWeight(a.priority) || a.createdAt.getTime() - b.createdAt.getTime());
   const next = needing[0];
   if (!next) return NextResponse.json({ next: null });
 
@@ -41,5 +42,5 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     await Promise.allSettled([getOrderContext(next.customer.email, tenant.id), getCustomerInsight(next.customerId)]);
   });
 
-  return NextResponse.json({ next: { id: next.id, subject: next.subject, urgent: next.priority === "high" } });
+  return NextResponse.json({ next: { id: next.id, subject: next.subject, urgent: next.priority === "urgent" } });
 }

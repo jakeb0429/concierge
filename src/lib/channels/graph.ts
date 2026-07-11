@@ -169,6 +169,17 @@ export class GraphMailAdapter implements ChannelAdapter {
     for (const m of list.value ?? []) await this.archive(m.id);
   }
 
+  async unarchiveThread(threadId: string): Promise<void> {
+    // Inverse of archiveThread: move the conversation's Archive-folder
+    // messages back to the inbox. "inbox" is a well-known folder name.
+    const list = await this.g<{ value: { id: string }[] }>(
+      "GET",
+      `/mailFolders/archive/messages?$filter=conversationId eq '${threadId.replace(/'/g, "''")}'&$top=50&$select=id`
+    );
+    for (const m of list.value ?? [])
+      await this.g("POST", `/messages/${encodeURIComponent(m.id)}/move`, { destinationId: "inbox" });
+  }
+
   async watch(): Promise<{ expiresAt: Date | null }> {
     // Push subscriptions need a public notification webhook (with HMAC
     // validation) — intake is cron-polled for the pilot, same as Gmail.

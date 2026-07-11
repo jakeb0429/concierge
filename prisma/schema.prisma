@@ -153,7 +153,7 @@ model Ticket {
   // return/exchange lifecycle (null = no return in play). Phase A sets
   // "requested"; later phases advance: approved|label_sent|package_received|refunded|exchanged
   returnStatus  String?
-  priority      String   @default("normal") // low|normal|high|vip
+  priority      String   @default("normal") // urgent|high|medium|normal (src/lib/priority.ts; rep-editable)
   category      String?  // fine-grained inquiry category (see INQUIRY_CATEGORIES) — drives routing + brain training
   assigneeId    String?
   assignee      User?    @relation("Assignee", fields: [assigneeId], references: [id])

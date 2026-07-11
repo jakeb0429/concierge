@@ -146,6 +146,11 @@ export class GmailAdapter implements ChannelAdapter {
     await gmail.users.threads.modify({ userId: "me", id: threadId, requestBody: { removeLabelIds: ["INBOX"] } });
   }
 
+  async unarchiveThread(threadId: string): Promise<void> {
+    const gmail = await this.client();
+    await gmail.users.threads.modify({ userId: "me", id: threadId, requestBody: { addLabelIds: ["INBOX"] } });
+  }
+
   async watch(): Promise<{ expiresAt: Date | null }> {
     const gmail = await this.client();
     const res = await gmail.users.watch({

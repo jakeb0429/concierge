@@ -87,6 +87,9 @@ export interface ChannelAdapter {
   /** Archive a whole thread — a Concierge ticket maps to a provider thread. */
   archiveThread(providerThreadId: string): Promise<void>;
 
+  /** Undo an archive (Gmail: re-add INBOX; Graph: move back out of Archive). */
+  unarchiveThread(providerThreadId: string): Promise<void>;
+
   /** Register push notifications so intake is near-real-time, not polled. */
   watch(): Promise<{ expiresAt: Date | null }>;
 }

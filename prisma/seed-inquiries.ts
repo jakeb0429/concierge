@@ -38,7 +38,7 @@ const INQUIRIES: {
     email: "tbrooks@yahoo.com",
     subject: "Where's my order??",
     body: "I ordered two pairs last Tuesday (order #RH-48213) and still no tracking. Getting a little worried — can you tell me where it is?",
-    priority: "high",
+    priority: "urgent",
   },
   {
     name: "Sophie Laurent",
@@ -63,7 +63,7 @@ const INQUIRIES: {
     email: "bhartman@rowingclub.org",
     subject: "Bulk order for our rowing team",
     body: "I coach a masters rowing club (22 athletes) and we'd like team sunglasses for the season. Do you offer any bulk or team pricing?",
-    priority: "high",
+    priority: "urgent",
   },
 ];
 

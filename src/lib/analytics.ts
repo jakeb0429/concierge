@@ -110,7 +110,7 @@ export async function ticketAnalytics(tenantId: string, weeks: number): Promise<
     const key = row.category ?? "other";
     const cur = byCat.get(key) ?? { category: key, n: 0, negative: 0 };
     cur.n += row._count;
-    if (row.priority === "high") cur.negative += row._count;
+    if (row.priority === "urgent") cur.negative += row._count;
     byCat.set(key, cur);
   }
 

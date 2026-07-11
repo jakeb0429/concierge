@@ -2,6 +2,7 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { INQUIRY_CATEGORIES, INQUIRY_CATEGORY_LABEL, type InquiryCategory } from "@/lib/categories";
+import { PRIORITIES, PRIORITY_LABEL } from "@/lib/priority";
 
 export type FilterUsers = { id: string; label: string }[];
 
@@ -57,7 +58,11 @@ export default function InboxFilters({ users, mailboxes = [] }: { users: FilterU
       </select>
       <select value={params.get("priority") ?? ""} onChange={(e) => set("priority", e.target.value)} className={sel} title="Urgency">
         <option value="">any urgency</option>
-        <option value="high">urgent only</option>
+        {PRIORITIES.map((p) => (
+          <option key={p} value={p}>
+            {PRIORITY_LABEL[p]} only
+          </option>
+        ))}
       </select>
       <select value={params.get("since") ?? ""} onChange={(e) => set("since", e.target.value)} className={sel} title="Created within">
         <option value="">any time</option>

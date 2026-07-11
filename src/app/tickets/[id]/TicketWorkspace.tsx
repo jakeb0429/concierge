@@ -6,6 +6,7 @@ import NotesPanel, { type NoteRow } from "@/app/components/NotesPanel";
 import ContextComposer from "./ContextComposer";
 import { categoryChipClass } from "@/lib/categories";
 import { REPLY_STATE_CHIP, REPLY_STATE_LABEL, type ReplyState } from "@/lib/reply-state";
+import { PRIORITIES, PRIORITY_LABEL, priorityChip } from "@/lib/priority";
 
 type Citation = {
   id: string;
@@ -133,6 +134,7 @@ export default function TicketWorkspace({
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(status === "replied" || status === "resolved");
   const [assigneeId, setAssigneeId] = useState(assign?.assigneeId ?? null);
+  const [priority, setPriority] = useState(ticket.priority);
   // Live order status loads AFTER first paint — ShipStation can take seconds
   // and must never block opening the ticket.
   const [orderContext, setOrderContext] = useState<{ line: string; trackingUrl: string | null }[]>([]);
@@ -236,6 +238,17 @@ export default function TicketWorkspace({
     if (res.ok) setStatus(next);
   }
 
+  async function setTicketPriority(next: string) {
+    const prev = priority;
+    setPriority(next);
+    const res = await fetch(`/api/tickets/${ticket.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ priority: next }),
+    });
+    if (!res.ok) setPriority(prev); // optimistic; revert on failure
+  }
+
   async function promote() {
     if (!sentDraftId) return;
     const res = await fetch(`/api/tickets/${ticket.id}/promote`, {
@@ -328,9 +341,18 @@ export default function TicketWorkspace({
               ))}
             </select>
           )}
-          {ticket.priority === "high" && (
-            <span className="rounded-full bg-red-600 px-2 py-1 text-[11px] font-semibold text-white">URGENT</span>
-          )}
+          <select
+            value={priority}
+            onChange={(e) => setTicketPriority(e.target.value)}
+            title="Urgency — triage's guess, correct it here"
+            className={`cursor-pointer rounded-full border border-transparent px-2 py-1 text-[11px] font-semibold hover:border-neutral-300 ${priorityChip(priority)}`}
+          >
+            {PRIORITIES.map((p) => (
+              <option key={p} value={p}>
+                {p === "urgent" ? "URGENT" : PRIORITY_LABEL[p]}
+              </option>
+            ))}
+          </select>
           {replyState && (
             <span className={`rounded-full px-2 py-1 text-[11px] ${REPLY_STATE_CHIP[replyState]}`}>
               {REPLY_STATE_LABEL[replyState]}
