@@ -140,6 +140,16 @@ export default function TicketWorkspace({
   const [sent, setSent] = useState(status === "replied" || status === "resolved");
   const [assigneeId, setAssigneeId] = useState(assign?.assigneeId ?? null);
   const [priority, setPriority] = useState(ticket.priority);
+  // Resolve/Archive pause for an optional off-channel note ("customer
+  // called — handled by phone") before the status actually moves.
+  const [pendingStatus, setPendingStatus] = useState<string | null>(null);
+  const [statusNote, setStatusNote] = useState("");
+  const noteBarRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    // The bar lives under the header; the bottom Resolve/Archive buttons are
+    // a long page away — bring it into view whichever trigger was used.
+    if (pendingStatus) noteBarRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [pendingStatus]);
   // Live order status loads AFTER first paint — ShipStation can take seconds
   // and must never block opening the ticket.
   const [orderContext, setOrderContext] = useState<{ line: string; trackingUrl: string | null }[]>([]);
@@ -234,14 +244,59 @@ export default function TicketWorkspace({
     if (res.ok) setReviewState({ status: "pending_review", note: null });
   }
 
-  async function setTicketStatus(next: string) {
+  async function setTicketStatus(next: string, note?: string) {
     const res = await fetch(`/api/tickets/${ticket.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: next }),
+      body: JSON.stringify({ status: next, ...(note && note.trim().length >= 3 ? { note: note.trim() } : {}) }),
     });
-    if (res.ok) setStatus(next);
+    if (res.ok) {
+      setStatus(next);
+      setPendingStatus(null);
+      setStatusNote("");
+    }
   }
+
+  // Inline confirm bar for resolve/archive — optional note, then commit.
+  // A JSX variable, NOT a nested component: a component defined inside the
+  // parent remounts per keystroke and the input would drop focus.
+  const statusNoteBar =
+    pendingStatus && (
+      <div ref={noteBarRef} className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-gold/50 bg-cream px-4 py-2.5 text-sm">
+        <span className="font-medium text-neutral-700">
+          {pendingStatus === "resolved" ? "Resolve" : "Archive"} this ticket
+        </span>
+        <input
+          value={statusNote}
+          onChange={(e) => setStatusNote(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              setTicketStatus(pendingStatus, statusNote);
+            }
+          }}
+          placeholder='Add a note for the record (optional) — e.g. "Customer called, handled by phone"'
+          className="min-w-0 flex-1 rounded-lg border border-neutral-200 px-2.5 py-1.5 text-sm"
+          autoFocus
+        />
+        <button
+          onClick={() => setTicketStatus(pendingStatus, statusNote)}
+          className="rounded-lg bg-neutral-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-neutral-700"
+        >
+          {pendingStatus === "resolved" ? "Resolve" : "Archive"}
+          {statusNote.trim().length >= 3 ? " with note" : ""}
+        </button>
+        <button
+          onClick={() => {
+            setPendingStatus(null);
+            setStatusNote("");
+          }}
+          className="rounded-lg border border-neutral-200 px-3 py-1.5 text-xs text-neutral-600 hover:bg-neutral-50"
+        >
+          Cancel
+        </button>
+      </div>
+    );
 
   async function setTicketPriority(next: string) {
     const prev = priority;
@@ -366,7 +421,11 @@ export default function TicketWorkspace({
           <select
             value={status}
             onChange={(e) => {
-              if (e.target.value !== status) setTicketStatus(e.target.value);
+              const next = e.target.value;
+              if (next === status) return;
+              // Resolve/archive pause for the optional note; reopen is instant.
+              if (next === "resolved" || next === "archived") setPendingStatus(next);
+              else setTicketStatus(next);
             }}
             title="Change status — resolve, archive, or reopen"
             className={`cursor-pointer rounded-full border border-neutral-300 px-2.5 py-1 text-[11px] hover:border-neutral-400 ${statusChip(status)}`}
@@ -379,6 +438,8 @@ export default function TicketWorkspace({
           </select>
         </div>
       </div>
+
+      {statusNoteBar}
 
       {/* sequence — where this ticket is in its life */}
       {timeline.length > 0 && (
@@ -677,10 +738,18 @@ export default function TicketWorkspace({
           )}
           <span className="text-xs text-neutral-400">Replies go from {ticket.mailbox}.</span>
           <div className="ml-auto flex gap-2">
-            <button onClick={() => setTicketStatus("resolved")} className="rounded-lg border border-neutral-200 px-3 py-2 text-xs text-neutral-600 hover:bg-neutral-50">
+            <button
+              onClick={() => setPendingStatus("resolved")}
+              className="rounded-lg border border-neutral-200 px-3 py-2 text-xs text-neutral-600 hover:bg-neutral-50"
+              title="Resolve — with an optional note for the record (calls, texts, handled elsewhere)"
+            >
               Resolve
             </button>
-            <button onClick={() => setTicketStatus("archived")} className="rounded-lg border border-neutral-200 px-3 py-2 text-xs text-neutral-600 hover:bg-neutral-50">
+            <button
+              onClick={() => setPendingStatus("archived")}
+              className="rounded-lg border border-neutral-200 px-3 py-2 text-xs text-neutral-600 hover:bg-neutral-50"
+              title="Archive — with an optional note for the record"
+            >
               Archive
             </button>
           </div>

@@ -7,6 +7,7 @@ const { prisma, sessionUser, getCurrentTenant, syncArchiveToProvider } = vi.hois
   prisma: {
     ticket: { findFirst: vi.fn(), update: vi.fn() },
     user: { findFirst: vi.fn() },
+    contextNote: { create: vi.fn() },
     auditEvent: { create: vi.fn() },
   },
   sessionUser: vi.fn(),
@@ -68,6 +69,37 @@ describe("PATCH /api/tickets/[id]", () => {
       }),
     });
     expect(syncArchiveToProvider).not.toHaveBeenCalled();
+  });
+
+  it("resolves with a note — the off-channel record lands as a ticket note + audit meta", async () => {
+    prisma.ticket.findFirst.mockResolvedValue({ id: "tk1", tenantId: "t1", status: "new" });
+    prisma.ticket.update.mockResolvedValue({ id: "tk1" });
+    prisma.contextNote.create.mockResolvedValue({ id: "n1" });
+    const res = await PATCH(req({ status: "resolved", note: "Customer called — resolved by phone, replacement shipped." }), params);
+    expect(res.status).toBe(200);
+    expect(prisma.ticket.update).toHaveBeenCalledWith({ where: { id: "tk1" }, data: { status: "resolved" } });
+    expect(prisma.contextNote.create).toHaveBeenCalledWith({
+      data: {
+        tenantId: "t1",
+        ticketId: "tk1",
+        body: "Customer called — resolved by phone, replacement shipped.",
+        createdBy: "adm1",
+      },
+    });
+    expect(prisma.auditEvent.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: "ticket_resolved",
+        meta: expect.objectContaining({ note: "Customer called — resolved by phone, replacement shipped." }),
+      }),
+    });
+  });
+
+  it("a note alone is not an update — 400, and no orphan note is written", async () => {
+    prisma.ticket.findFirst.mockResolvedValue({ id: "tk1", tenantId: "t1", status: "new" });
+    const res = await PATCH(req({ note: "just a note" }), params);
+    expect(res.status).toBe(400);
+    expect(prisma.contextNote.create).not.toHaveBeenCalled();
+    expect(prisma.ticket.update).not.toHaveBeenCalled();
   });
 
   it("reassigns to a tenant teammate and writes the audit trail", async () => {

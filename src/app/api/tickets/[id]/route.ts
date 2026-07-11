@@ -14,6 +14,9 @@ const bodySchema = z.object({
   assigneeId: z.string().nullable().optional(),
   category: z.enum(INQUIRY_CATEGORIES).optional(),
   priority: z.enum(PRIORITIES).optional(),
+  // Optional record accompanying a status change — "customer called, handled
+  // by phone". Lands as a ticket-scoped ContextNote + in the audit meta.
+  note: z.string().trim().min(3).max(2000).optional(),
 });
 
 /** Rep ticket actions: archive / resolve / reopen, reassign, recategorize,
@@ -46,6 +49,14 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
   await prisma.ticket.update({ where: { id }, data });
 
+  // The off-channel record ("customer called…") — a ticket-scoped note the
+  // whole team sees on the workspace, surviving next to the status change.
+  if (body.note) {
+    await prisma.contextNote.create({
+      data: { tenantId: tenant.id, ticketId: id, body: body.note, createdBy: actor?.id },
+    });
+  }
+
   const action =
     data.status !== undefined
       ? `ticket_${data.status}`
@@ -64,6 +75,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         ...(data.assigneeId !== undefined ? { from: ticket.assigneeId, to: data.assigneeId } : {}),
         ...(data.category !== undefined ? { fromCategory: ticket.category, toCategory: data.category } : {}),
         ...(data.priority !== undefined ? { fromPriority: ticket.priority, toPriority: data.priority } : {}),
+        ...(body.note ? { note: body.note } : {}),
       },
     },
   });
