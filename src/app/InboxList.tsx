@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { statusChip, statusLabel } from "@/lib/ui";
+import { statusChip, statusOptions } from "@/lib/ui";
 import { REPLY_STATE_CHIP, REPLY_STATE_LABEL, type ReplyState } from "@/lib/reply-state";
 import { categoryChipClass } from "@/lib/categories";
 import { PRIORITIES, PRIORITY_LABEL, priorityChip } from "@/lib/priority";
@@ -35,16 +35,6 @@ export type AssignableUser = { id: string; label: string };
 
 const fmtDate = (ms: number) =>
   new Date(ms).toLocaleDateString("en-US", { month: "short", day: "numeric" });
-
-/** Status transitions a rep can apply straight from the list. */
-function statusOptions(current: string): { value: string; label: string }[] {
-  const opts: { value: string; label: string }[] = [{ value: current, label: statusLabel(current) }];
-  if (["new", "in_review", "drafted", "replied"].includes(current)) {
-    opts.push({ value: "resolved", label: "→ Resolve" }, { value: "archived", label: "→ Archive" });
-  }
-  if (["resolved", "archived", "replied"].includes(current)) opts.push({ value: "new", label: "→ Reopen" });
-  return opts;
-}
 
 /**
  * The inbox table. Column headers sort (click again to flip); the default
@@ -352,7 +342,7 @@ function TableGroup({
                 if (e.target.value !== t.priority) patchTicket(t.id, { priority: e.target.value });
               }}
               title="Change urgency"
-              className={`w-full cursor-pointer rounded-lg border border-transparent px-1.5 py-1 text-[11px] hover:border-neutral-300 ${priorityChip(t.priority)}`}
+              className={`w-full cursor-pointer rounded-lg border border-neutral-300 px-1.5 py-1 text-[11px] hover:border-neutral-400 ${priorityChip(t.priority)}`}
             >
               {PRIORITIES.map((p) => (
                 <option key={p} value={p}>
@@ -392,8 +382,8 @@ function TableGroup({
               onChange={(e) => {
                 if (e.target.value !== t.status) patchTicket(t.id, { status: e.target.value });
               }}
-              title="Change status"
-              className={`w-full cursor-pointer rounded-lg border border-transparent px-1.5 py-1 text-[11px] hover:border-neutral-300 ${statusChip(t.status)}`}
+              title="Change status — resolve, archive, or reopen"
+              className={`w-full cursor-pointer rounded-lg border border-neutral-300 px-1.5 py-1 text-[11px] hover:border-neutral-400 ${statusChip(t.status)}`}
             >
               {statusOptions(t.status).map((o) => (
                 <option key={o.value} value={o.value}>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { coverageChip, statusChip, statusLabel } from "@/lib/ui";
+import { coverageChip, statusChip, statusOptions } from "@/lib/ui";
 import NotesPanel, { type NoteRow } from "@/app/components/NotesPanel";
 import ContextComposer from "./ContextComposer";
 import { categoryChipClass } from "@/lib/categories";
@@ -345,7 +345,7 @@ export default function TicketWorkspace({
             value={priority}
             onChange={(e) => setTicketPriority(e.target.value)}
             title="Urgency — triage's guess, correct it here"
-            className={`cursor-pointer rounded-full border border-transparent px-2 py-1 text-[11px] font-semibold hover:border-neutral-300 ${priorityChip(priority)}`}
+            className={`cursor-pointer rounded-full border border-neutral-300 px-2 py-1 text-[11px] font-semibold hover:border-neutral-400 ${priorityChip(priority)}`}
           >
             {PRIORITIES.map((p) => (
               <option key={p} value={p}>
@@ -358,9 +358,20 @@ export default function TicketWorkspace({
               {REPLY_STATE_LABEL[replyState]}
             </span>
           )}
-          <span className={`rounded-full px-2.5 py-1 text-[11px] ${statusChip(status)}`}>
-            {statusLabel(status)}
-          </span>
+          <select
+            value={status}
+            onChange={(e) => {
+              if (e.target.value !== status) setTicketStatus(e.target.value);
+            }}
+            title="Change status — resolve, archive, or reopen"
+            className={`cursor-pointer rounded-full border border-neutral-300 px-2.5 py-1 text-[11px] hover:border-neutral-400 ${statusChip(status)}`}
+          >
+            {statusOptions(status).map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
         </div>
       </div>
 

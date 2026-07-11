@@ -24,3 +24,15 @@ export function coverageChip(coverage: string): string {
 export function statusLabel(status: string): string {
   return status.replace(/_/g, " ");
 }
+
+/** Status transitions a rep can apply by hand — "drafted"/"replied" are
+ *  system-set. Drives the status dropdowns on the inbox AND the ticket
+ *  header, so the two surfaces always offer the same moves. */
+export function statusOptions(current: string): { value: string; label: string }[] {
+  const opts: { value: string; label: string }[] = [{ value: current, label: statusLabel(current) }];
+  if (["new", "in_review", "drafted", "replied"].includes(current)) {
+    opts.push({ value: "resolved", label: "→ Resolve" }, { value: "archived", label: "→ Archive" });
+  }
+  if (["resolved", "archived", "replied"].includes(current)) opts.push({ value: "new", label: "→ Reopen" });
+  return opts;
+}
