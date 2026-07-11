@@ -26,9 +26,9 @@ export type QuestionRow = {
 export type TeamUser = { id: string; label: string };
 
 const STATUS_CHIP: Record<string, string> = {
-  open: "bg-amber-50 text-amber-700",
-  answered: "bg-green-50 text-green-700",
-  closed: "bg-neutral-100 text-neutral-500",
+  open: "bg-amber-50 text-amber-800 ring-amber-600/20",
+  answered: "bg-green-50 text-green-800 ring-green-600/20",
+  closed: "bg-neutral-100 text-neutral-500 ring-neutral-500/15",
 };
 
 const fmt = (iso: string) =>
@@ -102,7 +102,7 @@ export default function QuestionsPanel({
         {questions.map((q) => (
           <div key={q.id} className={`rounded-lg border px-3 py-2.5 ${q.status === "closed" ? "border-neutral-100 bg-neutral-50" : "border-neutral-200"}`}>
             <div className="mb-1 flex flex-wrap items-center gap-2 text-[11px] text-neutral-400">
-              <span className={`rounded-full px-2 py-0.5 ${STATUS_CHIP[q.status] ?? STATUS_CHIP.open}`}>{q.status}</span>
+              <span className={`chip ${STATUS_CHIP[q.status] ?? STATUS_CHIP.open}`}>{q.status}</span>
               <span>
                 <b className="font-medium text-neutral-600">{q.askedByLabel}</b> asked
                 {q.assigneeLabel ? (

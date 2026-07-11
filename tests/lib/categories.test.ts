@@ -26,14 +26,27 @@ describe("categoryLabel", () => {
 });
 
 describe("categoryChipClass", () => {
-  it("returns the mapped chip classes for known categories", () => {
-    expect(categoryChipClass("warranty")).toBe("bg-amber-50 text-amber-700");
-    expect(categoryChipClass("escalation")).toBe("bg-red-50 text-red-700");
+  it("gives every canonical category a complete, distinct tint (bg + text + ring)", () => {
+    const seen = new Set<string>();
+    for (const category of INQUIRY_CATEGORIES) {
+      const cls = categoryChipClass(category);
+      expect(cls).toMatch(/bg-/);
+      expect(cls).toMatch(/text-/);
+      expect(cls).toMatch(/ring-/);
+      seen.add(cls);
+    }
+    expect(seen.size).toBe(INQUIRY_CATEGORIES.length); // no two categories share a tint
   });
 
-  it("falls back to neutral classes for unknown/null categories", () => {
-    const fallback = "bg-neutral-100 text-neutral-600";
-    expect(categoryChipClass("not_a_category")).toBe(fallback);
+  it("never uses red — red is reserved for urgency, escalation wears rose", () => {
+    for (const category of INQUIRY_CATEGORIES) {
+      expect(categoryChipClass(category)).not.toMatch(/\bbg-red|\btext-red/);
+    }
+  });
+
+  it("falls back to the same neutral tint for unknown/null categories", () => {
+    const fallback = categoryChipClass("not_a_category");
+    expect(fallback).toMatch(/neutral/);
     expect(categoryChipClass(null)).toBe(fallback);
     expect(categoryChipClass(undefined)).toBe(fallback);
   });

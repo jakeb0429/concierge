@@ -52,7 +52,10 @@ export default function MissedArchiveReview({ tickets: initial }: { tickets: Mis
         {tickets.map((t) => (
           <div key={t.id} className="flex flex-wrap items-center gap-2 rounded-lg border border-red-200 bg-white px-3 py-2 text-xs">
             {t.urgent && (
-              <span className="rounded-full bg-red-600 px-1.5 text-[10px] font-semibold text-white">URGENT</span>
+              <span className="chip bg-red-50 text-red-800 ring-red-600/30">
+                <span className="chip-dot bg-red-600" />
+                Urgent
+              </span>
             )}
             <Link href={`/tickets/${t.id}`} className="flex-1 truncate leading-relaxed text-neutral-700 hover:underline">
               <span className="font-medium">{t.name}</span> — {t.subject || "(no subject)"}

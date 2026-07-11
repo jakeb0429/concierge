@@ -29,15 +29,28 @@ export function priorityWeight(p: string | null | undefined): number {
   return w[p ?? ""] ?? 0;
 }
 
-/** Chip classes follow the heat of the level; normal stays quiet. */
+/** Chip classes follow the heat of the level; normal stays quiet. Urgent is
+ *  a red TINT with a dot (see priorityDot) — the old solid-red block shouted
+ *  louder than it informed. The red row-edge still carries the alarm. */
 export function priorityChip(p: string | null | undefined): string {
   const map: Record<string, string> = {
-    urgent: "bg-red-600 text-white",
-    high: "bg-orange-100 text-orange-800",
-    medium: "bg-amber-50 text-amber-700",
-    normal: "bg-neutral-100 text-neutral-500",
+    urgent: "bg-red-50 text-red-800 ring-red-600/30",
+    high: "bg-orange-50 text-orange-800 ring-orange-600/25",
+    medium: "bg-amber-50 text-amber-800 ring-amber-600/20",
+    normal: "bg-neutral-100 text-neutral-500 ring-neutral-500/15",
   };
-  return map[p ?? ""] ?? "bg-neutral-100 text-neutral-500";
+  return map[p ?? ""] ?? "bg-neutral-100 text-neutral-500 ring-neutral-500/15";
+}
+
+/** Dot color paired with priorityChip for non-select chips. */
+export function priorityDot(p: string | null | undefined): string {
+  const map: Record<string, string> = {
+    urgent: "bg-red-600",
+    high: "bg-orange-500",
+    medium: "bg-amber-500",
+    normal: "bg-neutral-300",
+  };
+  return map[p ?? ""] ?? "bg-neutral-300";
 }
 
 export function isPriority(p: string | null | undefined): p is Priority {

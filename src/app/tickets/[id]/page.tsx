@@ -9,6 +9,7 @@ import { notesForTicket } from "@/lib/notes";
 import { extractProductMention } from "@/lib/product-extract";
 import { getCurrentTenant } from "@/lib/tenant";
 import { sessionUser } from "@/lib/roles";
+import { cachedTenantUsers } from "@/lib/team-cache";
 import TicketWorkspace from "./TicketWorkspace";
 
 export const dynamic = "force-dynamic";
@@ -59,11 +60,7 @@ export default async function TicketDetail({ params }: { params: Promise<{ id: s
     prisma.ticket.count({ where: { customerId: ticket.customer.id } }),
     // ShipStation order context deliberately NOT fetched here — it can take
     // seconds and used to block first paint; the workspace loads it client-side.
-    prisma.user.findMany({
-      where: { tenantId: ticket.tenantId },
-      select: { id: true, email: true, name: true },
-      orderBy: { email: "asc" },
-    }),
+    cachedTenantUsers(ticket.tenantId),
   ]);
   // Which product family this ticket is about (deterministic extractor) —
   // drives product-scoped notes and the composer's product option.

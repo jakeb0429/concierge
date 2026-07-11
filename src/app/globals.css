@@ -88,3 +88,13 @@ body {
 .empty-title {
   @apply text-[11px] font-bold uppercase tracking-[0.14em] text-gold;
 }
+
+/* Chip base — every tag/badge shares this shell; tint families come from
+   lib/ui + lib/categories. The inset ring is what keeps pastels crisp. */
+.chip {
+  @apply inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 ring-inset;
+}
+/* Urgency dot — the red block is gone; a dot + tint reads urgent without shouting. */
+.chip-dot {
+  @apply inline-block h-1.5 w-1.5 rounded-full;
+}

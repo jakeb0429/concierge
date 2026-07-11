@@ -2,23 +2,23 @@
 
 export function statusChip(status: string): string {
   const map: Record<string, string> = {
-    new: "bg-blue-50 text-blue-700",
-    in_review: "bg-amber-50 text-amber-700",
-    drafted: "bg-amber-50 text-amber-700",
-    replied: "bg-green-50 text-green-700",
-    resolved: "bg-green-50 text-green-700",
-    archived: "bg-neutral-100 text-neutral-500",
+    new: "bg-blue-50 text-blue-800 ring-blue-600/20",
+    in_review: "bg-amber-50 text-amber-800 ring-amber-600/20",
+    drafted: "bg-amber-50 text-amber-800 ring-amber-600/20",
+    replied: "bg-green-50 text-green-800 ring-green-600/20",
+    resolved: "bg-emerald-50 text-emerald-800 ring-emerald-600/20",
+    archived: "bg-neutral-100 text-neutral-500 ring-neutral-500/15",
   };
-  return map[status] ?? "bg-neutral-100 text-neutral-600";
+  return map[status] ?? "bg-neutral-100 text-neutral-600 ring-neutral-500/15";
 }
 
 export function coverageChip(coverage: string): string {
   const map: Record<string, string> = {
-    full: "bg-green-50 text-green-700",
-    partial: "bg-amber-50 text-amber-700",
-    none: "bg-red-50 text-red-700",
+    full: "bg-green-50 text-green-800 ring-green-600/20",
+    partial: "bg-amber-50 text-amber-800 ring-amber-600/20",
+    none: "bg-rose-50 text-rose-800 ring-rose-600/20",
   };
-  return map[coverage] ?? "bg-neutral-100 text-neutral-600";
+  return map[coverage] ?? "bg-neutral-100 text-neutral-600 ring-neutral-500/15";
 }
 
 export function statusLabel(status: string): string {

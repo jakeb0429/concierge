@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { statusChip, statusOptions } from "@/lib/ui";
 import { REPLY_STATE_CHIP, REPLY_STATE_LABEL, type ReplyState } from "@/lib/reply-state";
 import { categoryChipClass } from "@/lib/categories";
-import { PRIORITIES, PRIORITY_LABEL, priorityChip } from "@/lib/priority";
+import { PRIORITIES, PRIORITY_LABEL, priorityChip, priorityDot } from "@/lib/priority";
 
 export type Row = {
   id: string;
@@ -307,14 +307,19 @@ function TableGroup({
               <span className="block truncate text-sm font-medium text-neutral-800">{t.name}</span>
               <span className="mt-0.5 flex flex-wrap gap-1">
                 {t.urgent && (
-                  <span className="rounded-full bg-red-600 px-1.5 text-[10px] font-semibold text-white">URGENT</span>
+                  <span className={`chip ${priorityChip("urgent")}`}>
+                    <span className={`chip-dot ${priorityDot("urgent")}`} />
+                    Urgent
+                  </span>
                 )}
                 {t.mailboxTag && (
-                  <span className="rounded-full bg-purple-50 px-1.5 text-[10px] text-purple-700">{t.mailboxTag}</span>
+                  <span className="chip bg-white text-neutral-500 ring-neutral-300" title="Mailbox this arrived in">
+                    {t.mailboxTag}
+                  </span>
                 )}
                 {t.maybeHandled && (
                   <span
-                    className="rounded-full bg-teal-50 px-1.5 text-[10px] text-teal-700"
+                    className="chip bg-teal-50 text-teal-800 ring-teal-600/20"
                     title="A shipment, refund, or new order happened after this request — it may already be handled"
                   >
                     possibly handled
@@ -330,10 +335,17 @@ function TableGroup({
             </Link>
           </td>
           <td className="px-2 py-2 align-middle">
-            {t.category && (
-              <span className={`inline-block rounded-full px-2 py-0.5 text-[11px] ${categoryChipClass(t.categoryKey)}`}>
+            {t.category && t.categoryKey && (
+              <Link
+                href={`/?cat=${encodeURIComponent(t.categoryKey)}`}
+                title={`Filter the inbox to ${t.category.replace(/_/g, " ")}`}
+                className={`chip transition-shadow hover:ring-2 ${categoryChipClass(t.categoryKey)}`}
+              >
                 {t.category.replace(/_/g, " ")}
-              </span>
+              </Link>
+            )}
+            {t.category && !t.categoryKey && (
+              <span className={`chip ${categoryChipClass(t.categoryKey)}`}>{t.category.replace(/_/g, " ")}</span>
             )}
           </td>
           <td className="px-2 py-2 align-middle">
@@ -402,7 +414,7 @@ function TableGroup({
                 {fmtDate(t.lastReplyAt)}
               </span>
             ) : t.needsReply ? (
-              <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${REPLY_STATE_CHIP[t.replyState]}`}>
+              <span className={`chip ${REPLY_STATE_CHIP[t.replyState]}`}>
                 {t.waitingDays !== null && t.waitingDays >= 1 ? `waiting ${t.waitingDays}d` : REPLY_STATE_LABEL[t.replyState]}
               </span>
             ) : (

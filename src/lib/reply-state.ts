@@ -24,7 +24,7 @@ export const REPLY_STATE_LABEL: Record<ReplyState, string> = {
 };
 
 export const REPLY_STATE_CHIP: Record<ReplyState, string> = {
-  first_contact: "bg-blue-50 text-blue-700",
-  follow_up: "bg-amber-50 text-amber-700",
-  waiting_customer: "bg-neutral-100 text-neutral-500",
+  first_contact: "bg-blue-50 text-blue-800 ring-blue-600/20",
+  follow_up: "bg-amber-50 text-amber-800 ring-amber-600/20",
+  waiting_customer: "bg-neutral-100 text-neutral-500 ring-neutral-500/15",
 };

@@ -47,9 +47,15 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         await reindexKnowledgeItem(item.id, item.title, signal.proposedText);
       }
     } else if (signal.proposedTarget === "voice_guide") {
+      // Read-modify-write: getCurrentTenant's row can be 60s stale (cached) —
+      // re-read fresh so a concurrent voice-guide append is never lost.
+      const fresh = await prisma.tenant.findUniqueOrThrow({
+        where: { id: tenant.id },
+        select: { voiceGuide: true },
+      });
       await prisma.tenant.update({
         where: { id: tenant.id },
-        data: { voiceGuide: `${tenant.voiceGuide ?? ""}\n\n${signal.proposedText}`.trim() },
+        data: { voiceGuide: `${fresh.voiceGuide ?? ""}\n\n${signal.proposedText}`.trim() },
       });
     } else if (signal.proposedTarget === "avoid_note" && signal.knowledgeItemId) {
       await prisma.knowledgeItem.update({

@@ -11,6 +11,7 @@ import { categoryLabel } from "@/lib/categories";
 import { msAgo, nowMs } from "@/lib/time";
 import { MISSED_ARCHIVE_TAG } from "@/lib/external-archive";
 import { isPriority, priorityWeight } from "@/lib/priority";
+import { cachedTenantUsers, cachedMailboxes } from "@/lib/team-cache";
 import InboxList, { type Row } from "./InboxList";
 import InboxFilters from "./InboxFilters";
 import ExpiredNotesReview from "./ExpiredNotesReview";
@@ -34,6 +35,7 @@ export default async function Inbox({
     cat?: string;
     assignee?: string;
     priority?: string;
+    status?: string;
     since?: string;
     needs?: string;
     sort?: string;
@@ -72,10 +74,16 @@ export default async function Inbox({
   // digest tiles deep-link here). Any active filter/sort flattens the list.
   const sinceHours = SINCE_HOURS[sp.since ?? ""] ?? null;
   const priorityFilter = isPriority(sp.priority) ? sp.priority : null;
+  // An explicit status filter must reach resolved/archived tickets, so it
+  // overrides the view's own status constraint (the list flattens anyway).
+  const statusFilter = ["new", "drafted", "in_review", "replied", "resolved", "archived"].includes(sp.status ?? "")
+    ? sp.status!
+    : null;
   const filterWhere: Prisma.TicketWhereInput = {
     ...(sp.cat ? { category: sp.cat } : {}),
     ...(sp.assignee === "none" ? { assigneeId: null } : sp.assignee ? { assigneeId: sp.assignee } : {}),
     ...(priorityFilter ? { priority: priorityFilter } : {}),
+    ...(statusFilter ? { status: statusFilter } : {}),
     // Single-mailbox view (hello@ vs marketing@ vs wholesale@) by address.
     ...(sp.mbx ? { channelRef: { supportAddress: sp.mbx } } : {}),
     ...(sinceHours ? { createdAt: { gte: msAgo(sinceHours * 3_600_000) } } : {}),
@@ -99,6 +107,10 @@ export default async function Inbox({
     all: { label: "All", where: {} },
   };
 
+  // The explicit status filter needs to see past the view's own status
+  // constraint (e.g. "resolved" from the All-open view).
+  const viewWhere = statusFilter ? {} : VIEWS[view].where;
+
   const ticketInclude = {
     customer: { select: { displayName: true } },
     channelRef: { select: { supportAddress: true } },
@@ -114,7 +126,7 @@ export default async function Inbox({
     priorityFilter && priorityFilter !== "urgent"
       ? Promise.resolve([])
       : prisma.ticket.findMany({
-          where: { tenantId: tenant.id, ...VIEWS[view].where, ...filterWhere, priority: "urgent" },
+          where: { tenantId: tenant.id, ...viewWhere, ...filterWhere, priority: "urgent" },
           include: ticketInclude,
           orderBy: { createdAt: "desc" },
           take: 50,
@@ -125,7 +137,7 @@ export default async function Inbox({
       : prisma.ticket.findMany({
           where: {
             tenantId: tenant.id,
-            ...VIEWS[view].where,
+            ...viewWhere,
             ...filterWhere,
             ...(priorityFilter ? {} : { priority: { not: "urgent" } }),
           },
@@ -134,11 +146,8 @@ export default async function Inbox({
           take: 100,
         }),
     prisma.ticket.groupBy({ by: ["status"], where: { tenantId: tenant.id }, _count: true }),
-    prisma.user.findMany({
-      where: { tenantId: tenant.id },
-      select: { id: true, email: true, name: true },
-      orderBy: { email: "asc" },
-    }),
+    // Roster changes rarely — cached 60s, saves a DB round trip per view.
+    cachedTenantUsers(tenant.id),
     prisma.ticket.groupBy({
       by: ["assigneeId"],
       where: { tenantId: tenant.id, status: { notIn: ["archived", "resolved", "replied"] } },
@@ -149,11 +158,7 @@ export default async function Inbox({
       ? prisma.ticket.count({ where: { tenantId: tenant.id, ...VIEWS.mine.where } })
       : Promise.resolve(0),
     // The tenant's mailboxes power the single-mailbox filter (shown when >1).
-    prisma.channel.findMany({
-      where: { tenantId: tenant.id },
-      select: { supportAddress: true },
-      orderBy: { supportAddress: "asc" },
-    }),
+    cachedMailboxes(tenant.id),
   ]);
   const tickets = [...urgentTickets, ...restTickets];
   // Snippets: the first inbound message per ticket (DISTINCT ON), truncated

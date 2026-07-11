@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { getCurrentTenant } from "@/lib/tenant";
 import { sessionUser } from "@/lib/roles";
 import { cleanEmailText } from "@/lib/email-clean";
+import { cachedTenantUsers } from "@/lib/team-cache";
 import QuestionsPanel from "@/app/components/QuestionsPanel";
 
 export const dynamic = "force-dynamic";
@@ -44,11 +45,7 @@ export default async function TicketQA({ params }: { params: Promise<{ id: strin
       },
       orderBy: { createdAt: "asc" },
     }),
-    prisma.user.findMany({
-      where: { tenantId: tenant.id },
-      select: { id: true, email: true, name: true },
-      orderBy: { email: "asc" },
-    }),
+    cachedTenantUsers(tenant.id),
     // The reply the CS team has queued up, once it's in the review pipeline —
     // so an answering teammate can see what's about to go out. Never a raw
     // work-in-progress draft, and read-only here.

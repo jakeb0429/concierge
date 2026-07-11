@@ -22,7 +22,7 @@ export default function InboxFilters({ users, mailboxes = [] }: { users: FilterU
     else next.delete(key);
     router.push(`/?${next.toString()}`);
   };
-  const active = ["cat", "assignee", "priority", "since", "needs", "sort", "mbx"].some((k) => params.get(k));
+  const active = ["cat", "assignee", "priority", "since", "needs", "sort", "mbx", "status"].some((k) => params.get(k));
 
   const sel = "rounded-lg border border-neutral-200 bg-white px-2 py-1 text-xs text-neutral-600";
 
@@ -64,6 +64,15 @@ export default function InboxFilters({ users, mailboxes = [] }: { users: FilterU
           </option>
         ))}
       </select>
+      <select value={params.get("status") ?? ""} onChange={(e) => set("status", e.target.value)} className={sel} title="Status">
+        <option value="">any status</option>
+        <option value="new">new</option>
+        <option value="drafted">drafted</option>
+        <option value="in_review">in review</option>
+        <option value="replied">replied</option>
+        <option value="resolved">resolved</option>
+        <option value="archived">archived</option>
+      </select>
       <select value={params.get("since") ?? ""} onChange={(e) => set("since", e.target.value)} className={sel} title="Created within">
         <option value="">any time</option>
         <option value="24h">last 24h</option>
@@ -81,6 +90,8 @@ export default function InboxFilters({ users, mailboxes = [] }: { users: FilterU
         <option value="newest">newest first</option>
         <option value="oldest">oldest first</option>
         <option value="waiting">waiting longest</option>
+        <option value="priority">most urgent first</option>
+        <option value="activity">recent activity</option>
       </select>
       {active && (
         <button onClick={() => router.push("/")} className="rounded-full bg-neutral-100 px-2.5 py-1 text-neutral-500 hover:bg-neutral-200">

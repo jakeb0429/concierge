@@ -375,12 +375,10 @@ export default function TicketWorkspace({
             </a>
           )}
           {ticket.categoryLabel && (
-            <span className={`rounded-full px-2 py-1 text-[11px] ${categoryChipClass(ticket.categoryKey)}`}>
-              {ticket.categoryLabel}
-            </span>
+            <span className={`chip ${categoryChipClass(ticket.categoryKey)}`}>{ticket.categoryLabel}</span>
           )}
           {returnStatus && (
-            <span className="rounded-full bg-violet-100 px-2 py-1 text-[11px] font-medium text-violet-800">
+            <span className="chip bg-violet-50 text-violet-800 ring-violet-600/20">
               return {returnStatus.replace(/_/g, " ")}
             </span>
           )}
@@ -414,34 +412,14 @@ export default function TicketWorkspace({
             ))}
           </select>
           {replyState && (
-            <span className={`rounded-full px-2 py-1 text-[11px] ${REPLY_STATE_CHIP[replyState]}`}>
-              {REPLY_STATE_LABEL[replyState]}
-            </span>
+            <span className={`chip ${REPLY_STATE_CHIP[replyState]}`}>{REPLY_STATE_LABEL[replyState]}</span>
           )}
-          <select
-            value={status}
-            onChange={(e) => {
-              const next = e.target.value;
-              if (next === status) return;
-              // Resolve/archive pause for the optional note; reopen is instant.
-              if (next === "resolved" || next === "archived") setPendingStatus(next);
-              else setTicketStatus(next);
-            }}
-            title="Change status — resolve, archive, or reopen"
-            className={`cursor-pointer rounded-full border border-neutral-300 px-2.5 py-1 text-[11px] hover:border-neutral-400 ${statusChip(status)}`}
-          >
-            {statusOptions(status).map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </select>
         </div>
       </div>
 
-      {statusNoteBar}
-
-      {/* sequence — where this ticket is in its life */}
+      {/* sequence — where this ticket is in its life, and where you move it.
+          The status control lives ON the stage strip so "advance the stage"
+          is one gesture in one place. */}
       {timeline.length > 0 && (
         <div className="mb-3 flex items-center gap-0 overflow-x-auto rounded-xl border border-neutral-200 bg-white px-4 py-2.5">
           {timeline.map((st, i) => (
@@ -454,8 +432,31 @@ export default function TicketWorkspace({
               </div>
             </div>
           ))}
+          <div className="ml-auto flex shrink-0 items-center gap-2 pl-4">
+            <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-warm-grey/70">Move to</span>
+            <select
+              value={status}
+              onChange={(e) => {
+                const next = e.target.value;
+                if (next === status) return;
+                // Resolve/archive pause for the optional note; reopen is instant.
+                if (next === "resolved" || next === "archived") setPendingStatus(next);
+                else setTicketStatus(next);
+              }}
+              title="Advance the stage — resolve or archive asks for an optional note"
+              className={`cursor-pointer rounded-full border border-neutral-300 px-2.5 py-1 text-[11px] font-medium hover:border-neutral-400 ${statusChip(status)}`}
+            >
+              {statusOptions(status).map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
       )}
+
+      {statusNoteBar}
 
       <ZoneLabel dot="bg-scribe-blue" text="System inputs" hint="orders, history, fulfillment — fetched automatically" />
       {/* likely already handled — evidence from orders/fulfillment */}
@@ -502,9 +503,7 @@ export default function TicketWorkspace({
         </span>
         <span className="text-neutral-500">{customerStats.totalInquiries} total inquiries</span>
         {purchaseChannel && (
-          <span className="rounded-full bg-teal-50 px-2 py-0.5 text-[11px] text-teal-700">
-            buys via {purchaseChannel}
-          </span>
+          <span className="chip bg-teal-50 text-teal-800 ring-teal-600/20">buys via {purchaseChannel}</span>
         )}
         <a href={`/customers/${ticket.customerId}`} className="ml-auto text-blue-600 hover:underline">
           full profile →
