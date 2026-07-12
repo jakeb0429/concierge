@@ -4,6 +4,7 @@ import { triage, brandContextFor } from "../src/lib/triage";
 import { autoAssign } from "../src/lib/assign";
 import { gmailFor, extractAttachments } from "../src/lib/gmail-client";
 import { extractProductMention } from "../src/lib/product-extract";
+import { shouldReopenOnInbound } from "../src/lib/reopen";
 import {
   gmailThreadIsArchived,
   classifyExternalArchive,
@@ -127,14 +128,20 @@ async function intakeMailbox(tenantId: string, tenantSlug: string, channelId: st
     });
     let ticketId: string;
     if (existing) {
-      // A customer writing back to a RESOLVED or ARCHIVED ticket reopens it —
-      // otherwise "actually this didn't fix it" lands invisibly outside the
-      // open views. Noise stays archived: a vendor pitching again is not work.
+      // A customer writing back to a RESOLVED, REPLIED, or ARCHIVED ticket
+      // reopens it — otherwise "actually this didn't fix it" lands invisibly
+      // outside the open views. Noise stays archived: a vendor pitching again
+      // is not work.
       const lastMsg = msgs[msgs.length - 1];
       const lastFrom = parseAddr(header(lastMsg?.payload?.headers ?? [], "from"));
-      const reopen =
-        lastFrom.email?.toLowerCase() !== mailbox &&
-        (existing.status === "resolved" || (existing.status === "archived" && !hasNoiseTag(existing.tags)));
+      const reopen = shouldReopenOnInbound({
+        status: existing.status,
+        tags: existing.tags,
+        lastFromEmail: lastFrom.email,
+        mailbox,
+        allowArchived: true,
+        isNoise: (tags) => hasNoiseTag(tags ?? []),
+      });
       await prisma.ticket.update({
         where: { id: existing.id },
         data: {
@@ -149,8 +156,9 @@ async function intakeMailbox(tenantId: string, tenantSlug: string, channelId: st
         },
       });
       if (reopen) {
+        const after = existing.status === "resolved" ? "resolve" : existing.status === "replied" ? "reply" : "archive";
         await prisma.auditEvent.create({
-          data: { tenantId, action: "ticket_reopened", entity: `ticket:${existing.id}`, meta: { reason: `customer replied after ${existing.status === "resolved" ? "resolve" : "archive"}` } },
+          data: { tenantId, action: "ticket_reopened", entity: `ticket:${existing.id}`, meta: { reason: `customer replied after ${after}` } },
         });
         console.log(`    ↺ reopened ${existing.status} ticket (customer wrote back)`);
       }

@@ -2,6 +2,7 @@ import { PrismaClient } from "@prisma/client";
 import { triage, brandContextFor } from "../src/lib/triage";
 import { autoAssign } from "../src/lib/assign";
 import { extractProductMention } from "../src/lib/product-extract";
+import { shouldReopenOnInbound } from "../src/lib/reopen";
 import { credentialsFor } from "../src/lib/send";
 import { GraphMailAdapter, MSG_SELECT, graphBodyText, type GraphMessage } from "../src/lib/channels/graph";
 
@@ -81,16 +82,25 @@ async function intakeMailbox(tenantId: string, tenantSlug: string, channelId: st
     if (existing) {
       const last = msgs[msgs.length - 1];
       const lastFrom = last?.from?.emailAddress?.address?.toLowerCase();
-      const reopen = existing.status === "resolved" && lastFrom !== mbx;
+      // Archived reopen is deliberately Gmail-only — Graph doesn't mirror
+      // external archives, so an archived ticket here was archived on purpose.
+      const reopen = shouldReopenOnInbound({
+        status: existing.status,
+        tags: null,
+        lastFromEmail: lastFrom,
+        mailbox: mbx,
+        allowArchived: false,
+        isNoise: () => false,
+      });
       await prisma.ticket.update({
         where: { id: existing.id },
         data: { channelId, ...(reopen ? { status: "new" } : {}) },
       });
       if (reopen) {
         await prisma.auditEvent.create({
-          data: { tenantId, action: "ticket_reopened", entity: `ticket:${existing.id}`, meta: { reason: "customer replied after resolve" } },
+          data: { tenantId, action: "ticket_reopened", entity: `ticket:${existing.id}`, meta: { reason: `customer replied after ${existing.status === "resolved" ? "resolve" : "reply"}` } },
         });
-        console.log(`    ↺ reopened resolved ticket (customer wrote back)`);
+        console.log(`    ↺ reopened ${existing.status} ticket (customer wrote back)`);
       }
       ticketId = existing.id;
     } else {

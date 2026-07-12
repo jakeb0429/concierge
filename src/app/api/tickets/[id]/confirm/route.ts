@@ -37,6 +37,15 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   if (!ticket) return NextResponse.json({ error: "Not found." }, { status: 404 });
   const draft = await prisma.draft.findFirst({ where: { id: draftId, ticketId: ticket.id } });
   if (!draft) return NextResponse.json({ error: "Draft not found on this ticket." }, { status: 404 });
+  // A draft sends exactly once. Guards against a double-click or a stale
+  // already-sent draft lingering in the client — re-sending would email the
+  // customer a duplicate. To reply again, generate a fresh draft (follow-up).
+  if (draft.status === "sent") {
+    return NextResponse.json(
+      { error: "This draft was already sent. Use “Write a follow-up” to reply again." },
+      { status: 409 },
+    );
+  }
   // Reply from the mailbox the ticket arrived on; legacy tickets without a
   // channelId fall back to the tenant's first channel of that provider.
   const channel = ticket.channelRef ?? ticket.tenant.channels.find((c) => c.provider === ticket.channel);

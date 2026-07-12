@@ -100,7 +100,7 @@ export default function TicketWorkspace({
   ticket,
   messages,
   initialDraft,
-  sentDraftId,
+  sentDraftId: sentDraftIdProp,
   customerStats,
   contextNotes = [],
   customerInsight,
@@ -138,6 +138,10 @@ export default function TicketWorkspace({
   const [steer, setSteer] = useState("");
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(status === "replied" || status === "resolved");
+  // The draft that "Save answer to Brand Brain" promotes. Starts from the
+  // server prop but follows in-session sends, so after a follow-up it targets
+  // the reply that actually went out, not the first one.
+  const [sentDraftId, setSentDraftId] = useState<string | null>(sentDraftIdProp);
   const [assigneeId, setAssigneeId] = useState(assign?.assigneeId ?? null);
   const [priority, setPriority] = useState(ticket.priority);
   // Resolve/Archive pause for an optional off-channel note ("customer
@@ -189,13 +193,18 @@ export default function TicketWorkspace({
     if (!res.ok) setAssigneeId(prev);
   }
 
-  async function generate(steerNotes?: string, opts?: { startReturn?: boolean }) {
+  async function generate(steerNotes?: string, opts?: { startReturn?: boolean; fresh?: boolean }) {
     setGenerating(true);
     try {
       const res = await fetch(`/api/tickets/${ticket.id}/draft`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ steerNotes, regenOfDraftId: draft?.draftId, startReturn: opts?.startReturn }),
+        // fresh = a brand-new draft (follow-up), never a regen of the old one.
+        body: JSON.stringify({
+          steerNotes,
+          regenOfDraftId: opts?.fresh ? undefined : draft?.draftId,
+          startReturn: opts?.startReturn,
+        }),
       });
       const d = await res.json();
       if (!res.ok) {
@@ -336,13 +345,30 @@ export default function TicketWorkspace({
       setSentInfo({ to: d.to, live: d.live });
       setSent(true);
       setStatus("replied");
+      // Promote/reopen now act on the reply that actually went out.
+      setSentDraftId(draft.draftId);
+      setPromoted(false);
     } finally {
       setSending(false);
     }
   }
 
-  // Chronological thread — newest last, like a mail client.
-  const thread = [...messages].sort((a, b) => a.sentAt.localeCompare(b.sentAt));
+  // Unlock composing after a reply went out and prepare a fresh draft for the
+  // customer's latest message. fresh: true keeps it a new draft rather than a
+  // regen of the one already sent.
+  function startFollowUp() {
+    setSent(false);
+    setSentInfo(null);
+    setDraft(null);
+    setBody("");
+    setReviewState({ status: "prepared", note: null });
+    generate(undefined, { fresh: true });
+  }
+
+  // Render newest-first — the latest message is what the rep acts on. This is
+  // display-only; the send path derives "latest inbound" from the DB, so this
+  // ordering must never be reused for reply threading.
+  const thread = [...messages].sort((a, b) => b.sentAt.localeCompare(a.sentAt));
   const fmtTime = (iso: string) =>
     new Date(iso).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 
@@ -549,6 +575,9 @@ export default function TicketWorkspace({
       <QuestionsPanel ticketId={ticket.id} meId={meId} users={assign?.users ?? []} questions={questions} />
       {/* rep-pinned facts: this ticket, this customer, or a product */}
       <NotesPanel key={contextNotes.length} notes={contextNotes} ticketId={ticket.id} customerId={ticket.customerId} />
+      {/* citations + teach the Brain — knowledge capture, not composing, so it
+          stays available after the reply is sent */}
+      <TeachBrain ticketId={ticket.id} draftId={draft?.draftId ?? null} citations={draft?.citations ?? []} />
       {!sent && (
         <ContextComposer
           ticketId={ticket.id}
@@ -696,9 +725,6 @@ export default function TicketWorkspace({
         </div>
       )}
 
-      {/* citations + teach the Brain */}
-      <TeachBrain ticketId={ticket.id} draftId={draft?.draftId ?? null} citations={draft?.citations ?? []} />
-
       {/* review state banners */}
       {!sent && reviewState.status === "pending_review" && (
         <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-800">
@@ -772,6 +798,13 @@ export default function TicketWorkspace({
               Next ticket →
             </a>
           )}
+          <button
+            onClick={startFollowUp}
+            className="rounded-lg border border-green-300 px-3 py-1 text-xs text-green-800 hover:bg-green-100"
+            title="Prepare a fresh reply to the customer's latest message"
+          >
+            Write a follow-up
+          </button>
           {sentDraftId && !promoted && (
             <button onClick={promote} className="rounded-lg border border-green-300 px-3 py-1 text-xs text-green-800 hover:bg-green-100">
               Save answer to Brand Brain
@@ -781,7 +814,7 @@ export default function TicketWorkspace({
         </div>
       )}
 
-      <ZoneLabel dot="bg-neutral-300" text="Conversation" hint="the full email thread" />
+      <ZoneLabel dot="bg-neutral-300" text="Conversation" hint="the full email thread — newest first" />
       {/* conversation — full width, the complete thread */}
       <div className="rounded-xl border border-l-4 border-neutral-200 border-l-neutral-300 bg-white p-4">
         <div className="mb-2 flex items-baseline justify-between text-xs text-neutral-400">
