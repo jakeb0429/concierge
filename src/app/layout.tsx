@@ -9,6 +9,7 @@ import { isAdminRole } from "@/lib/roles";
 import BrandSwitcher from "./BrandSwitcher";
 import NavLinks, { type NavItem } from "./NavLinks";
 import Sidebar, { type NavGroup } from "./Sidebar";
+import MobileNav from "./MobileNav";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -107,11 +108,8 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         { href: "/audit", label: "Audit" },
       ]
     : [];
-  // The flat list serves the mobile top bar (and stays the Simple view's nav).
-  const flatItems: NavItem[] =
-    view === "simple"
-      ? [{ href: "/questions", label: "Questions", badge: myQuestions }]
-      : [...groups.flatMap((g) => g.items), ...footerItems];
+  // The Simple view keeps its single inline link — no burger needed for one item.
+  const simpleItems: NavItem[] = [{ href: "/questions", label: "Questions", badge: myQuestions }];
 
   const viewToggle = me && (
     <form action={`/view/${view === "simple" ? "full" : "simple"}`} method="post">
@@ -125,28 +123,14 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     </form>
   );
 
-  const topBar = (
-    <header className={`border-b border-neutral-200 bg-white ${me && view !== "simple" ? "lg:hidden" : ""}`}>
-      <div className="mx-auto flex max-w-5xl items-center gap-6 overflow-x-auto px-6 py-3">
-        <Link href="/" className="flex shrink-0 items-center gap-2.5">
-          <Image src="/scribe-mark.png" alt="Scribe CHS" width={26} height={26} className="rounded-md" />
-          <span className="flex flex-col leading-none">
-            <span className="text-[13px] font-bold uppercase tracking-[0.14em] text-gold">Concierge</span>
-            <span className="mt-0.5 text-[10px] text-warm-grey">by Scribe CHS</span>
-          </span>
-        </Link>
-        {me && <NavLinks items={flatItems} />}
-        <span className="ml-auto flex shrink-0 items-center gap-3 text-xs text-warm-grey">
-          {viewToggle}
-          {myBrands.length > 1 ? (
-            <BrandSwitcher current={currentSlug} tenants={myBrands} />
-          ) : (
-            tenantName && <span>{tenantName}</span>
-          )}
-          {me?.email && <span className="hidden sm:inline">{me.email}</span>}
-        </span>
-      </div>
-    </header>
+  const logo = (
+    <Link href="/" className="flex shrink-0 items-center gap-2.5">
+      <Image src="/scribe-mark.png" alt="Scribe CHS" width={26} height={26} className="rounded-md" />
+      <span className="flex flex-col leading-none">
+        <span className="text-[13px] font-bold uppercase tracking-[0.14em] text-gold">Concierge</span>
+        <span className="mt-0.5 text-[10px] text-warm-grey">by Scribe CHS</span>
+      </span>
+    </Link>
   );
 
   // Simple view (and signed-out pages): the slim top bar is the whole chrome.
@@ -154,14 +138,29 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     return (
       <html lang="en">
         <body className="bg-neutral-50 text-neutral-900 antialiased">
-          {topBar}
+          <header className="border-b border-neutral-200 bg-white">
+            <div className="mx-auto flex max-w-5xl items-center gap-6 overflow-x-auto px-6 py-3">
+              {logo}
+              {me && <NavLinks items={simpleItems} />}
+              <span className="ml-auto flex shrink-0 items-center gap-3 text-xs text-warm-grey">
+                {viewToggle}
+                {myBrands.length > 1 ? (
+                  <BrandSwitcher current={currentSlug} tenants={myBrands} />
+                ) : (
+                  tenantName && <span>{tenantName}</span>
+                )}
+                {me?.email && <span className="hidden sm:inline">{me.email}</span>}
+              </span>
+            </div>
+          </header>
           <main className={`mx-auto px-6 py-8 ${view === "simple" && me ? "max-w-3xl" : "max-w-5xl"}`}>{children}</main>
         </body>
       </html>
     );
   }
 
-  // Full workspace: left rail at lg+, the top bar below it.
+  // Full workspace: left rail at lg+; below lg a slim bar with the burger
+  // menu (same grouped nav as the rail — never the ten-item scroll strip).
   return (
     <html lang="en">
       <body className="bg-neutral-50 text-neutral-900 antialiased">
@@ -174,7 +173,20 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             {me.email && <span className="truncate text-[11px]">{me.email}</span>}
           </Sidebar>
           <div className="min-w-0 flex-1">
-            {topBar}
+            <header className="relative border-b border-neutral-200 bg-white lg:hidden">
+              <div className="flex items-center gap-4 px-4 py-3">
+                {logo}
+                <MobileNav groups={groups} footerItems={footerItems}>
+                  {viewToggle}
+                  {myBrands.length > 1 ? (
+                    <BrandSwitcher current={currentSlug} tenants={myBrands} />
+                  ) : (
+                    tenantName && <span>{tenantName}</span>
+                  )}
+                  {me.email && <span className="truncate">{me.email}</span>}
+                </MobileNav>
+              </div>
+            </header>
             <main className="max-w-[1200px] px-6 py-6 lg:px-8">{children}</main>
           </div>
         </div>
