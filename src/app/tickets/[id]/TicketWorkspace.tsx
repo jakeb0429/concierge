@@ -142,6 +142,9 @@ export default function TicketWorkspace({
   // server prop but follows in-session sends, so after a follow-up it targets
   // the reply that actually went out, not the first one.
   const [sentDraftId, setSentDraftId] = useState<string | null>(sentDraftIdProp);
+  // Auto-escalation: the agent couldn't answer and asked a teammate. Set from
+  // the draft response; the reply drafts once the teammate replies.
+  const [escalated, setEscalated] = useState<{ question: string; assigneeName: string | null } | null>(null);
   const [assigneeId, setAssigneeId] = useState(assign?.assigneeId ?? null);
   const [priority, setPriority] = useState(ticket.priority);
   // Resolve/Archive pause for an optional off-channel note ("customer
@@ -211,6 +214,13 @@ export default function TicketWorkspace({
         alert(d.error ?? "Draft generation failed — try again.");
         return;
       }
+      if (d.escalated) {
+        // The Brain couldn't answer, so the agent asked a teammate. Show the
+        // waiting state instead of a hollow draft; it drafts once they reply.
+        setEscalated({ question: d.question ?? "", assigneeName: d.assigneeName ?? null });
+        setStatus("awaiting_internal");
+        return;
+      }
       setDraft(d as Draft);
       setBody((d as Draft).body);
       setStatus("in_review");
@@ -229,7 +239,13 @@ export default function TicketWorkspace({
   // Auto-prepare a first draft on open — but never for archived/noise tickets;
   // those get a manual button instead so a stray open doesn't burn a model call.
   useEffect(() => {
-    if (!started.current && !initialDraft && !sent && ticket.status !== "archived") {
+    if (
+      !started.current &&
+      !initialDraft &&
+      !sent &&
+      ticket.status !== "archived" &&
+      ticket.status !== "awaiting_internal"
+    ) {
       started.current = true;
       generate();
     }
@@ -645,7 +661,9 @@ export default function TicketWorkspace({
       {/* the reply — first and full width; everything a rep needs to answer */}
       <div className="rounded-xl border border-l-4 border-neutral-200 border-l-gold bg-white p-4">
         <div className="mb-2 flex items-center justify-between">
-          <div className="text-xs text-neutral-400">{sent ? "Sent" : "First draft · edit inline"}</div>
+          <div className="text-xs text-neutral-400">
+            {status === "awaiting_internal" ? "Awaiting a teammate" : sent ? "Sent" : "First draft · edit inline"}
+          </div>
           {draft && (
             <span className={`rounded-full px-2 py-0.5 text-[11px] ${coverageChip(draft.coverage)}`}>
               {draft.coverage === "full" ? "fully covered" : draft.coverage === "partial" ? "partial" : "not covered"}
@@ -653,7 +671,21 @@ export default function TicketWorkspace({
           )}
         </div>
 
-        {!draft && !generating && ticket.status === "archived" ? (
+        {status === "awaiting_internal" && !draft ? (
+          <div className="py-8 text-center">
+            <p className="mb-1 text-sm font-medium text-purple-900">Waiting on a teammate</p>
+            <p className="mx-auto max-w-md text-sm text-neutral-500">
+              The agent didn&apos;t have this answer in the Brain, so it asked
+              {escalated?.assigneeName ? ` ${escalated.assigneeName}` : " the right specialist"}. The reply drafts
+              automatically once they answer — the question is in Team Q&amp;A below.
+            </p>
+            {escalated?.question ? (
+              <p className="mx-auto mt-3 max-w-md rounded-lg bg-purple-50 px-3 py-2 text-left text-sm italic text-purple-800">
+                “{escalated.question}”
+              </p>
+            ) : null}
+          </div>
+        ) : !draft && !generating && ticket.status === "archived" ? (
           <div className="py-8 text-center">
             <p className="mb-3 text-sm text-neutral-400">
               Archived as noise — no draft was prepared automatically.

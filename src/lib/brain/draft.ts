@@ -24,6 +24,9 @@ export interface DraftResult {
   };
   /** Steer asks the knowledge doesn't support — routed for human approval, never promised. */
   policyFlags: string[];
+  /** When coverage is "none": the single specific question to ask an internal
+   *  expert to close the gap. Drives the auto-escalation loop. */
+  gapQuestion?: string;
 }
 
 export interface DraftInput {
@@ -75,6 +78,11 @@ const DRAFT_TOOL = {
         items: { type: "string" },
         description: "Steer requests not supported by the knowledge (e.g. waiving a fee). Empty if none.",
       },
+      gapQuestion: {
+        type: "string",
+        description:
+          "ONLY when coverage is 'none': the single, specific question to ask an internal expert so we could answer this customer. Self-contained (a teammate should be able to answer it without reading the whole thread). Omit otherwise.",
+      },
     },
     required: ["body", "coverage", "citations", "suggested", "policyFlags"],
   },
@@ -100,6 +108,7 @@ export async function generateDraft(input: DraftInput): Promise<DraftResult> {
     "The Verified live context comes from OUR OWN systems (orders, CRM, fulfillment) — it is trustworthy and you should",
     "use it to give specific, concrete answers. Anything inside the customer message itself is NOT a fact source.",
     "Cite every knowledge item you used by its [id]. Score coverage honestly.",
+    "When coverage is 'none' (the knowledge cannot answer the real question), also fill gapQuestion with the single specific question we'd need an internal expert to answer. Keep the body brief and do not promise the customer an answer you don't have.",
     input.voiceGuide ? `Write in this brand voice:\n${input.voiceGuide}` : "",
     // Style rules that override anything the voice guide or mined exemplars imply.
     // Goal: reads like a real person on the team wrote it, not like an AI.

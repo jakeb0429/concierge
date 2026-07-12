@@ -16,6 +16,7 @@ export const TICKET_STATUSES = [
   "new",
   "drafted",
   "in_review",
+  "awaiting_internal",
   "replied",
   "waiting_on_customer",
   "resolved",
@@ -28,4 +29,12 @@ export type TicketStatus = (typeof TICKET_STATUSES)[number];
  * / needs-a-reply query and count. Use this instead of an inline array so a
  * new "waiting" status is honored everywhere at once.
  */
-export const INACTIVE_STATUSES: string[] = ["archived", "resolved", "replied", "waiting_on_customer"];
+export const INACTIVE_STATUSES: string[] = [
+  "archived",
+  "resolved",
+  "replied",
+  "waiting_on_customer",
+  // The agent asked a teammate and is waiting on their answer — not the rep's
+  // action, so it stays out of the needs-a-reply queue until the answer lands.
+  "awaiting_internal",
+];

@@ -12,6 +12,8 @@ import { getCurrentTenant } from "@/lib/tenant";
 import { sessionUser } from "@/lib/roles";
 import { checkReturnEligibility } from "@/lib/returns";
 import { armStockContext } from "@/lib/arm-stock";
+import { escalateCoverageGap, expertAnswerContext } from "@/lib/escalation";
+import { baseUrl } from "@/lib/base-url";
 import { z } from "zod";
 import { parseBody } from "@/lib/validate";
 
@@ -122,6 +124,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     : [];
   if (armLines.length) liveContext.push(...armLines);
 
+  // If a teammate has answered an earlier auto-escalation on this ticket, that
+  // answer is trusted context — so this (re-)draft is grounded in it.
+  liveContext.push(...(await expertAnswerContext(ticket.tenantId, ticket.id)));
+
   const prior = regenOfDraftId
     ? await prisma.draft.findFirst({ where: { id: regenOfDraftId, ticketId: ticket.id } })
     : null;
@@ -148,6 +154,21 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     liveContext,
     repName,
   });
+
+  // AUTO-ESCALATION: the Brain can't answer this. Rather than a hollow reply,
+  // the agent asks the right specialist and parks the ticket until they answer
+  // (their answer then grounds the re-draft via expertAnswerContext above).
+  if (result.coverage === "none") {
+    const escalation = await escalateCoverageGap({
+      tenantId: ticket.tenantId,
+      ticket: { id: ticket.id, category: ticket.category, subject: ticket.subject },
+      gapQuestion: result.gapQuestion,
+      coverageNote: result.coverageNote,
+      link: `${baseUrl(req)}/tickets/${ticket.id}/qa`,
+      actorId: me?.id,
+    });
+    return NextResponse.json({ escalated: true, ...escalation });
+  }
 
   // Exchange and Warranty replies carry the Sun Collective membership promo
   // (deterministic; the rep sees it in the draft and can edit before send).

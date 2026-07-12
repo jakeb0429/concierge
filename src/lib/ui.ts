@@ -5,6 +5,7 @@ export function statusChip(status: string): string {
     new: "bg-blue-50 text-blue-800 ring-blue-600/20",
     in_review: "bg-amber-50 text-amber-800 ring-amber-600/20",
     drafted: "bg-amber-50 text-amber-800 ring-amber-600/20",
+    awaiting_internal: "bg-purple-50 text-purple-700 ring-purple-600/20",
     replied: "bg-green-50 text-green-800 ring-green-600/20",
     waiting_on_customer: "bg-slate-100 text-slate-600 ring-slate-500/20",
     resolved: "bg-emerald-50 text-emerald-800 ring-emerald-600/20",

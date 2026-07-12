@@ -34,6 +34,11 @@ vi.mock("@/lib/customer-insight", () => ({ getCustomerInsight }));
 vi.mock("@/lib/notes", () => ({ groundingNotes }));
 vi.mock("@/lib/product-extract", () => ({ extractProductMention }));
 vi.mock("@/lib/stockists", () => ({ findStockists: vi.fn(), stockistLines: vi.fn(), detectPlace: vi.fn() }));
+vi.mock("@/lib/arm-stock", () => ({ armStockContext: vi.fn().mockResolvedValue([]) }));
+vi.mock("@/lib/escalation", () => ({
+  expertAnswerContext: vi.fn().mockResolvedValue([]),
+  escalateCoverageGap: vi.fn().mockResolvedValue({ alreadyAsked: false, question: "", assigneeName: null }),
+}));
 
 const { POST } = await import("@/app/api/tickets/[id]/draft/route");
 
