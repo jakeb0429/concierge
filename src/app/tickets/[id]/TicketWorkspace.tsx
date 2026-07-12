@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { coverageChip, statusChip, statusOptions } from "@/lib/ui";
 import NotesPanel, { type NoteRow } from "@/app/components/NotesPanel";
 import QuestionsPanel, { type QuestionRow } from "@/app/components/QuestionsPanel";
@@ -131,6 +132,7 @@ export default function TicketWorkspace({
   meId?: string | null;
   questions?: QuestionRow[];
 }) {
+  const router = useRouter();
   const [draft, setDraft] = useState<Draft | null>(initialDraft);
   const [body, setBody] = useState(initialDraft?.body ?? "");
   const [status, setStatus] = useState(ticket.status);
@@ -217,8 +219,15 @@ export default function TicketWorkspace({
       if (d.escalated) {
         // The Brain couldn't answer, so the agent asked a teammate. Show the
         // waiting state instead of a hollow draft; it drafts once they reply.
+        // Clear any prior draft (this can fire on a regen) so no stale, sendable
+        // draft lingers under the "Awaiting a teammate" header.
+        setDraft(null);
+        setBody("");
         setEscalated({ question: d.question ?? "", assigneeName: d.assigneeName ?? null });
         setStatus("awaiting_internal");
+        // Pull server truth: renders the newly created Team Q&A question and
+        // reconciles the ticket status (the alreadyAsked path may not re-park).
+        router.refresh();
         return;
       }
       setDraft(d as Draft);

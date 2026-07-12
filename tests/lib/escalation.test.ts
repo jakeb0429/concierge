@@ -2,21 +2,27 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 // Auto-escalation: ask the right specialist when the Brain can't answer.
 // Mock every boundary before importing the lib.
-const { prisma, sendEmail, getAgentUser, routeSignalAssignee } = vi.hoisted(() => ({
+const { prisma, sendEmail, getAgentUser, findAgentUser, routeSignalAssignee } = vi.hoisted(() => ({
   prisma: {
     ticketQuestion: { findFirst: vi.fn(), create: vi.fn(), findMany: vi.fn() },
     ticket: { update: vi.fn() },
     user: { findFirst: vi.fn() },
     auditEvent: { create: vi.fn() },
+    // The dedup check-then-create runs in a tx behind a per-ticket advisory
+    // lock; the callback gets `tx`, which we make the same mocked client.
+    $transaction: vi.fn(),
+    $executeRaw: vi.fn(),
   },
   sendEmail: vi.fn(),
   getAgentUser: vi.fn(),
+  findAgentUser: vi.fn(),
   routeSignalAssignee: vi.fn(),
 }));
 vi.mock("@/lib/db", () => ({ prisma }));
 vi.mock("@/lib/email", () => ({ sendEmail, escapeHtml: (s: string) => s }));
 vi.mock("@/lib/agent-user", () => ({
   getAgentUser,
+  findAgentUser,
   AGENT_USER_EMAIL: "agent@concierge.internal",
   AGENT_USER_NAME: "Concierge Agent",
 }));
@@ -29,6 +35,10 @@ const ticket = { id: "tkt1", category: "warranty", subject: "Broken hinge" };
 beforeEach(() => {
   vi.clearAllMocks();
   getAgentUser.mockResolvedValue({ id: "agent1", email: "agent@concierge.internal", name: "Concierge Agent" });
+  findAgentUser.mockResolvedValue({ id: "agent1", email: "agent@concierge.internal", name: "Concierge Agent" });
+  // Run the tx callback inline against the same mocked client (tx === prisma).
+  prisma.$transaction.mockImplementation(async (cb: (tx: typeof prisma) => unknown) => cb(prisma));
+  prisma.$executeRaw.mockResolvedValue(0);
   prisma.ticketQuestion.findFirst.mockResolvedValue(null);
   prisma.ticketQuestion.create.mockResolvedValue({ id: "q1" });
   prisma.ticket.update.mockResolvedValue({});

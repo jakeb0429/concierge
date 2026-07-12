@@ -1,6 +1,6 @@
 import { prisma } from "./db";
 import { sendEmail, escapeHtml } from "./email";
-import { getAgentUser } from "./agent-user";
+import { getAgentUser, findAgentUser } from "./agent-user";
 import { routeSignalAssignee } from "./assign";
 
 /**
@@ -25,42 +25,59 @@ export async function escalateCoverageGap(params: {
   const { tenantId, ticket, link } = params;
   const agent = await getAgentUser(tenantId);
 
-  // Dedup: one open/answered agent question per ticket — never re-ask a gap
-  // that's already pending or answered.
-  const existing = await prisma.ticketQuestion.findFirst({
-    where: { tenantId, ticketId: ticket.id, askedById: agent.id, status: { in: ["open", "answered"] } },
-    select: { body: true, assignee: { select: { name: true, email: true } } },
-  });
-  if (existing) {
-    return {
-      alreadyAsked: true,
-      question: existing.body,
-      assigneeName: existing.assignee?.name ?? existing.assignee?.email?.split("@")[0] ?? null,
-    };
-  }
-
+  // Route the gap to a specialist BEFORE the transaction so the lock section
+  // below makes no nested pooled queries (the app runs on a 6-connection
+  // budget — a nested query while holding the tx connection could starve it).
   const question = (params.gapQuestion || params.coverageNote || FALLBACK_QUESTION).trim();
   const assigneeId = await routeSignalAssignee(tenantId, ticket.category);
   const assignee = assigneeId
     ? await prisma.user.findFirst({ where: { id: assigneeId, tenantId }, select: { id: true, name: true, email: true } })
     : null;
 
-  await prisma.ticketQuestion.create({
-    data: { tenantId, ticketId: ticket.id, askedById: agent.id, assigneeId: assignee?.id ?? null, body: question },
-  });
-  // Park the ticket out of the needs-a-reply queue until the teammate answers.
-  await prisma.ticket.update({ where: { id: ticket.id }, data: { status: "awaiting_internal" } });
-  await prisma.auditEvent.create({
-    data: {
-      tenantId,
-      actorId: params.actorId ?? null,
-      action: "coverage_escalated",
-      entity: `ticket:${ticket.id}`,
-      meta: { question, assigneeId: assignee?.id ?? null },
-    },
+  // Race-safe dedup: two rapid draft POSTs on the same ticket could both pass a
+  // plain findFirst and mint duplicate agent questions. Serialize the
+  // check-then-create on a per-ticket advisory lock (held to end of tx) so only
+  // the first caller creates; the rest observe it and return alreadyAsked.
+  // Scoped to the escalation path — human "ask the team" questions are
+  // untouched (a rep may still open several on one ticket).
+  const outcome = await prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`agent-q:${ticket.id}`}))`;
+
+    const existing = await tx.ticketQuestion.findFirst({
+      where: { tenantId, ticketId: ticket.id, askedById: agent.id, status: { in: ["open", "answered"] } },
+      select: { body: true, assignee: { select: { name: true, email: true } } },
+    });
+    if (existing) {
+      return {
+        alreadyAsked: true as const,
+        assigneeName: existing.assignee?.name ?? existing.assignee?.email?.split("@")[0] ?? null,
+        question: existing.body,
+      };
+    }
+
+    await tx.ticketQuestion.create({
+      data: { tenantId, ticketId: ticket.id, askedById: agent.id, assigneeId: assignee?.id ?? null, body: question },
+    });
+    // Park the ticket out of the needs-a-reply queue until the teammate answers.
+    await tx.ticket.update({ where: { id: ticket.id }, data: { status: "awaiting_internal" } });
+    await tx.auditEvent.create({
+      data: {
+        tenantId,
+        actorId: params.actorId ?? null,
+        action: "coverage_escalated",
+        entity: `ticket:${ticket.id}`,
+        meta: { question, assigneeId: assignee?.id ?? null },
+      },
+    });
+    return { alreadyAsked: false as const };
   });
 
-  // Ping the specialist, same as a human-asked team question.
+  if (outcome.alreadyAsked) {
+    return { alreadyAsked: true, question: outcome.question, assigneeName: outcome.assigneeName };
+  }
+
+  // Ping the specialist, same as a human-asked team question. Outside the tx —
+  // a slow or failed email must never roll back the escalation or hold the lock.
   if (assignee?.email) {
     const about = ticket.subject ? `"${ticket.subject}"` : "a customer ticket";
     await sendEmail({
@@ -80,7 +97,10 @@ export async function escalateCoverageGap(params: {
  * answer. Returns [] when there are none.
  */
 export async function expertAnswerContext(tenantId: string, ticketId: string): Promise<string[]> {
-  const agent = await getAgentUser(tenantId);
+  // Read-only: no bot user yet means no escalations have ever happened, so
+  // there is nothing to ground. Avoids a user.upsert on every draft POST.
+  const agent = await findAgentUser(tenantId);
+  if (!agent) return [];
   const questions = await prisma.ticketQuestion.findMany({
     where: { tenantId, ticketId, askedById: agent.id, status: "answered" },
     select: {

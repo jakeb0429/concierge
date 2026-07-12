@@ -61,7 +61,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   // asked. Put the ticket back in the reply queue (its next draft is grounded
   // in this answer) and propose the Q&A to the Brain so the gap closes for
   // good. Best-effort — a hiccup here must never fail the teammate's reply.
-  const answeredAgentGap = !fromAsker && question.askedBy.email === AGENT_USER_EMAIL;
+  // Guard on the open->answered TRANSITION (question.status is the pre-update
+  // value) so a specialist's follow-up reply never mints a duplicate signal.
+  const answeredAgentGap =
+    !fromAsker && question.status === "open" && question.askedBy.email === AGENT_USER_EMAIL;
   if (answeredAgentGap) {
     try {
       if (question.ticket.status === "awaiting_internal") {

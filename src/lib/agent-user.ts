@@ -20,3 +20,19 @@ export async function getAgentUser(
     select: { id: true, email: true, name: true },
   });
 }
+
+/**
+ * Read-only lookup for the agent identity — no write. Use on hot read paths
+ * (e.g. every draft POST) so we don't run a user.upsert per request. Returns
+ * null before the bot has ever been created (i.e. before the first escalation);
+ * callers treat that as "no agent questions exist yet." The upserting
+ * getAgentUser stays the single writer, called only when actually escalating.
+ */
+export async function findAgentUser(
+  tenantId: string
+): Promise<{ id: string; email: string; name: string | null } | null> {
+  return prisma.user.findUnique({
+    where: { tenantId_email: { tenantId, email: AGENT_USER_EMAIL } },
+    select: { id: true, email: true, name: true },
+  });
+}

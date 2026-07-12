@@ -125,8 +125,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   if (armLines.length) liveContext.push(...armLines);
 
   // If a teammate has answered an earlier auto-escalation on this ticket, that
-  // answer is trusted context — so this (re-)draft is grounded in it.
-  liveContext.push(...(await expertAnswerContext(ticket.tenantId, ticket.id)));
+  // answer is trusted context — so this (re-)draft is grounded in it. We also
+  // use its presence below to break the re-escalation dead loop: once an expert
+  // has answered, we persist the grounded draft even if coverage self-scores
+  // "none" (empty knowledge retrieval hard-forces "none"; the answer lives in
+  // liveContext, not as a retrieved KnowledgeItem).
+  const expertLines = await expertAnswerContext(ticket.tenantId, ticket.id);
+  if (expertLines.length) liveContext.push(...expertLines);
 
   const prior = regenOfDraftId
     ? await prisma.draft.findFirst({ where: { id: regenOfDraftId, ticketId: ticket.id } })
@@ -158,7 +163,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   // AUTO-ESCALATION: the Brain can't answer this. Rather than a hollow reply,
   // the agent asks the right specialist and parks the ticket until they answer
   // (their answer then grounds the re-draft via expertAnswerContext above).
-  if (result.coverage === "none") {
+  // But if an expert has ALREADY answered an escalation on this ticket, do NOT
+  // re-escalate — the answer is in liveContext, so persist the grounded draft
+  // instead. Re-escalating here would hit escalateCoverageGap's answered-dedup,
+  // return without a draft, and strand the ticket forever (the dead loop).
+  if (result.coverage === "none" && expertLines.length === 0) {
     const escalation = await escalateCoverageGap({
       tenantId: ticket.tenantId,
       ticket: { id: ticket.id, category: ticket.category, subject: ticket.subject },
