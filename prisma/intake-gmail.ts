@@ -134,6 +134,11 @@ async function intakeMailbox(tenantId: string, tenantSlug: string, channelId: st
       // is not work.
       const lastMsg = msgs[msgs.length - 1];
       const lastFrom = parseAddr(header(lastMsg?.payload?.headers ?? [], "from"));
+      // Did we ever reply here? A recorded outbound means we engaged the thread,
+      // so a customer write-back reopens it even if it was mislabeled noise.
+      const priorOutbound = await prisma.message.count({
+        where: { ticketId: existing.id, direction: "outbound" },
+      });
       const reopen = shouldReopenOnInbound({
         status: existing.status,
         tags: existing.tags,
@@ -141,6 +146,7 @@ async function intakeMailbox(tenantId: string, tenantSlug: string, channelId: st
         mailbox,
         allowArchived: true,
         isNoise: (tags) => hasNoiseTag(tags ?? []),
+        hasPriorOutbound: priorOutbound > 0,
       });
       await prisma.ticket.update({
         where: { id: existing.id },

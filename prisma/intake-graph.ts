@@ -91,6 +91,8 @@ async function intakeMailbox(tenantId: string, tenantSlug: string, channelId: st
         mailbox: mbx,
         allowArchived: false,
         isNoise: () => false,
+        // Irrelevant here — allowArchived:false already blocks the archived path.
+        hasPriorOutbound: false,
       });
       await prisma.ticket.update({
         where: { id: existing.id },

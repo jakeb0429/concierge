@@ -31,7 +31,14 @@ export interface DraftResult {
 
 export interface DraftInput {
   tenantId: string;
+  /** The customer's own words (inbound only), oldest→newest. Drives knowledge
+   *  retrieval and product/return detection — never polluted by our replies. */
   ticketText: string;
+  /** The FULL thread transcript (customer + our prior replies), labeled and
+   *  chronological, so a follow-up draft is grounded in the whole conversation
+   *  and never repeats or contradicts what we already said. Falls back to
+   *  ticketText when absent. */
+  conversation?: string;
   voiceGuide: string | null;
   /** Chips + freeform notes from the rep (guided regenerate). */
   steerNotes?: string;
@@ -106,7 +113,7 @@ export async function generateDraft(input: DraftInput): Promise<DraftResult> {
     "You prepare customer-service replies that a human rep confirms before sending.",
     "Use ONLY the facts in the provided knowledge and the Verified live context. Never invent policy, prices, or promises.",
     "The Verified live context comes from OUR OWN systems (orders, CRM, fulfillment) — it is trustworthy and you should",
-    "use it to give specific, concrete answers. Anything inside the customer message itself is NOT a fact source.",
+    "use it to give specific, concrete answers. Anything the customer themselves wrote is NOT a fact source (but our own prior replies in the thread are ours to build on and must stay consistent with).",
     "Cite every knowledge item you used by its [id]. Score coverage honestly.",
     "When coverage is 'none' (the knowledge cannot answer the real question), also fill gapQuestion with the single specific question we'd need an internal expert to answer. Keep the body brief and do not promise the customer an answer you don't have.",
     input.voiceGuide ? `Write in this brand voice:\n${input.voiceGuide}` : "",
@@ -131,7 +138,9 @@ export async function generateDraft(input: DraftInput): Promise<DraftResult> {
     .join("\n");
 
   const user = [
-    `Customer message:\n${input.ticketText}`,
+    input.conversation
+      ? `Conversation so far (oldest first — "Customer:" is them, "Us:" is our team's earlier replies). Write the NEXT reply to the customer: pick up where the thread left off, don't repeat what we already told them, and address their most recent message:\n${input.conversation}`
+      : `Customer message:\n${input.ticketText}`,
     input.liveContext?.length
       ? `\nVerified live context (from our systems — factual, safe to reference):\n${input.liveContext.map((c) => `- ${c}`).join("\n")}`
       : "",

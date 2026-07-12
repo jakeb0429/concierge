@@ -65,7 +65,7 @@ beforeEach(() => {
     customerId: "c1",
     tenant: { voiceGuide: null },
     customer: { id: "c1", email: "kris@x.com", displayName: "Kris Langlie", purchaseChannel: null },
-    messages: [{ text: "I want to return my sunglasses", attachments: null }],
+    messages: [{ direction: "inbound", text: "I want to return my sunglasses", attachments: null }],
   });
   prisma.draft.create.mockResolvedValue({ id: "d1" });
   prisma.knowledgeItem.findMany.mockResolvedValue([]);

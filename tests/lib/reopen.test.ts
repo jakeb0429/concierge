@@ -10,7 +10,7 @@ import { shouldReopenOnInbound } from "@/lib/reopen";
 const MAILBOX = "hello@rheosgear.com";
 const CUSTOMER = "customer@example.com";
 
-const gmail = (over: { status: string; tags?: string[]; lastFromEmail?: string | null }) =>
+const gmail = (over: { status: string; tags?: string[]; lastFromEmail?: string | null; hasPriorOutbound?: boolean }) =>
   shouldReopenOnInbound({
     status: over.status,
     tags: over.tags ?? [],
@@ -18,6 +18,7 @@ const gmail = (over: { status: string; tags?: string[]; lastFromEmail?: string |
     mailbox: MAILBOX,
     allowArchived: true,
     isNoise: (tags) => hasNoiseTag(tags ?? []),
+    hasPriorOutbound: over.hasPriorOutbound ?? false,
   });
 
 const graph = (over: { status: string; lastFromEmail?: string | null }) =>
@@ -28,6 +29,7 @@ const graph = (over: { status: string; lastFromEmail?: string | null }) =>
     mailbox: MAILBOX,
     allowArchived: false,
     isNoise: () => false,
+    hasPriorOutbound: false,
   });
 
 describe("shouldReopenOnInbound", () => {
@@ -46,9 +48,20 @@ describe("shouldReopenOnInbound", () => {
     expect(graph({ status: "waiting_on_customer" })).toBe(true);
   });
 
-  it("keeps noise archived — a vendor pitching again is not work (gmail params)", () => {
+  it("keeps never-answered noise archived — a vendor pitching again is not work", () => {
     expect(gmail({ status: "archived", tags: ["vendor_outreach"] })).toBe(false);
     expect(gmail({ status: "archived", tags: ["spam"] })).toBe(false);
+    // Even with a prior outbound, real spam/vendor... but we only ever reply to
+    // real people, so a prior outbound flips it — see the next test.
+  });
+
+  it("reopens a mislabeled-noise ticket the customer writes back on IF we already replied", () => {
+    // The Claudia case: a genuine support thread the classifier tagged
+    // automated_notification, archived, but we'd replied to it. A customer
+    // write-back must re-surface it.
+    expect(gmail({ status: "archived", tags: ["automated_notification"], hasPriorOutbound: true })).toBe(true);
+    // Never answered → stays archived (real cold noise).
+    expect(gmail({ status: "archived", tags: ["automated_notification"], hasPriorOutbound: false })).toBe(false);
   });
 
   it("reopens a non-noise archived ticket only where archived reopen is allowed", () => {

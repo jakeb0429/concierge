@@ -60,7 +60,11 @@ beforeEach(() => {
     customerId: "c1",
     tenant: { voiceGuide: null },
     customer: { id: "c1", email: "kris@x.com", displayName: "Kris", purchaseChannel: null },
-    messages: [{ text: "Do you sponsor pickleball tournaments?", attachments: null }],
+    messages: [
+      { direction: "inbound", text: "Do you sponsor pickleball tournaments?", attachments: null },
+      { direction: "outbound", text: "Let me check with the team and get back to you.", attachments: null },
+      { direction: "inbound", text: "Thanks, any update?", attachments: null },
+    ],
   });
   prisma.draft.create.mockResolvedValue({ id: "d1" });
   prisma.knowledgeItem.findMany.mockResolvedValue([]);
@@ -119,6 +123,18 @@ describe("POST /api/tickets/[id]/draft — auto-escalation", () => {
     expect(draftInput.liveContext).toEqual(
       expect.arrayContaining([expect.stringContaining("Internal expert answer")])
     );
+  });
+
+  it("feeds generateDraft the FULL labeled thread, but keeps ticketText inbound-only", async () => {
+    await POST(req({}), params);
+    const input = generateDraft.mock.calls[0][0];
+    // Whole conversation, both directions, labeled and in order.
+    expect(input.conversation).toContain("Customer: Do you sponsor pickleball tournaments?");
+    expect(input.conversation).toContain("Us: Let me check with the team");
+    expect(input.conversation).toContain("Customer: Thanks, any update?");
+    // Retrieval/eligibility text stays the customer's words only — no outbound.
+    expect(input.ticketText).toContain("Do you sponsor pickleball tournaments?");
+    expect(input.ticketText).not.toContain("Let me check with the team");
   });
 
   it("coverage=full: never escalates, persists the draft normally", async () => {

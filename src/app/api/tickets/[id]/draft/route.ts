@@ -57,17 +57,28 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     include: {
       tenant: true,
       customer: true,
-      messages: { where: { direction: "inbound" }, orderBy: { sentAt: "asc" } },
+      // The WHOLE thread now (both directions), oldest→newest — the draft is
+      // grounded in the full conversation, not just the opening message.
+      messages: { orderBy: { sentAt: "asc" } },
     },
   });
   if (!ticket) return NextResponse.json({ error: "Not found." }, { status: 404 });
 
+  const attNote = (m: { attachments: unknown }) => {
+    const atts = (m.attachments as { filename: string }[] | null) ?? [];
+    return atts.length ? `\n[attached: ${atts.map((a) => a.filename).join(", ")}]` : "";
+  };
+  // ticketText = the customer's own words only (inbound), so knowledge
+  // retrieval, product detection, and return eligibility key off what THEY
+  // asked — never diluted or misled by our own replies.
   const ticketText = ticket.messages
-    .map((m) => {
-      const atts = (m.attachments as { filename: string }[] | null) ?? [];
-      const note = atts.length ? `\n[customer attached: ${atts.map((a) => a.filename).join(", ")}]` : "";
-      return cleanEmailText(m.text) + note;
-    })
+    .filter((m) => m.direction === "inbound")
+    .map((m) => cleanEmailText(m.text) + attNote(m))
+    .join("\n\n");
+  // conversation = the full labeled transcript for the drafting prompt, so a
+  // follow-up reply continues the thread and never repeats what we already said.
+  const conversation = ticket.messages
+    .map((m) => `${m.direction === "inbound" ? "Customer" : "Us"}: ${cleanEmailText(m.text)}${attNote(m)}`)
     .join("\n\n");
 
   // Verified live context — facts WE fetched (never trusted from the customer
@@ -148,6 +159,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const result = await generateDraft({
     tenantId: ticket.tenantId,
     ticketText,
+    conversation,
     voiceGuide: ticket.tenant.voiceGuide,
     steerNotes:
       // ARM_STEER is suppressed on an explicit return/exchange so the two
