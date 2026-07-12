@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { generateDraft } from "@/lib/brain/draft";
+import { appendPromoFooter, stripPromoFooter } from "@/lib/brain/promo-footer";
 import { cleanEmailText } from "@/lib/email-clean";
 import { getOrderContext, orderContextLines } from "@/lib/shipstation";
 import { getCustomerInsight } from "@/lib/customer-insight";
@@ -103,6 +104,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const prior = regenOfDraftId
     ? await prisma.draft.findFirst({ where: { id: regenOfDraftId, ticketId: ticket.id } })
     : null;
+  // Strip any promo footer off the prior draft so the model never sees it on
+  // regeneration — the promo stays deterministic and out of the model's hands.
+  const priorBody = prior ? stripPromoFooter(prior.editedBody ?? prior.body) : undefined;
 
   // Drafts sign off as the person who'll send them — the signed-in rep.
   const me = await sessionUser();
@@ -114,10 +118,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     ticketText,
     voiceGuide: ticket.tenant.voiceGuide,
     steerNotes: startReturn ? [RETURN_STEER, steerNotes].filter(Boolean).join(" ") : steerNotes,
-    priorDraftBody: prior?.editedBody ?? prior?.body ?? undefined,
+    priorDraftBody: priorBody,
     liveContext,
     repName,
   });
+
+  // Exchange and Warranty replies carry the Sun Collective membership promo
+  // (deterministic; the rep sees it in the draft and can edit before send).
+  result.body = appendPromoFooter(result.body, ticket.category);
 
   // Only cite ids that are real KnowledgeItems in this tenant.
   const citedIds = result.citations.map((c) => c.knowledgeItemId);
