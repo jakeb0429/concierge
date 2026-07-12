@@ -87,7 +87,12 @@ export default async function Inbox({
     ...(statusFilter ? { status: statusFilter } : {}),
     // Single-mailbox view (hello@ vs marketing@ vs wholesale@) by address.
     ...(sp.mbx ? { channelRef: { supportAddress: sp.mbx } } : {}),
-    ...(sinceHours ? { createdAt: { gte: msAgo(sinceHours * 3_600_000) } } : {}),
+    // The time window means "heard from the customer since" — filter on the
+    // latest RECEIVED (inbound) message, not ticket creation, so a weeks-old
+    // ticket with a fresh customer reply still shows under "last 24h".
+    ...(sinceHours
+      ? { messages: { some: { direction: "inbound", sentAt: { gte: msAgo(sinceHours * 3_600_000) } } } }
+      : {}),
     // Time-window filters mean "real inquiries that arrived" — keep auto-
     // archived noise out unless the Noise view is explicitly selected.
     ...(sinceHours && view !== "noise" ? { NOT: { tags: { hasSome: [...NOISE_CATEGORIES] } } } : {}),
@@ -162,12 +167,13 @@ export default async function Inbox({
     cachedMailboxes(tenant.id),
   ]);
   const tickets = [...urgentTickets, ...restTickets];
-  // Snippets: the first inbound message per ticket (DISTINCT ON), truncated
-  // in SQL-adjacent JS — one slim row per ticket instead of whole threads.
-  const [firstInbounds, expiredNotes, missedTickets] = await Promise.all([
+  // Snippets: the LATEST inbound message per ticket (DISTINCT ON), truncated
+  // in SQL-adjacent JS — one slim row per ticket instead of whole threads. The
+  // preview shows what the customer most recently said, not their opening line.
+  const [latestInbounds, expiredNotes, missedTickets] = await Promise.all([
     prisma.message.findMany({
       where: { ticketId: { in: tickets.map((t) => t.id) }, direction: "inbound" },
-      orderBy: [{ ticketId: "asc" }, { sentAt: "asc" }],
+      orderBy: [{ ticketId: "asc" }, { sentAt: "desc" }],
       distinct: ["ticketId"],
       select: { ticketId: true, text: true },
     }),
@@ -196,7 +202,7 @@ export default async function Inbox({
       },
     }),
   ]);
-  const snippetOf = new Map(firstInbounds.map((m) => [m.ticketId, m.text.slice(0, 110)]));
+  const snippetOf = new Map(latestInbounds.map((m) => [m.ticketId, m.text.slice(0, 110)]));
 
   const noiseCount = counts.find((c) => c.status === "archived")?._count ?? 0;
   const openCount = counts.filter((c) => !["archived", "resolved"].includes(c.status)).reduce((s, c) => s + c._count, 0);

@@ -18,26 +18,46 @@ export function escapeHtml(s: string): string {
 }
 
 /**
+ * Pre-live safety valve. While EMAIL_REDIRECT_TO is set, every notification
+ * email is rerouted to that single address instead of its real recipients, so
+ * nothing reaches a real teammate or customer before go-live. The intended
+ * recipients are preserved in a subject tag + a banner so you can still see who
+ * it WOULD have gone to. Clearing the env var is the go-live switch.
+ * NOTE: magic-link sign-in (sendMagicLink) is intentionally NOT redirected —
+ * rerouting auth links would lock every tester but the redirect address out.
+ */
+function applyPreLiveRedirect(msg: { to: string[]; subject: string; text: string; html: string }) {
+  const redirect = process.env.EMAIL_REDIRECT_TO?.trim();
+  if (!redirect) return { ...msg, redirected: false as const };
+  const intended = msg.to.join(", ") || "(no recipients)";
+  return {
+    to: [redirect],
+    subject: `[pre-live → ${intended}] ${msg.subject}`,
+    text: `[PRE-LIVE REDIRECT] Would have gone to: ${intended}\n\n${msg.text}`,
+    html: `<p style="background:#fff3cd;border:1px solid #ffe69c;padding:8px;border-radius:6px;font-size:12px;color:#664d03;margin:0 0 12px">PRE-LIVE REDIRECT — would have gone to: <b>${escapeHtml(intended)}</b></p>${msg.html}`,
+    redirected: true as const,
+  };
+}
+
+/**
  * General sender (digests, reports). Sends whenever Mailgun creds exist —
  * scripts run outside NODE_ENV=production, so unlike sendMagicLink this
  * doesn't gate on env (magic links keep their stricter dev guard).
  */
-export async function sendEmail({
-  to,
-  subject,
-  text,
-  html,
-}: {
+export async function sendEmail(msg: {
   to: string[];
   subject: string;
   text: string;
   html: string;
 }): Promise<boolean> {
+  // Pre-live guard runs FIRST — before creds, logging, or send — so a redirect
+  // can never be bypassed by an early return, and the log shows the real target.
+  const { to, subject, text, html, redirected } = applyPreLiveRedirect(msg);
   const apiKey = process.env.MAILGUN_API_KEY;
   const domain = process.env.MAILGUN_DOMAIN;
   const from = process.env.EMAIL_FROM || `Concierge <no-reply@${domain}>`;
   if (!apiKey || !domain) {
-    logger.info({ to, subject, live: false, preview: text.slice(0, 500) }, "[email] Mailgun not configured, logged instead of sending");
+    logger.info({ to, subject, live: false, redirected, preview: text.slice(0, 500) }, "[email] Mailgun not configured, logged instead of sending");
     return false;
   }
   const body = new URLSearchParams({ from, to: to.join(","), subject, text, html });
@@ -57,6 +77,9 @@ export async function sendEmail({
 }
 
 export async function sendMagicLink({ email, url }: { email: string; url: string }): Promise<void> {
+  // Intentionally NOT subject to EMAIL_REDIRECT_TO (see applyPreLiveRedirect):
+  // a sign-in link must reach the person signing in, or only the redirect
+  // address could ever log in. Auth is gated by NODE_ENV, not the pre-live valve.
   const apiKey = process.env.MAILGUN_API_KEY;
   const domain = process.env.MAILGUN_DOMAIN;
   const from = process.env.EMAIL_FROM || `Concierge <no-reply@${domain}>`;
