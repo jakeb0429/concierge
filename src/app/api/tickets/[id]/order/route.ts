@@ -9,6 +9,10 @@ import { logger } from "@/lib/log";
 
 // A line is either a catalog SKU or a custom {title, price} charge (e.g. a $6
 // replacement arm). The rep can correct quantities in the revision box first.
+// Money path: a custom line's price MUST be a valid non-negative decimal — never
+// forward a negative/empty/garbage price (a negative price would silently reduce
+// the invoice, bypassing the discount caps).
+const PRICE_RE = /^\d+(\.\d{1,2})?$/;
 const itemSchema = z
   .object({
     sku: z.string().trim().min(1).optional(),
@@ -16,8 +20,8 @@ const itemSchema = z
     price: z.string().trim().optional(),
     quantity: z.number().int().min(1).max(999),
   })
-  .refine((i) => i.sku || (i.title && i.price != null), {
-    message: "each item needs a sku, or a title + price",
+  .refine((i) => i.sku || (i.title && i.price != null && PRICE_RE.test(i.price) && parseFloat(i.price) > 0), {
+    message: 'each item needs a sku, or a title + a price greater than 0 like "6.00"',
   });
 
 const bodySchema = z.object({
@@ -65,24 +69,34 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       discount: body.discount,
       tags: ["concierge", `ticket:${ticket.id}`],
     });
-    await prisma.auditEvent.create({
-      data: {
-        tenantId: tenant.id,
-        actorId: me.id,
-        action: "checkout_link_created",
-        entity: `ticket:${ticket.id}`,
-        meta: {
-          draftOrder: result.name,
-          totalPrice: result.totalPrice,
-          items: body.items.length,
-          discount: body.discount ?? null,
-          notFound: result.notFound,
+    // Best-effort audit — the draft order (a live money artifact) already exists,
+    // so an audit hiccup (e.g. a pooler blip) must NOT turn success into a 502
+    // and make the rep retry into a duplicate order.
+    try {
+      await prisma.auditEvent.create({
+        data: {
+          tenantId: tenant.id,
+          actorId: me.id,
+          action: "checkout_link_created",
+          entity: `ticket:${ticket.id}`,
+          meta: {
+            draftOrder: result.name,
+            totalPrice: result.totalPrice,
+            items: body.items.length,
+            discount: body.discount ?? null,
+          },
         },
-      },
-    });
+      });
+    } catch (e) {
+      logger.error({ err: e, ticketId: ticket.id, draftOrder: result.name }, "[order] audit write failed AFTER checkout link created");
+    }
     return NextResponse.json(result);
   } catch (e) {
     logger.error({ err: e, ticketId: ticket.id }, "[order] failed to build checkout link");
-    return NextResponse.json({ error: e instanceof Error ? e.message : "Failed to build the checkout link." }, { status: 502 });
+    // A 4xx from the order service is a rep/input problem (e.g. an unresolved
+    // SKU) — surface it as 400, not a misleading 502 gateway error.
+    const upstream = (e as { upstreamStatus?: number }).upstreamStatus;
+    const status = upstream && upstream >= 400 && upstream < 500 ? 400 : 502;
+    return NextResponse.json({ error: e instanceof Error ? e.message : "Failed to build the checkout link." }, { status });
   }
 }

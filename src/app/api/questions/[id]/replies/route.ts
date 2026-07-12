@@ -44,9 +44,29 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     data: { tenantId: tenant.id, questionId: question.id, authorId: me.id, body: body.body },
   });
   const nextStatus = fromAsker ? "open" : "answered";
-  // Unconditional update: even a same-status reply must bump updatedAt — the
-  // /questions queue orders by it, so active discussions stay near the top.
-  await prisma.ticketQuestion.update({ where: { id: question.id }, data: { status: nextStatus } });
+  // AUTO-ESCALATION close-out fires only when a teammate ANSWERS a question the
+  // AGENT asked. Detect the open->answered transition ATOMICALLY — a conditional
+  // updateMany scoped to status:"open" — so two concurrent non-asker replies (a
+  // double-click, or two teammates) can't both pass the check and double-mint
+  // the coverage_gap signal below. Only the racer whose update flips the row
+  // (count === 1) owns the close-out.
+  const isAgentGap = !fromAsker && question.askedBy.email === AGENT_USER_EMAIL;
+  let wonAgentTransition = false;
+  if (isAgentGap) {
+    const flip = await prisma.ticketQuestion.updateMany({
+      where: { id: question.id, status: "open" },
+      data: { status: "answered" },
+    });
+    wonAgentTransition = flip.count === 1;
+    if (!wonAgentTransition) {
+      // Lost the race (already answered) — still bump updatedAt for queue order.
+      await prisma.ticketQuestion.update({ where: { id: question.id }, data: { status: "answered" } });
+    }
+  } else {
+    // Unconditional: even a same-status reply must bump updatedAt — the
+    // /questions queue orders by it, so active discussions stay near the top.
+    await prisma.ticketQuestion.update({ where: { id: question.id }, data: { status: nextStatus } });
+  }
   await prisma.auditEvent.create({
     data: {
       tenantId: tenant.id,
@@ -57,15 +77,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     },
   });
 
-  // AUTO-ESCALATION close-out: a teammate just answered a question the AGENT
-  // asked. Put the ticket back in the reply queue (its next draft is grounded
-  // in this answer) and propose the Q&A to the Brain so the gap closes for
-  // good. Best-effort — a hiccup here must never fail the teammate's reply.
-  // Guard on the open->answered TRANSITION (question.status is the pre-update
-  // value) so a specialist's follow-up reply never mints a duplicate signal.
-  const answeredAgentGap =
-    !fromAsker && question.status === "open" && question.askedBy.email === AGENT_USER_EMAIL;
-  if (answeredAgentGap) {
+  // Put the ticket back in the reply queue (its next draft is grounded in this
+  // answer) and propose the Q&A to the Brain so the gap closes for good.
+  // Best-effort — a hiccup here must never fail the teammate's reply. Runs only
+  // for the racer that won the atomic open->answered flip above.
+  if (wonAgentTransition) {
     try {
       if (question.ticket.status === "awaiting_internal") {
         await prisma.ticket.update({ where: { id: question.ticketId }, data: { status: "new" } });

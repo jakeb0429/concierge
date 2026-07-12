@@ -9,7 +9,9 @@ const {
   prisma, getCurrentTenant, sessionUser, sendEmail, routeSignalAssignee,
 } = vi.hoisted(() => ({
   prisma: {
-    ticketQuestion: { findFirst: vi.fn(), update: vi.fn() },
+    // updateMany is the ATOMIC open->answered flip; count===1 means this
+    // request won the transition and owns the close-out.
+    ticketQuestion: { findFirst: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
     ticketQuestionReply: { create: vi.fn() },
     ticket: { update: vi.fn() },
     learningSignal: { create: vi.fn() },
@@ -55,6 +57,8 @@ beforeEach(() => {
   prisma.ticketQuestion.findFirst.mockResolvedValue(agentQuestionOpen);
   prisma.ticketQuestionReply.create.mockResolvedValue({ id: "r1" });
   prisma.ticketQuestion.update.mockResolvedValue({});
+  // Default: this request WINS the atomic open->answered flip (count === 1).
+  prisma.ticketQuestion.updateMany.mockResolvedValue({ count: 1 });
   prisma.ticket.update.mockResolvedValue({});
   prisma.learningSignal.create.mockResolvedValue({ id: "sig1" });
   prisma.auditEvent.create.mockResolvedValue({});
@@ -82,11 +86,13 @@ describe("POST /api/questions/[id]/replies — escalation close-out", () => {
     expect(actions).toContain("coverage_gap_learned");
   });
 
-  it("a SECOND reply on the now-answered question mints no further signal (the once-guard)", async () => {
+  it("loses the atomic race (updateMany count 0) -> mints no further signal, no re-flip", async () => {
+    // A concurrent reply already flipped open->answered, so THIS request's
+    // conditional updateMany matches no open row.
     prisma.ticketQuestion.findFirst.mockResolvedValue({ ...agentQuestionOpen, status: "answered" });
+    prisma.ticketQuestion.updateMany.mockResolvedValue({ count: 0 });
     const res = await POST(req({ body: "One more note for you." }), params);
     expect(res.status).toBe(200);
-    // No open->answered transition this time — no duplicate signal, no re-flip.
     expect(prisma.learningSignal.create).not.toHaveBeenCalled();
     expect(prisma.ticket.update).not.toHaveBeenCalled();
   });

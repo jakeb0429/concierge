@@ -19,10 +19,13 @@ export function escapeHtml(s: string): string {
 
 /**
  * Pre-live safety valve. While EMAIL_REDIRECT_TO is set, every notification
- * email is rerouted to that single address instead of its real recipients, so
- * nothing reaches a real teammate or customer before go-live. The intended
- * recipients are preserved in a subject tag + a banner so you can still see who
- * it WOULD have gone to. Clearing the env var is the go-live switch.
+ * email is rerouted to that single address instead of its real recipients. The
+ * intended recipients are preserved in a subject tag + a banner so you can still
+ * see who it WOULD have gone to. Clearing the env var is the go-live switch.
+ * This is the MASTER pre-live guard: customer-facing replies (src/lib/send.ts
+ * `sendReply`) honor the SAME var, so this one switch contains ALL outbound
+ * (notifications AND customer replies) — nothing reaches a real teammate or
+ * customer before go-live.
  * NOTE: magic-link sign-in (sendMagicLink) is intentionally NOT redirected —
  * rerouting auth links would lock every tester but the redirect address out.
  */

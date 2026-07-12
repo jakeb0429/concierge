@@ -77,7 +77,10 @@ async function importMessage(tenantId: string, ticketId: string, mailbox: string
       tenantId,
       ticketId,
       providerMessageId: full.id!,
-      direction: from.email === mailbox ? "outbound" : "inbound",
+      // Case-insensitive: Gmail From headers vary in case (Hello@ vs hello@).
+      // A case mismatch here would store our own sent reply as "inbound",
+      // corrupting the outbound count that drives reopen (hasPriorOutbound).
+      direction: from.email?.toLowerCase() === mailbox.toLowerCase() ? "outbound" : "inbound",
       fromEmail: from.email,
       subject: header(headers, "subject"),
       text: (decode(full.payload) ?? full.snippet ?? "").slice(0, 8000),
@@ -134,20 +137,34 @@ async function intakeMailbox(tenantId: string, tenantSlug: string, channelId: st
       // is not work.
       const lastMsg = msgs[msgs.length - 1];
       const lastFrom = parseAddr(header(lastMsg?.payload?.headers ?? [], "from"));
+      // Only reopen if a genuinely NEW message arrived since we last synced this
+      // ticket. Intake lists ALL INBOX threads with no watermark, so without this
+      // a ticket resolved while the customer's message was the last word would
+      // re-open on every poll. Compare the thread's newest message to the newest
+      // message already on the ticket (both from Gmail internalDate).
+      const threadNewestMs = Math.max(0, ...msgs.map((m) => Number(m.internalDate ?? 0)));
+      const latestOnTicket = await prisma.message.findFirst({
+        where: { ticketId: existing.id },
+        orderBy: { sentAt: "desc" },
+        select: { sentAt: true },
+      });
+      const hasNewMessage = !latestOnTicket || threadNewestMs > latestOnTicket.sentAt.getTime();
       // Did we ever reply here? A recorded outbound means we engaged the thread,
       // so a customer write-back reopens it even if it was mislabeled noise.
       const priorOutbound = await prisma.message.count({
         where: { ticketId: existing.id, direction: "outbound" },
       });
-      const reopen = shouldReopenOnInbound({
-        status: existing.status,
-        tags: existing.tags,
-        lastFromEmail: lastFrom.email,
-        mailbox,
-        allowArchived: true,
-        isNoise: (tags) => hasNoiseTag(tags ?? []),
-        hasPriorOutbound: priorOutbound > 0,
-      });
+      const reopen =
+        hasNewMessage &&
+        shouldReopenOnInbound({
+          status: existing.status,
+          tags: existing.tags,
+          lastFromEmail: lastFrom.email,
+          mailbox,
+          allowArchived: true,
+          isNoise: (tags) => hasNoiseTag(tags ?? []),
+          hasPriorOutbound: priorOutbound > 0,
+        });
       await prisma.ticket.update({
         where: { id: existing.id },
         data: {
@@ -206,7 +223,7 @@ async function intakeMailbox(tenantId: string, tenantSlug: string, channelId: st
     // or a Concierge send), the ticket is not "new" work — mark it replied so
     // the inbox separates it from tickets still needing an answer.
     const lastMsgFrom = parseAddr(header(msgs[msgs.length - 1]?.payload?.headers ?? [], "from"));
-    const lastIsOurs = lastMsgFrom.email?.toLowerCase() === mailbox;
+    const lastIsOurs = lastMsgFrom.email?.toLowerCase() === mailbox.toLowerCase();
     if (lastIsOurs) {
       const current = await prisma.ticket.findUnique({ where: { id: ticketId }, select: { status: true } });
       if (current && ["new", "drafted", "in_review"].includes(current.status)) {

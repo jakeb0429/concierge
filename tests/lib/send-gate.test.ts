@@ -48,7 +48,7 @@ const baseArgs = {
   subject: "Re: order",
 };
 
-const ENV_KEYS = ["CONCIERGE_LIVE_SEND", "RHEOS_GMAIL_CLIENT_EMAIL", "RHEOS_GMAIL_PRIVATE_KEY"];
+const ENV_KEYS = ["CONCIERGE_LIVE_SEND", "RHEOS_GMAIL_CLIENT_EMAIL", "RHEOS_GMAIL_PRIVATE_KEY", "EMAIL_REDIRECT_TO"];
 let savedEnv: Record<string, string | undefined>;
 
 beforeEach(() => {
@@ -105,6 +105,25 @@ describe("sendReply CONCIERGE_LIVE_SEND gate", () => {
     expect(gmailCtor).not.toHaveBeenCalled();
     expect(logInfo).toHaveBeenCalledWith(
       expect.objectContaining({ to: "customer@example.com", live: false, mode: "mock" }),
+      expect.any(String)
+    );
+  });
+
+  it("PRE-LIVE: with EMAIL_REDIRECT_TO set, a live send reroutes away from the real customer", async () => {
+    // Live send fully enabled, non-mock thread — the ONLY thing that must keep
+    // this off the real customer is the master pre-live redirect.
+    process.env.CONCIERGE_LIVE_SEND = "true";
+    process.env.RHEOS_GMAIL_CLIENT_EMAIL = "svc@project.iam.gserviceaccount.com";
+    process.env.RHEOS_GMAIL_PRIVATE_KEY = "fake-key";
+    process.env.EMAIL_REDIRECT_TO = "jake@rheosgear.com";
+    messagesSend.mockResolvedValue({ data: { id: "sent-1" } });
+
+    const res = await sendReply({ ...baseArgs, providerThreadId: "thread-live-1" });
+
+    expect(res.live).toBe(true);
+    // Transmitted, but rerouted to the redirect address — never the customer.
+    expect(logInfo).toHaveBeenCalledWith(
+      expect.objectContaining({ to: "jake@rheosgear.com", intendedTo: "customer@example.com", redirected: true, live: true }),
       expect.any(String)
     );
   });

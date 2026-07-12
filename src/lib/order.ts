@@ -58,7 +58,11 @@ export async function createCheckoutLink(params: {
   const data = (await res.json().catch(() => ({}))) as Partial<CheckoutResult> & { ok?: boolean; error?: string };
   if (!res.ok || !data.ok || !data.invoiceUrl) {
     logger.error({ status: res.status, error: data.error }, "[order] checkout-link returned an error");
-    throw new Error(data.error || `Order service error (${res.status}).`);
+    const err = new Error(data.error || `Order service error (${res.status}).`) as Error & { upstreamStatus?: number };
+    // Carry the upstream status so the route can distinguish a rep/input problem
+    // (4xx — e.g. an unresolved SKU) from a real service outage (5xx).
+    err.upstreamStatus = res.status;
+    throw err;
   }
   return {
     invoiceUrl: data.invoiceUrl,

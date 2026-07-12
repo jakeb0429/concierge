@@ -41,6 +41,16 @@ export async function sendReply(args: {
     return { providerMessageId: `stub-${Date.now()}`, live: false };
   }
 
+  // Pre-live MASTER guard: while EMAIL_REDIRECT_TO is set, reroute the customer
+  // reply to that address instead of the real customer — so NO reply reaches a
+  // customer before go-live even when CONCIERGE_LIVE_SEND is on. This mirrors
+  // sendEmail's applyPreLiveRedirect so the one env var truly contains ALL
+  // outbound (notifications AND customer replies). Clearing it is the go-live
+  // switch. The real recipient is preserved in the subject.
+  const redirect = process.env.EMAIL_REDIRECT_TO?.trim();
+  const to = redirect || args.to;
+  const subject = redirect ? `[pre-live → ${args.to}] ${args.subject}` : args.subject;
+
   const adapter = getChannelAdapter({
     tenantId: args.channel.tenantId,
     provider: args.channel.provider as "gmail" | "graph",
@@ -51,12 +61,12 @@ export async function sendReply(args: {
     providerThreadId: args.providerThreadId,
     inReplyToMessageId: args.inReplyToMessageId,
     from: args.channel.supportAddress,
-    to: args.to,
-    subject: args.subject,
+    to,
+    subject,
     html: args.html,
   });
   logger.info(
-    { to: args.to, live: true, provider: args.channel.provider, providerMessageId: res.providerMessageId },
+    { to, intendedTo: args.to, redirected: !!redirect, live: true, provider: args.channel.provider, providerMessageId: res.providerMessageId },
     "[send] reply transmitted"
   );
   return { providerMessageId: res.providerMessageId, live: true };

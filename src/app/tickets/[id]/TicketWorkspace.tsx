@@ -6,6 +6,7 @@ import { coverageChip, statusChip, statusOptions } from "@/lib/ui";
 import NotesPanel, { type NoteRow } from "@/app/components/NotesPanel";
 import QuestionsPanel, { type QuestionRow } from "@/app/components/QuestionsPanel";
 import ContextComposer from "./ContextComposer";
+import OrderPanel from "./OrderPanel";
 import { categoryChipClass } from "@/lib/categories";
 import { REPLY_STATE_CHIP, REPLY_STATE_LABEL, type ReplyState } from "@/lib/reply-state";
 import { PRIORITIES, PRIORITY_LABEL, priorityChip } from "@/lib/priority";
@@ -729,6 +730,22 @@ export default function TicketWorkspace({
           </div>
         ))}
       </div>
+
+      {/* order → Shopify checkout link (auto-suggests for warranty/arm/exchange) */}
+      {!sent && status !== "awaiting_internal" && (
+        <OrderPanel
+          ticketId={ticket.id}
+          categoryKey={ticket.categoryKey}
+          onLink={(oldText, newText) =>
+            setBody((b) => {
+              let next = b ?? "";
+              if (oldText) next = next.split(oldText).join("").replace(/\n{3,}/g, "\n\n").trimEnd();
+              if (newText) next = next ? `${next}\n\n${newText}` : newText;
+              return next;
+            })
+          }
+        />
+      )}
 
       {/* steer */}
       {!sent && (
