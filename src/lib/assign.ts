@@ -1,4 +1,5 @@
 import { prisma } from "./db";
+import { INACTIVE_STATUSES } from "./ticket-status";
 
 /**
  * Specialty-based auto-assignment. A ticket's fine-grained category is matched
@@ -14,7 +15,7 @@ import { prisma } from "./db";
  */
 
 /** Ticket statuses that count toward a user's current workload. */
-const OPEN_STATUSES_EXCLUDED = ["archived", "resolved", "replied"];
+const OPEN_STATUSES_EXCLUDED = INACTIVE_STATUSES;
 
 export async function autoAssign(
   tenantId: string,

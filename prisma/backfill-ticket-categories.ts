@@ -1,6 +1,7 @@
 import { PrismaClient } from "@prisma/client";
 import { triage, brandContextFor } from "../src/lib/triage";
 import { autoAssign } from "../src/lib/assign";
+import { INACTIVE_STATUSES } from "../src/lib/ticket-status";
 
 /**
  * One-time backfill: classify existing tickets that predate Ticket.category
@@ -40,7 +41,7 @@ async function main() {
     );
     // Existing tickets keep their status/priority — this pass only categorizes.
     await prisma.ticket.update({ where: { id: t.id }, data: { category: res.inquiryCategory } });
-    const open = !["archived", "resolved", "replied"].includes(t.status);
+    const open = !INACTIVE_STATUSES.includes(t.status);
     if (open && !t.assigneeId) {
       const a = await autoAssign(t.tenantId, t.id, res.inquiryCategory);
       if (a) assigned++;

@@ -98,7 +98,7 @@ async function intakeMailbox(tenantId: string, tenantSlug: string, channelId: st
       });
       if (reopen) {
         await prisma.auditEvent.create({
-          data: { tenantId, action: "ticket_reopened", entity: `ticket:${existing.id}`, meta: { reason: `customer replied after ${existing.status === "resolved" ? "resolve" : "reply"}` } },
+          data: { tenantId, action: "ticket_reopened", entity: `ticket:${existing.id}`, meta: { reason: `customer replied after ${existing.status === "resolved" ? "resolve" : existing.status === "waiting_on_customer" ? "waiting" : "reply"}` } },
         });
         console.log(`    ↺ reopened ${existing.status} ticket (customer wrote back)`);
       }

@@ -8,14 +8,23 @@ import { statusOptions } from "@/lib/ui";
 describe("statusOptions", () => {
   const values = (s: string) => statusOptions(s).map((o) => o.value);
 
-  it("offers Resolve and Archive from every working status", () => {
+  it("offers Waiting-on-customer, Resolve and Archive from every working status", () => {
     for (const s of ["new", "in_review", "drafted"]) {
-      expect(values(s)).toEqual([s, "resolved", "archived"]);
+      expect(values(s)).toEqual([s, "waiting_on_customer", "resolved", "archived"]);
     }
   });
 
-  it("offers Resolve, Archive, AND Reopen from replied", () => {
-    expect(values("replied")).toEqual(["replied", "resolved", "archived", "new"]);
+  it("offers Waiting, Resolve, Archive, AND Reopen from replied", () => {
+    expect(values("replied")).toEqual(["replied", "waiting_on_customer", "resolved", "archived", "new"]);
+  });
+
+  it("from waiting_on_customer offers Resolve, Archive, Reopen — but not itself again", () => {
+    expect(values("waiting_on_customer")).toEqual(["waiting_on_customer", "resolved", "archived", "new"]);
+  });
+
+  it("labels the waiting move clearly", () => {
+    const opt = statusOptions("new").find((o) => o.value === "waiting_on_customer");
+    expect(opt?.label).toBe("→ Waiting on customer");
   });
 
   it("offers only Reopen from resolved and archived", () => {
@@ -24,7 +33,7 @@ describe("statusOptions", () => {
   });
 
   it("always lists the current status first", () => {
-    for (const s of ["new", "in_review", "drafted", "replied", "resolved", "archived"]) {
+    for (const s of ["new", "in_review", "drafted", "replied", "waiting_on_customer", "resolved", "archived"]) {
       expect(statusOptions(s)[0].value).toBe(s);
     }
   });

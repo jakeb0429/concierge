@@ -156,7 +156,7 @@ async function intakeMailbox(tenantId: string, tenantSlug: string, channelId: st
         },
       });
       if (reopen) {
-        const after = existing.status === "resolved" ? "resolve" : existing.status === "replied" ? "reply" : "archive";
+        const after = existing.status === "resolved" ? "resolve" : existing.status === "replied" ? "reply" : existing.status === "waiting_on_customer" ? "waiting" : "archive";
         await prisma.auditEvent.create({
           data: { tenantId, action: "ticket_reopened", entity: `ticket:${existing.id}`, meta: { reason: `customer replied after ${after}` } },
         });

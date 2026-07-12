@@ -10,7 +10,7 @@ import { parseBody } from "@/lib/validate";
 
 const bodySchema = z.object({
   // Only the transitions a rep sets by hand — "drafted"/"replied" are system-set.
-  status: z.enum(["new", "in_review", "resolved", "archived"]).optional(),
+  status: z.enum(["new", "in_review", "resolved", "archived", "waiting_on_customer"]).optional(),
   assigneeId: z.string().nullable().optional(),
   category: z.enum(INQUIRY_CATEGORIES).optional(),
   priority: z.enum(PRIORITIES).optional(),

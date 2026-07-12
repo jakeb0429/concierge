@@ -20,6 +20,6 @@ export function shouldReopenOnInbound(params: {
   // Last word is ours — nothing new came in, nothing to reopen. A missing
   // from address counts as inbound, matching the crons' direction logic.
   if (lastFromEmail?.toLowerCase() === mailbox.toLowerCase()) return false;
-  if (status === "resolved" || status === "replied") return true;
+  if (status === "resolved" || status === "replied" || status === "waiting_on_customer") return true;
   return allowArchived && status === "archived" && !isNoise(tags);
 }

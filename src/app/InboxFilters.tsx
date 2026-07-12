@@ -70,6 +70,7 @@ export default function InboxFilters({ users, mailboxes = [] }: { users: FilterU
         <option value="drafted">drafted</option>
         <option value="in_review">in review</option>
         <option value="replied">replied</option>
+        <option value="waiting_on_customer">waiting on customer</option>
         <option value="resolved">resolved</option>
         <option value="archived">archived</option>
       </select>

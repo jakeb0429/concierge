@@ -137,7 +137,7 @@ export default function TicketWorkspace({
   const [generating, setGenerating] = useState(false);
   const [steer, setSteer] = useState("");
   const [sending, setSending] = useState(false);
-  const [sent, setSent] = useState(status === "replied" || status === "resolved");
+  const [sent, setSent] = useState(status === "replied" || status === "resolved" || status === "waiting_on_customer");
   // The draft that "Save answer to Brand Brain" promotes. Starts from the
   // server prop but follows in-session sends, so after a follow-up it targets
   // the reply that actually went out, not the first one.

@@ -11,6 +11,7 @@ import { categoryLabel } from "@/lib/categories";
 import { msAgo, nowMs } from "@/lib/time";
 import { MISSED_ARCHIVE_TAG } from "@/lib/external-archive";
 import { isPriority, priorityWeight } from "@/lib/priority";
+import { INACTIVE_STATUSES, TICKET_STATUSES } from "@/lib/ticket-status";
 import { cachedTenantUsers, cachedMailboxes } from "@/lib/team-cache";
 import InboxList, { type Row } from "./InboxList";
 import InboxFilters from "./InboxFilters";
@@ -76,7 +77,7 @@ export default async function Inbox({
   const priorityFilter = isPriority(sp.priority) ? sp.priority : null;
   // An explicit status filter must reach resolved/archived tickets, so it
   // overrides the view's own status constraint (the list flattens anyway).
-  const statusFilter = ["new", "drafted", "in_review", "replied", "resolved", "archived"].includes(sp.status ?? "")
+  const statusFilter = (TICKET_STATUSES as readonly string[]).includes(sp.status ?? "")
     ? sp.status!
     : null;
   const filterWhere: Prisma.TicketWhereInput = {
@@ -150,7 +151,7 @@ export default async function Inbox({
     cachedTenantUsers(tenant.id),
     prisma.ticket.groupBy({
       by: ["assigneeId"],
-      where: { tenantId: tenant.id, status: { notIn: ["archived", "resolved", "replied"] } },
+      where: { tenantId: tenant.id, status: { notIn: INACTIVE_STATUSES } },
       _count: true,
     }),
     // Same where-clause as the My-tickets view, so the tab count matches its list.
@@ -207,7 +208,7 @@ export default async function Inbox({
     const lastInbound = [...t.messages].reverse().find((m) => m.direction === "inbound");
     const replyState = computeReplyState(t.messages);
     const coarseTag = t.tags.find((tag) => !tag.startsWith("product:")) ?? null;
-    const open = !["archived", "resolved", "replied"].includes(t.status);
+    const open = !INACTIVE_STATUSES.includes(t.status);
     const needsReply = replyState === "first_contact" || replyState === "follow_up";
     const lastOutbound = [...t.messages].reverse().find((m) => m.direction === "outbound");
     const lastMsg = t.messages[t.messages.length - 1];

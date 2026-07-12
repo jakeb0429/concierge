@@ -5,6 +5,7 @@ import { getCurrentTenant } from "@/lib/tenant";
 import { getOrderContext } from "@/lib/shipstation";
 import { getCustomerInsight } from "@/lib/customer-insight";
 import { priorityWeight } from "@/lib/priority";
+import { INACTIVE_STATUSES } from "@/lib/ticket-status";
 
 /**
  * The next ticket to work: oldest open ticket still awaiting a reply,
@@ -18,7 +19,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   const tenant = await getCurrentTenant();
 
   const candidates = await prisma.ticket.findMany({
-    where: { tenantId: tenant.id, id: { not: id }, status: { notIn: ["archived", "resolved", "replied"] } },
+    where: { tenantId: tenant.id, id: { not: id }, status: { notIn: INACTIVE_STATUSES } },
     select: {
       id: true,
       subject: true,

@@ -1,6 +1,7 @@
 import { prisma } from "./db";
 import { computeResponseTimes, type ResponseTimes } from "./response-times";
 import { categoryLabel } from "./categories";
+import { INACTIVE_STATUSES } from "./ticket-status";
 
 /**
  * The operational digest — one data object rendered two ways (the /digest
@@ -59,17 +60,17 @@ export async function buildDigest(tenantId: string, period: DigestPeriod): Promi
       where: { tenantId, action: { in: ["signal_approved", "answer_promoted"] }, createdAt: { gte: since } },
     }),
     prisma.ticket.findMany({
-      where: { tenantId, status: { notIn: ["archived", "resolved", "replied"] } },
+      where: { tenantId, status: { notIn: INACTIVE_STATUSES } },
       select: { priority: true, messages: { orderBy: { sentAt: "desc" }, take: 1, select: { direction: true } } },
     }),
     prisma.ticket.count({
-      where: { tenantId, status: { notIn: ["archived", "resolved", "replied"] }, assigneeId: null },
+      where: { tenantId, status: { notIn: INACTIVE_STATUSES }, assigneeId: null },
     }),
     prisma.learningSignal.count({ where: { tenantId, status: "open" } }),
     prisma.contextNote.count({ where: { tenantId, expiresAt: { lt: new Date() } } }),
     prisma.ticket.groupBy({
       by: ["assigneeId"],
-      where: { tenantId, assigneeId: { not: null }, status: { notIn: ["archived", "resolved", "replied"] } },
+      where: { tenantId, assigneeId: { not: null }, status: { notIn: INACTIVE_STATUSES } },
       _count: true,
     }),
     prisma.user.findMany({ where: { tenantId }, select: { id: true, name: true, email: true } }),
@@ -140,7 +141,7 @@ const NOISE = ["automated_notification", "vendor_outreach", "internal", "spam"];
 export async function digestRecords(tenantId: string, period: DigestPeriod, key: DrillKey): Promise<DigestRecord[]> {
   const hours = period === "daily" ? 24 : 24 * 7;
   const since = new Date(Date.now() - hours * 3_600_000);
-  const openWhere = { tenantId, status: { notIn: ["archived", "resolved", "replied"] } };
+  const openWhere = { tenantId, status: { notIn: INACTIVE_STATUSES } };
 
   const ticketRecord = (
     t: { id: string; subject: string | null; category: string | null; createdAt: Date; customer: { displayName: string | null; email: string | null } },

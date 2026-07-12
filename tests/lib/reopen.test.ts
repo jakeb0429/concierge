@@ -41,6 +41,11 @@ describe("shouldReopenOnInbound", () => {
     expect(graph({ status: "resolved" })).toBe(true);
   });
 
+  it("reopens a waiting_on_customer ticket when the customer writes back (both crons)", () => {
+    expect(gmail({ status: "waiting_on_customer" })).toBe(true);
+    expect(graph({ status: "waiting_on_customer" })).toBe(true);
+  });
+
   it("keeps noise archived — a vendor pitching again is not work (gmail params)", () => {
     expect(gmail({ status: "archived", tags: ["vendor_outreach"] })).toBe(false);
     expect(gmail({ status: "archived", tags: ["spam"] })).toBe(false);

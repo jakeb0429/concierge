@@ -1,4 +1,5 @@
 import { prisma } from "./db";
+import { INACTIVE_STATUSES } from "./ticket-status";
 
 /**
  * Response-time KPIs, computed from message history (Concierge-era tickets):
@@ -94,7 +95,7 @@ export async function computeResponseTimes(tenantId: string, sinceDays = 30): Pr
       const cat = t.category ?? "other";
       if (!byCategory.has(cat)) byCategory.set(cat, []);
       byCategory.get(cat)!.push(ms);
-    } else if (!["archived", "resolved", "replied"].includes(t.status)) {
+    } else if (!INACTIVE_STATUSES.includes(t.status)) {
       awaiting.push({
         ticketId: t.id,
         subject: t.subject,

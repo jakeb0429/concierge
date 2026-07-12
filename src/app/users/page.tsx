@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { getCurrentTenant } from "@/lib/tenant";
 import { sessionUser, isAdminRole } from "@/lib/roles";
+import { INACTIVE_STATUSES } from "@/lib/ticket-status";
 import UsersManager from "./UsersManager";
 
 export const dynamic = "force-dynamic";
@@ -18,7 +19,7 @@ export default async function UsersPage() {
     }),
     prisma.ticket.groupBy({
       by: ["assigneeId"],
-      where: { tenantId: tenant.id, assigneeId: { not: null }, status: { notIn: ["archived", "resolved", "replied"] } },
+      where: { tenantId: tenant.id, assigneeId: { not: null }, status: { notIn: INACTIVE_STATUSES } },
       _count: true,
     }),
     prisma.learningSignal.groupBy({
