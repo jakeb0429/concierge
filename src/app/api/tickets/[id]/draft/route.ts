@@ -11,6 +11,7 @@ import { extractProductMention } from "@/lib/product-extract";
 import { getCurrentTenant } from "@/lib/tenant";
 import { sessionUser } from "@/lib/roles";
 import { checkReturnEligibility } from "@/lib/returns";
+import { armStockContext } from "@/lib/arm-stock";
 import { z } from "zod";
 import { parseBody } from "@/lib/validate";
 
@@ -30,6 +31,13 @@ const RETURN_STEER =
   "includes return-path guidance for the purchase channel (rheosgear.com, Amazon, or a " +
   "retail partner), walk the customer through THAT path step by step. Never promise a " +
   "specific refund amount or timeline that is not in the grounding.";
+
+const ARM_STEER =
+  "This looks like a replacement-arm request. Use the arm stock in the live context: if the " +
+  "customer's model has arms on hand, walk them through getting one — confirm the SKU (printed " +
+  "inside the left arm) or the model plus colorway and a photo, then ask for a shipping address " +
+  "so we can send a custom invoice. If the exact arm shows zero on hand, do NOT promise it; offer " +
+  "a discount on a new pair instead. Follow the fee in the knowledge, and never invent a price.";
 
 /**
  * Prepare (or regenerate) a first draft for a ticket. Grounded, cited, scored.
@@ -101,6 +109,19 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     : null;
   if (eligibility) liveContext.push(...eligibility.liveContext);
 
+  // Surface per-SKU arm stock only when the ticket is actually about a part:
+  // the replacement_parts category, or arm/temple/hinge language in the thread.
+  // A plain warranty ticket (lens, coating, frame defect) must NOT be steered
+  // toward an arm sale just because it names a model.
+  const mentionsArm = /\b(arm|arms|temple|temples|hinge|earpiece|leg)\b/i.test(
+    `${ticket.subject ?? ""} ${ticketText}`
+  );
+  const armish = ticket.category === "replacement_parts" || mentionsArm;
+  const armLines = armish
+    ? await armStockContext(ticket.tenantId, `${ticket.subject ?? ""} ${detected.productFamily ?? ""} ${ticketText}`)
+    : [];
+  if (armLines.length) liveContext.push(...armLines);
+
   const prior = regenOfDraftId
     ? await prisma.draft.findFirst({ where: { id: regenOfDraftId, ticketId: ticket.id } })
     : null;
@@ -117,7 +138,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     tenantId: ticket.tenantId,
     ticketText,
     voiceGuide: ticket.tenant.voiceGuide,
-    steerNotes: startReturn ? [RETURN_STEER, steerNotes].filter(Boolean).join(" ") : steerNotes,
+    steerNotes:
+      // ARM_STEER is suppressed on an explicit return/exchange so the two
+      // playbooks (refund path vs paid-arm invoice) never contradict.
+      [startReturn ? RETURN_STEER : null, armLines.length && !startReturn ? ARM_STEER : null, steerNotes]
+        .filter(Boolean)
+        .join(" ") || undefined,
     priorDraftBody: priorBody,
     liveContext,
     repName,

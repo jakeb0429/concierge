@@ -31,6 +31,7 @@ model Tenant {
   learningSignals LearningSignal[]
   salesSources    SalesSource[]
   contextNotes    ContextNote[]
+  armInventory    ArmInventory[]
 
   @@schema("concierge")
 }
@@ -415,6 +416,28 @@ model SalesSource {
   createdAt   DateTime  @default(now())
 
   @@unique([tenantId, key])
+  @@schema("concierge")
+}
+
+/// Replacement temple-arm stock, keyed by SKU. Left and right are counted
+/// separately because one side runs out first (the arm report has a 30-left /
+/// 1-right SKU). Hand-maintained on the Parts & Replacements page and surfaced
+/// into warranty / replacement_parts drafts so a rep sees stock without leaving
+/// the ticket. Rheos-only in practice; tenant-scoped like everything else.
+model ArmInventory {
+  id         String   @id @default(cuid())
+  tenantId   String
+  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  sku        String
+  brand      String // frame model family, e.g. "Bahias", "Eddies", "Coopers"
+  container  Int? // physical storage container from the arm report
+  leftCount  Int      @default(0)
+  rightCount Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([tenantId, sku])
+  @@index([tenantId, brand])
   @@schema("concierge")
 }
 

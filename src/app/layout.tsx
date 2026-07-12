@@ -84,6 +84,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         { href: "/", label: "Inbox" },
         { href: "/questions", label: "Questions", badge: myQuestions },
         { href: "/reviews", label: "Reviews" },
+        { href: "/parts", label: "Parts & Replacements" },
       ],
     },
     {
