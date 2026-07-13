@@ -150,7 +150,11 @@ model Ticket {
   channelId     String?  // WHICH mailbox (hello@ vs wholesale@) — replies go from here
   channelRef    Channel? @relation(fields: [channelId], references: [id])
   subject       String?
-  status        String   @default("new") // new|drafted|in_review|replied|resolved|archived
+  status        String   @default("new") // new|drafted|in_review|customer_replied|replied|resolved|archived
+  // Volley analytics — how many exchanges a ticket took (goal: fewer). Kept in
+  // sync from the thread on each intake pass (idempotent recompute, no drift).
+  customerReplyCount Int   @default(0) // customer replies = inbound messages after the first
+  repReplyCount      Int   @default(0) // our replies = outbound messages
   // return/exchange lifecycle (null = no return in play). Phase A sets
   // "requested"; later phases advance: approved|label_sent|package_received|refunded|exchanged
   returnStatus  String?

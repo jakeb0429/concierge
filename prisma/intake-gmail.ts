@@ -91,6 +91,19 @@ async function importMessage(tenantId: string, ticketId: string, mailbox: string
   return attachments.length;
 }
 
+/** Volley counts from a Gmail thread: customer replies (inbound after the first)
+ *  and our replies (outbound). Case-insensitive on the mailbox address. */
+function countVolleys(msgs: gmail_v1.Schema$Message[], mailbox: string): { customerReplyCount: number; repReplyCount: number } {
+  let inbound = 0;
+  let outbound = 0;
+  for (const m of msgs) {
+    const f = parseAddr(header(m.payload?.headers ?? [], "from")).email?.toLowerCase();
+    if (f === mailbox.toLowerCase()) outbound++;
+    else inbound++;
+  }
+  return { customerReplyCount: Math.max(0, inbound - 1), repReplyCount: outbound };
+}
+
 async function intakeMailbox(tenantId: string, tenantSlug: string, channelId: string, mailbox: string) {
   const gmail = gmailFor(mailbox);
   const list = await gmail.users.messages.list({ userId: "me", labelIds: ["INBOX"], maxResults: MAX });
@@ -165,13 +178,21 @@ async function intakeMailbox(tenantId: string, tenantSlug: string, channelId: st
           isNoise: (tags) => hasNoiseTag(tags ?? []),
           hasPriorOutbound: priorOutbound > 0,
         });
+      // Volley counts from the thread (idempotent — recomputed every pass):
+      // customer replies = inbound after the first; our replies = outbound.
+      const volleys = countVolleys(msgs, mailbox);
       await prisma.ticket.update({
         where: { id: existing.id },
         data: {
           channelId,
+          customerReplyCount: volleys.customerReplyCount,
+          repReplyCount: volleys.repReplyCount,
           ...(reopen
             ? {
-                status: "new",
+                // A customer wrote back on a done ticket: re-enter the ACTIVE
+                // queue as "customer_replied" (distinct from a brand-new "new")
+                // so a rep answers it, with the volley counts for analytics.
+                status: "customer_replied",
                 // The thread is live again — clear any external-archive marks.
                 tags: existing.tags.filter((t) => t !== GMAIL_ARCHIVED_TAG && t !== MISSED_ARCHIVE_TAG),
               }
@@ -203,6 +224,7 @@ async function intakeMailbox(tenantId: string, tenantSlug: string, channelId: st
           category: t.inquiryCategory,
           tags,
           providerThreadId: threadId,
+          ...countVolleys(msgs, mailbox),
         },
       });
       ticketId = created.id;

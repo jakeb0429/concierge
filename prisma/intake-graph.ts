@@ -29,6 +29,19 @@ type AttachmentMeta = { filename: string; mimeType: string; size: number; attach
 const graphGet = <T,>(adapter: GraphMailAdapter, _mailbox: string, path: string): Promise<T> =>
   adapter.api<T>("GET", path);
 
+/** Volley counts from an Outlook conversation: customer replies (inbound after
+ *  the first) and our replies (outbound). `mbx` is the lowercased mailbox. */
+function countVolleys(msgs: Array<{ from?: { emailAddress?: { address?: string | null } | null } | null }>, mbx: string): { customerReplyCount: number; repReplyCount: number } {
+  let inbound = 0;
+  let outbound = 0;
+  for (const m of msgs) {
+    const f = m.from?.emailAddress?.address?.toLowerCase();
+    if (f === mbx) outbound++;
+    else inbound++;
+  }
+  return { customerReplyCount: Math.max(0, inbound - 1), repReplyCount: outbound };
+}
+
 async function intakeMailbox(tenantId: string, tenantSlug: string, channelId: string, mailbox: string) {
   const creds = credentialsFor("graph");
   if (!creds) {
@@ -94,9 +107,16 @@ async function intakeMailbox(tenantId: string, tenantSlug: string, channelId: st
         // Irrelevant here — allowArchived:false already blocks the archived path.
         hasPriorOutbound: false,
       });
+      const volleys = countVolleys(msgs, mbx);
       await prisma.ticket.update({
         where: { id: existing.id },
-        data: { channelId, ...(reopen ? { status: "new" } : {}) },
+        data: {
+          channelId,
+          customerReplyCount: volleys.customerReplyCount,
+          repReplyCount: volleys.repReplyCount,
+          // Customer wrote back on a done ticket -> active "customer_replied".
+          ...(reopen ? { status: "customer_replied" } : {}),
+        },
       });
       if (reopen) {
         await prisma.auditEvent.create({
@@ -121,6 +141,7 @@ async function intakeMailbox(tenantId: string, tenantSlug: string, channelId: st
           category: t.inquiryCategory,
           tags,
           providerThreadId: conversationId,
+          ...countVolleys(msgs, mbx),
         },
       });
       ticketId = created.id;

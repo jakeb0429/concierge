@@ -3,19 +3,22 @@
  * components (standalone, no server deps) so "which statuses count as active
  * work" never drifts across the ~10 places that branch on it.
  *
- *   new | drafted | in_review     — needs our action (active queue)
- *   replied | waiting_on_customer  — we acted; the ball is in the customer's court
- *   resolved | archived            — done
+ *   new | drafted | in_review | customer_replied — needs our action (active queue)
+ *   replied | waiting_on_customer                 — we acted; ball in customer's court
+ *   resolved | archived                           — done
  *
- * "waiting_on_customer" is a manual sibling of "replied": a rep sets it by hand
- * (answered off-channel, or asked the customer for something) to move a ticket
- * out of the active queue. Like "replied", it reopens when the customer writes
- * back (see src/lib/reopen.ts).
+ * "customer_replied" is what a done ticket becomes when the customer writes back
+ * (see src/lib/reopen.ts): it re-enters the ACTIVE queue (a rep must answer) but
+ * is labeled distinctly from a brand-new "new" ticket, and carries the volley
+ * counts (customerReplyCount / repReplyCount) for reduce-the-back-and-forth
+ * analytics. "waiting_on_customer" is a manual sibling of "replied": a rep sets
+ * it by hand to move a ticket out of the active queue.
  */
 export const TICKET_STATUSES = [
   "new",
   "drafted",
   "in_review",
+  "customer_replied",
   "awaiting_internal",
   "replied",
   "waiting_on_customer",

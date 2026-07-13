@@ -3,6 +3,7 @@
 export function statusChip(status: string): string {
   const map: Record<string, string> = {
     new: "bg-blue-50 text-blue-800 ring-blue-600/20",
+    customer_replied: "bg-orange-50 text-orange-800 ring-orange-600/20",
     in_review: "bg-amber-50 text-amber-800 ring-amber-600/20",
     drafted: "bg-amber-50 text-amber-800 ring-amber-600/20",
     awaiting_internal: "bg-purple-50 text-purple-700 ring-purple-600/20",
@@ -34,7 +35,7 @@ export function statusLabel(status: string): string {
  *  reply went out) without resolving it; it reopens on a customer write-back. */
 export function statusOptions(current: string): { value: string; label: string }[] {
   const opts: { value: string; label: string }[] = [{ value: current, label: statusLabel(current) }];
-  const active = ["new", "in_review", "drafted", "replied", "waiting_on_customer"].includes(current);
+  const active = ["new", "customer_replied", "in_review", "drafted", "replied", "waiting_on_customer"].includes(current);
   if (active) {
     if (current !== "waiting_on_customer") {
       opts.push({ value: "waiting_on_customer", label: "→ Waiting on customer" });

@@ -49,6 +49,8 @@ type Ticket = {
   categoryLabel: string | null;
   categoryKey?: string | null;
   returnStatus?: string | null;
+  customerReplyCount?: number;
+  repReplyCount?: number;
 };
 
 type ReturnEligibility = {
@@ -413,6 +415,20 @@ export default function TicketWorkspace({
             </a>
             <div className="text-xs text-neutral-400">
               {ticket.customerEmail} · via {ticket.mailbox}
+              {(() => {
+                const cust = ticket.customerReplyCount ?? 0;
+                const ours = ticket.repReplyCount ?? 0;
+                const volleys = cust + ours;
+                if (volleys === 0) return null;
+                return (
+                  <span
+                    className="ml-1 text-neutral-400"
+                    title={`${cust} customer repl${cust === 1 ? "y" : "ies"} · ${ours} from us`}
+                  >
+                    · ↔ {volleys} volle{volleys === 1 ? "y" : "ys"}
+                  </span>
+                );
+              })()}
             </div>
           </div>
         </div>
