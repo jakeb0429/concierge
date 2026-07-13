@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 
 type Item = { sku?: string; title?: string; price?: string; quantity: number; reason?: string };
 type OrderResult = { invoiceUrl: string; name: string; totalPrice: string };
+type Product = { sku: string; label: string; search: string; inStock: boolean; onReplen: boolean };
 
 // Categories where the order panel opens (and pre-fills) automatically.
 const AUTO = new Set(["warranty", "returns_exchange", "replacement_parts"]);
@@ -39,6 +40,11 @@ export default function OrderPanel({
   const [result, setResult] = useState<OrderResult | null>(null);
   const didSuggest = useRef(false);
   const lastInsertedRef = useRef<string | null>(null);
+  // Searchable product picker: the orderable catalog (in stock or on replen),
+  // loaded once and filtered client-side as the rep types.
+  const [catalog, setCatalog] = useState<Product[]>([]);
+  const [pickerQuery, setPickerQuery] = useState("");
+  const catalogLoaded = useRef(false);
 
   // Any change to items/discount makes an already-inserted link stale: retract
   // it from the reply and clear the result so the rep must regenerate.
@@ -48,6 +54,34 @@ export default function OrderPanel({
       onLink(lastInsertedRef.current, null);
       lastInsertedRef.current = null;
     }
+  }
+
+  async function loadCatalog() {
+    if (catalogLoaded.current) return;
+    catalogLoaded.current = true;
+    try {
+      const res = await fetch(`/api/products`);
+      const d = await res.json().catch(() => ({}));
+      if (res.ok && Array.isArray(d.products)) setCatalog(d.products);
+    } catch {
+      /* picker just stays empty — custom lines still work */
+    }
+  }
+
+  const pquery = pickerQuery.trim().toLowerCase();
+  const matches = pquery
+    ? catalog.filter((p) => pquery.split(/\s+/).every((w) => p.search.includes(w))).slice(0, 25)
+    : [];
+
+  function pickProduct(p: Product) {
+    setItems((prev) => {
+      // Already on the order? bump its quantity instead of duplicating the line.
+      const idx = prev.findIndex((it) => it.sku?.toLowerCase() === p.sku.toLowerCase());
+      if (idx >= 0) return prev.map((it, i) => (i === idx ? { ...it, quantity: Math.min(999, it.quantity + 1) } : it));
+      return [...prev, { sku: p.sku, title: p.label, quantity: 1 }];
+    });
+    setPickerQuery("");
+    invalidateLink();
   }
 
   async function suggest() {
@@ -137,11 +171,7 @@ export default function OrderPanel({
     setItems((prev) => [...prev, { title: "", price: "", quantity: 1 }]);
     invalidateLink();
   }
-  function addSku() {
-    setItems((prev) => [...prev, { sku: "", quantity: 1 }]);
-    invalidateLink();
-  }
-  function editField(idx: number, field: "title" | "price" | "sku", value: string) {
+  function editField(idx: number, field: "title" | "price", value: string) {
     setItems((prev) => prev.map((it, i) => (i === idx ? { ...it, [field]: value } : it)));
     invalidateLink();
   }
@@ -173,14 +203,7 @@ export default function OrderPanel({
         {items.map((it, idx) => (
           <div key={idx} className="flex items-center gap-2 rounded-lg border border-neutral-200 bg-neutral-50 px-2 py-1.5">
             <div className="min-w-0 flex-1">
-              {it.sku != null && it.title == null ? (
-                <input
-                  value={it.sku}
-                  onChange={(e) => editField(idx, "sku", e.target.value)}
-                  placeholder="SKU"
-                  className="w-full rounded border border-neutral-200 bg-white px-2 py-1 text-xs"
-                />
-              ) : it.sku ? (
+              {it.sku ? (
                 <div className="truncate text-xs text-neutral-700">
                   <span className="font-medium">{it.title ?? it.sku}</span>
                   <span className="text-neutral-400"> · {it.sku}</span>
@@ -212,12 +235,45 @@ export default function OrderPanel({
           </div>
         ))}
         {suggested && items.length === 0 && (
-          <p className="text-xs text-neutral-400">No items yet — add a product SKU or a custom line.</p>
+          <p className="text-xs text-neutral-400">No items yet — search for a product below, or add a custom line.</p>
+        )}
+      </div>
+
+      {/* searchable product picker — filters the orderable catalog by name or SKU */}
+      <div className="relative mt-2">
+        <input
+          value={pickerQuery}
+          onFocus={() => loadCatalog()}
+          onChange={(e) => { loadCatalog(); setPickerQuery(e.target.value); }}
+          placeholder="Add a product — search by name or SKU (e.g. Bimini)…"
+          className="w-full rounded border border-neutral-200 bg-white px-2 py-1 text-xs"
+        />
+        {pquery && (
+          <div className="absolute z-10 mt-1 max-h-56 w-full overflow-auto rounded-lg border border-neutral-200 bg-white shadow-lg">
+            {matches.length === 0 ? (
+              <div className="px-3 py-2 text-xs text-neutral-400">No available product matches “{pickerQuery}”.</div>
+            ) : (
+              matches.map((p) => (
+                <button
+                  key={p.sku}
+                  onClick={() => pickProduct(p)}
+                  className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-xs hover:bg-neutral-50"
+                >
+                  <span className="min-w-0 truncate">
+                    <span className="font-medium">{p.label}</span>
+                    <span className="text-neutral-400"> · {p.sku}</span>
+                  </span>
+                  <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] ${p.inStock ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>
+                    {p.inStock ? "in stock" : "on replen"}
+                  </span>
+                </button>
+              ))
+            )}
+          </div>
         )}
       </div>
 
       <div className="mt-2 flex gap-2 text-xs">
-        <button onClick={addSku} className="rounded border border-neutral-300 px-2 py-1 text-neutral-600 hover:bg-neutral-50">+ SKU</button>
         <button onClick={addCustom} className="rounded border border-neutral-300 px-2 py-1 text-neutral-600 hover:bg-neutral-50">+ Custom line</button>
         {!suggested && !suggesting && (
           <button onClick={suggest} className="rounded border border-neutral-300 px-2 py-1 text-neutral-600 hover:bg-neutral-50">Suggest with AI</button>
