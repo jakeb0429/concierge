@@ -9,6 +9,12 @@ import { logger } from "./log";
 
 const BIRDSEYE_URL = process.env.BIRDSEYE_URL || "https://birdseye.scribechs.com";
 
+export interface CheckoutDiscount {
+  value: number;
+  valueType: "PERCENTAGE" | "FIXED_AMOUNT";
+  title?: string;
+}
+
 export interface CheckoutItem {
   /** Catalog line: a Shopify SKU. */
   sku?: string;
@@ -16,12 +22,8 @@ export interface CheckoutItem {
   title?: string;
   price?: string; // decimal string, e.g. "6.00" — required with `title`
   quantity: number;
-}
-
-export interface CheckoutDiscount {
-  value: number;
-  valueType: "PERCENTAGE" | "FIXED_AMOUNT";
-  title?: string;
+  /** Per-line discount (vs the order-level one). */
+  discount?: CheckoutDiscount;
 }
 
 export interface CheckoutResult {

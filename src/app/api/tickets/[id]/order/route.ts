@@ -13,12 +13,25 @@ import { logger } from "@/lib/log";
 // forward a negative/empty/garbage price (a negative price would silently reduce
 // the invoice, bypassing the discount caps).
 const PRICE_RE = /^\d+(\.\d{1,2})?$/;
+
+// Shared discount shape — used both per line item and at the order level.
+const discountSchema = z
+  .object({
+    value: z.number().min(0),
+    valueType: z.enum(["PERCENTAGE", "FIXED_AMOUNT"]),
+    title: z.string().trim().max(120).optional(),
+  })
+  .refine((d) => d.valueType !== "PERCENTAGE" || d.value <= 100, {
+    message: "percentage discount cannot exceed 100",
+  });
+
 const itemSchema = z
   .object({
     sku: z.string().trim().min(1).optional(),
     title: z.string().trim().min(1).optional(),
     price: z.string().trim().optional(),
     quantity: z.number().int().min(1).max(999),
+    discount: discountSchema.optional(),
   })
   .refine((i) => i.sku || (i.title && i.price != null && PRICE_RE.test(i.price) && parseFloat(i.price) > 0), {
     message: 'each item needs a sku, or a title + a price greater than 0 like "6.00"',
@@ -27,16 +40,7 @@ const itemSchema = z
 const bodySchema = z.object({
   items: z.array(itemSchema).min(1).max(20),
   note: z.string().trim().max(2000).optional(),
-  discount: z
-    .object({
-      value: z.number().min(0),
-      valueType: z.enum(["PERCENTAGE", "FIXED_AMOUNT"]),
-      title: z.string().trim().max(120).optional(),
-    })
-    .refine((d) => d.valueType !== "PERCENTAGE" || d.value <= 100, {
-      message: "percentage discount cannot exceed 100",
-    })
-    .optional(),
+  discount: discountSchema.optional(),
 });
 
 /**

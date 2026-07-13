@@ -2,18 +2,22 @@
 
 import { useEffect, useRef, useState } from "react";
 
-type Item = { sku?: string; title?: string; price?: string; quantity: number; reason?: string };
+type DiscType = "PERCENTAGE" | "FIXED_AMOUNT";
+type LineDisc = { valueType: DiscType; value: string };
+type Item = { sku?: string; title?: string; price?: string; quantity: number; reason?: string; msrp?: number | null; discount?: LineDisc };
 type OrderResult = { invoiceUrl: string; name: string; totalPrice: string };
-type Product = { sku: string; label: string; search: string; inStock: boolean; onReplen: boolean };
+type Product = { sku: string; label: string; search: string; price: number | null; inStock: boolean; onReplen: boolean };
 
 // Categories where the order panel opens (and pre-fills) automatically.
 const AUTO = new Set(["warranty", "returns_exchange", "replacement_parts"]);
+const money = (n: number) => n.toFixed(2);
 
 /**
  * Build a Shopify checkout link for the customer from a ticket reply. AI
- * pre-fills the line items (for warranty / arm / exchange), the rep corrects
- * unit/quantity, sets a discount, and the generated one-click link drops into
- * the reply. The Shopify draft order is created server-side via Birdseye.
+ * pre-fills the line items (for warranty / arm / exchange), the rep revises the
+ * table (SKU · name · MSRP · qty · discount) and sets a discount per line OR for
+ * the whole order, and the generated one-click link drops into the reply. The
+ * Shopify draft order is created server-side via Birdseye.
  */
 export default function OrderPanel({
   ticketId,
@@ -22,9 +26,6 @@ export default function OrderPanel({
 }: {
   ticketId: string;
   categoryKey: string | null | undefined;
-  // Reconcile the checkout link in the reply body: remove `oldText` (if any) and
-  // insert `newText` (if any). Retracts a stale link when items change, and
-  // replaces (never stacks) the link on regenerate.
   onLink: (oldText: string | null, newText: string | null) => void;
 }) {
   const auto = !!categoryKey && AUTO.has(categoryKey);
@@ -33,15 +34,14 @@ export default function OrderPanel({
   const [note, setNote] = useState("");
   const [suggesting, setSuggesting] = useState(false);
   const [suggested, setSuggested] = useState(false);
-  const [discountType, setDiscountType] = useState<"" | "PERCENTAGE" | "FIXED_AMOUNT">("");
-  const [discountValue, setDiscountValue] = useState("");
+  const [discountMode, setDiscountMode] = useState<"order" | "line">("order");
+  const [orderType, setOrderType] = useState<"" | DiscType>("");
+  const [orderValue, setOrderValue] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<OrderResult | null>(null);
   const didSuggest = useRef(false);
   const lastInsertedRef = useRef<string | null>(null);
-  // Searchable product picker: the orderable catalog (in stock or on replen),
-  // loaded once and filtered client-side as the rep types.
   const [catalog, setCatalog] = useState<Product[]>([]);
   const [pickerQuery, setPickerQuery] = useState("");
   const catalogLoaded = useRef(false);
@@ -75,10 +75,9 @@ export default function OrderPanel({
 
   function pickProduct(p: Product) {
     setItems((prev) => {
-      // Already on the order? bump its quantity instead of duplicating the line.
       const idx = prev.findIndex((it) => it.sku?.toLowerCase() === p.sku.toLowerCase());
       if (idx >= 0) return prev.map((it, i) => (i === idx ? { ...it, quantity: Math.min(999, it.quantity + 1) } : it));
-      return [...prev, { sku: p.sku, title: p.label, quantity: 1 }];
+      return [...prev, { sku: p.sku, title: p.label, quantity: 1, msrp: p.price }];
     });
     setPickerQuery("");
     invalidateLink();
@@ -114,29 +113,69 @@ export default function OrderPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [auto, open]);
 
+  // --- money math (indicative — the authoritative total comes from Shopify) ---
   const PRICE_RE = /^\d+(\.\d{1,2})?$/;
+  const unitPrice = (it: Item): number | null => {
+    if (it.sku) return typeof it.msrp === "number" ? it.msrp : null;
+    const p = parseFloat(it.price ?? "");
+    return Number.isFinite(p) && p > 0 ? p : null;
+  };
+  const parseDisc = (d: LineDisc | undefined): { discount: { valueType: DiscType; value: number } | null; valid: boolean } => {
+    if (!d || d.value.trim() === "") return { discount: null, valid: true };
+    const v = Number(d.value);
+    const valid = Number.isFinite(v) && v >= 0 && (d.valueType !== "PERCENTAGE" || v <= 100);
+    return { discount: valid ? { valueType: d.valueType, value: v } : null, valid };
+  };
+  const applyDisc = (base: number, d: { valueType: DiscType; value: number } | null): number => {
+    if (!d) return base;
+    return d.valueType === "PERCENTAGE" ? Math.max(0, base * (1 - d.value / 100)) : Math.max(0, base - d.value);
+  };
+  const lineBase = (it: Item): number | null => {
+    const u = unitPrice(it);
+    return u == null ? null : u * it.quantity;
+  };
+  const lineNet = (it: Item): number | null => {
+    const b = lineBase(it);
+    if (b == null) return null;
+    return discountMode === "line" ? applyDisc(b, parseDisc(it.discount).discount) : b;
+  };
+
+  let subtotal = 0;
+  let anyUnknown = false;
+  for (const it of items) {
+    const n = lineNet(it);
+    if (n == null) anyUnknown = true;
+    else subtotal += n;
+  }
+  const orderDisc =
+    discountMode === "order" && orderType !== "" && orderValue.trim() !== "" && Number.isFinite(Number(orderValue))
+      ? { valueType: orderType, value: Number(orderValue) }
+      : null;
+  const estTotal = discountMode === "order" ? applyDisc(subtotal, orderDisc) : subtotal;
+
   const validItems = items.filter(
-    (i) =>
-      i.quantity >= 1 &&
-      (i.sku?.trim() ||
-        (i.title?.trim() && i.price != null && PRICE_RE.test(i.price ?? "") && parseFloat(i.price ?? "0") > 0)),
+    (i) => i.quantity >= 1 && (i.sku?.trim() || (i.title?.trim() && i.price != null && PRICE_RE.test(i.price ?? "") && parseFloat(i.price ?? "0") > 0)),
   );
-  const discountReady =
-    discountType === "" ||
-    (discountValue.trim() !== "" &&
-      Number(discountValue) >= 0 &&
-      (discountType !== "PERCENTAGE" || Number(discountValue) <= 100));
+  const orderDiscValid =
+    discountMode !== "order" ||
+    orderType === "" ||
+    (orderValue.trim() !== "" && Number(orderValue) >= 0 && (orderType !== "PERCENTAGE" || Number(orderValue) <= 100));
+  const lineDiscValid = discountMode !== "line" || items.every((it) => parseDisc(it.discount).valid);
 
   async function generate() {
-    if (busy || validItems.length === 0 || !discountReady) return;
-    setBusy(true); // MED8: guard against double-submit -> duplicate draft orders
+    if (busy || validItems.length === 0 || !orderDiscValid || !lineDiscValid) return;
+    setBusy(true); // guard against double-submit -> duplicate draft orders
     setError(null);
     try {
       const body: Record<string, unknown> = {
-        items: validItems.map((i) => (i.sku ? { sku: i.sku, quantity: i.quantity } : { title: i.title, price: i.price, quantity: i.quantity })),
+        items: validItems.map((i) => {
+          const base = i.sku ? { sku: i.sku, quantity: i.quantity } : { title: i.title, price: i.price, quantity: i.quantity };
+          const ld = discountMode === "line" ? parseDisc(i.discount).discount : null;
+          return ld ? { ...base, discount: ld } : base;
+        }),
       };
-      if (discountType !== "") {
-        body.discount = { value: Number(discountValue), valueType: discountType };
+      if (discountMode === "order" && orderType !== "" && orderValue.trim() !== "") {
+        body.discount = { value: Number(orderValue), valueType: orderType };
       }
       const res = await fetch(`/api/tickets/${ticketId}/order`, {
         method: "POST",
@@ -159,9 +198,20 @@ export default function OrderPanel({
     }
   }
 
+  function patch(idx: number, next: Partial<Item>) {
+    setItems((prev) => prev.map((it, i) => (i === idx ? { ...it, ...next } : it)));
+    invalidateLink();
+  }
   function setQty(idx: number, q: number) {
-    setItems((prev) => prev.map((it, i) => (i === idx ? { ...it, quantity: Math.max(1, Math.min(999, q)) } : it)));
-    invalidateLink(); // items changed -> retract the now-stale link from the reply
+    patch(idx, { quantity: Math.max(1, Math.min(999, q)) });
+  }
+  function setLineDisc(idx: number, next: Partial<LineDisc>) {
+    setItems((prev) =>
+      prev.map((it, i) =>
+        i === idx ? { ...it, discount: { valueType: next.valueType ?? it.discount?.valueType ?? "PERCENTAGE", value: next.value ?? it.discount?.value ?? "" } } : it,
+      ),
+    );
+    invalidateLink();
   }
   function removeItem(idx: number) {
     setItems((prev) => prev.filter((_, i) => i !== idx));
@@ -169,10 +219,6 @@ export default function OrderPanel({
   }
   function addCustom() {
     setItems((prev) => [...prev, { title: "", price: "", quantity: 1 }]);
-    invalidateLink();
-  }
-  function editField(idx: number, field: "title" | "price", value: string) {
-    setItems((prev) => prev.map((it, i) => (i === idx ? { ...it, [field]: value } : it)));
     invalidateLink();
   }
 
@@ -191,53 +237,100 @@ export default function OrderPanel({
     <div className="mt-3 rounded-xl border border-l-4 border-neutral-200 border-l-emerald-400 bg-white p-4">
       <div className="mb-2 flex items-center justify-between">
         <div className="text-xs font-medium text-emerald-800">Order → checkout link</div>
-        <button onClick={() => setOpen(false)} className="text-xs text-neutral-400 hover:text-neutral-600">
-          hide
-        </button>
+        <button onClick={() => setOpen(false)} className="text-xs text-neutral-400 hover:text-neutral-600">hide</button>
       </div>
 
       {suggesting && <div className="py-3 text-center text-xs text-neutral-400">Suggesting items…</div>}
       {!suggesting && note && <p className="mb-2 text-xs italic text-neutral-500">{note}</p>}
 
-      <div className="space-y-2">
-        {items.map((it, idx) => (
-          <div key={idx} className="flex items-center gap-2 rounded-lg border border-neutral-200 bg-neutral-50 px-2 py-1.5">
-            <div className="min-w-0 flex-1">
-              {it.sku ? (
-                <div className="truncate text-xs text-neutral-700">
-                  <span className="font-medium">{it.title ?? it.sku}</span>
-                  <span className="text-neutral-400"> · {it.sku}</span>
-                </div>
-              ) : (
-                <div className="flex gap-1">
-                  <input
-                    value={it.title ?? ""}
-                    onChange={(e) => editField(idx, "title", e.target.value)}
-                    placeholder="Custom line (e.g. Replacement arm)"
-                    className="min-w-0 flex-1 rounded border border-neutral-200 bg-white px-2 py-1 text-xs"
-                  />
-                  <input
-                    value={it.price ?? ""}
-                    onChange={(e) => editField(idx, "price", e.target.value)}
-                    placeholder="6.00"
-                    className="w-16 rounded border border-neutral-200 bg-white px-2 py-1 text-xs"
-                  />
-                </div>
-              )}
-              {it.reason && <div className="mt-0.5 truncate text-[10px] text-neutral-400">{it.reason}</div>}
-            </div>
-            <div className="flex items-center gap-1">
-              <button onClick={() => setQty(idx, it.quantity - 1)} className="h-6 w-6 rounded border border-neutral-300 text-xs hover:bg-neutral-100">−</button>
-              <span className="w-6 text-center text-xs tabular-nums">{it.quantity}</span>
-              <button onClick={() => setQty(idx, it.quantity + 1)} className="h-6 w-6 rounded border border-neutral-300 text-xs hover:bg-neutral-100">+</button>
-            </div>
-            <button onClick={() => removeItem(idx)} className="text-xs text-neutral-400 hover:text-red-500">✕</button>
-          </div>
-        ))}
-        {suggested && items.length === 0 && (
-          <p className="text-xs text-neutral-400">No items yet — search for a product below, or add a custom line.</p>
-        )}
-      </div>
+      {items.length > 0 && (
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b border-neutral-100 text-left text-[10px] uppercase tracking-wide text-neutral-400">
+                <th className="py-1 pr-2 font-medium">Product</th>
+                <th className="px-2 py-1 font-medium">SKU</th>
+                <th className="px-2 py-1 text-right font-medium">MSRP</th>
+                <th className="px-2 py-1 text-center font-medium">Qty</th>
+                {discountMode === "line" && <th className="px-2 py-1 font-medium">Discount</th>}
+                <th className="px-2 py-1 text-right font-medium">Line total</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((it, idx) => {
+                const unit = unitPrice(it);
+                const net = lineNet(it);
+                const dv = parseDisc(it.discount);
+                return (
+                  <tr key={idx} className="border-b border-neutral-50 align-middle">
+                    <td className="py-1.5 pr-2">
+                      {it.sku ? (
+                        <div className="max-w-[180px] truncate font-medium text-neutral-700" title={it.title ?? it.sku}>{it.title ?? it.sku}</div>
+                      ) : (
+                        <input
+                          value={it.title ?? ""}
+                          onChange={(e) => patch(idx, { title: e.target.value })}
+                          placeholder="Custom line (e.g. Replacement arm)"
+                          className="w-40 rounded border border-neutral-200 bg-white px-2 py-1"
+                        />
+                      )}
+                      {it.reason && <div className="mt-0.5 max-w-[200px] truncate text-[10px] text-neutral-400">{it.reason}</div>}
+                    </td>
+                    <td className="px-2 py-1.5 font-mono text-[11px] text-neutral-500">{it.sku ?? "custom"}</td>
+                    <td className="px-2 py-1.5 text-right tabular-nums text-neutral-600">
+                      {it.sku ? (
+                        unit != null ? `$${money(unit)}` : "—"
+                      ) : (
+                        <input
+                          value={it.price ?? ""}
+                          onChange={(e) => patch(idx, { price: e.target.value })}
+                          placeholder="6.00"
+                          className="w-16 rounded border border-neutral-200 bg-white px-1.5 py-1 text-right"
+                        />
+                      )}
+                    </td>
+                    <td className="px-2 py-1.5">
+                      <div className="flex items-center justify-center gap-1">
+                        <button onClick={() => setQty(idx, it.quantity - 1)} className="h-5 w-5 rounded border border-neutral-300 hover:bg-neutral-100">−</button>
+                        <span className="w-5 text-center tabular-nums">{it.quantity}</span>
+                        <button onClick={() => setQty(idx, it.quantity + 1)} className="h-5 w-5 rounded border border-neutral-300 hover:bg-neutral-100">+</button>
+                      </div>
+                    </td>
+                    {discountMode === "line" && (
+                      <td className="px-2 py-1.5">
+                        <div className="flex items-center gap-1">
+                          <select
+                            value={it.discount?.valueType ?? "PERCENTAGE"}
+                            onChange={(e) => setLineDisc(idx, { valueType: e.target.value as DiscType })}
+                            className="rounded border border-neutral-200 bg-white px-1 py-1"
+                          >
+                            <option value="PERCENTAGE">%</option>
+                            <option value="FIXED_AMOUNT">$</option>
+                          </select>
+                          <input
+                            value={it.discount?.value ?? ""}
+                            onChange={(e) => setLineDisc(idx, { value: e.target.value })}
+                            placeholder="0"
+                            className={`w-12 rounded border bg-white px-1.5 py-1 ${dv.valid ? "border-neutral-200" : "border-red-300"}`}
+                          />
+                        </div>
+                      </td>
+                    )}
+                    <td className="px-2 py-1.5 text-right font-medium tabular-nums text-neutral-700">{net != null ? `$${money(net)}` : "—"}</td>
+                    <td className="pl-1 text-right">
+                      <button onClick={() => removeItem(idx)} className="text-neutral-400 hover:text-red-500">✕</button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {suggested && items.length === 0 && (
+        <p className="text-xs text-neutral-400">No items yet — search for a product below, or add a custom line.</p>
+      )}
 
       {/* searchable product picker — filters the orderable catalog by name or SKU */}
       <div className="relative mt-2">
@@ -262,6 +355,7 @@ export default function OrderPanel({
                   <span className="min-w-0 truncate">
                     <span className="font-medium">{p.label}</span>
                     <span className="text-neutral-400"> · {p.sku}</span>
+                    {p.price != null && <span className="text-neutral-400"> · ${money(p.price)}</span>}
                   </span>
                   <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] ${p.inStock ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>
                     {p.inStock ? "in stock" : "on replen"}
@@ -280,32 +374,56 @@ export default function OrderPanel({
         )}
       </div>
 
-      <div className="mt-3 flex items-center gap-2 text-xs">
+      {/* discount: whole-order or per-line */}
+      <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
         <span className="text-neutral-500">Discount:</span>
-        <select
-          value={discountType}
-          onChange={(e) => { setDiscountType(e.target.value as "" | "PERCENTAGE" | "FIXED_AMOUNT"); invalidateLink(); }}
-          className="rounded border border-neutral-200 bg-white px-1.5 py-1"
-        >
-          <option value="">None</option>
-          <option value="PERCENTAGE">% off</option>
-          <option value="FIXED_AMOUNT">$ off</option>
-        </select>
-        {discountType !== "" && (
-          <input
-            value={discountValue}
-            onChange={(e) => { setDiscountValue(e.target.value); invalidateLink(); }}
-            placeholder={discountType === "PERCENTAGE" ? "50" : "6.00"}
-            className="w-20 rounded border border-neutral-200 bg-white px-2 py-1"
-          />
+        <div className="flex overflow-hidden rounded-lg border border-neutral-200">
+          {(["order", "line"] as const).map((m) => (
+            <button
+              key={m}
+              onClick={() => { setDiscountMode(m); invalidateLink(); }}
+              className={`px-2 py-1 ${discountMode === m ? "bg-emerald-600 text-white" : "bg-white text-neutral-600 hover:bg-neutral-50"}`}
+            >
+              {m === "order" ? "Whole order" : "Per line"}
+            </button>
+          ))}
+        </div>
+        {discountMode === "order" ? (
+          <>
+            <select
+              value={orderType}
+              onChange={(e) => { setOrderType(e.target.value as "" | DiscType); invalidateLink(); }}
+              className="rounded border border-neutral-200 bg-white px-1.5 py-1"
+            >
+              <option value="">None</option>
+              <option value="PERCENTAGE">% off</option>
+              <option value="FIXED_AMOUNT">$ off</option>
+            </select>
+            {orderType !== "" && (
+              <input
+                value={orderValue}
+                onChange={(e) => { setOrderValue(e.target.value); invalidateLink(); }}
+                placeholder={orderType === "PERCENTAGE" ? "50" : "6.00"}
+                className={`w-20 rounded border bg-white px-2 py-1 ${orderDiscValid ? "border-neutral-200" : "border-red-300"}`}
+              />
+            )}
+          </>
+        ) : (
+          <span className="text-neutral-400">set a discount on each line above</span>
         )}
+        <span className="ml-auto text-neutral-600">
+          Subtotal ${money(subtotal)}
+          {anyUnknown && <span className="text-neutral-400"> (+ unpriced lines)</span>}
+          {" · "}
+          <span className="font-medium">Est. total ${money(estTotal)}</span>
+        </span>
       </div>
 
       {error && <div className="mt-2 rounded-md bg-red-50 px-3 py-2 text-xs text-red-700">{error}</div>}
 
       {result ? (
         <div className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
-          <div className="font-medium">Order {result.name} · total ${result.totalPrice}</div>
+          <div className="font-medium">Order {result.name} · charged total ${result.totalPrice}</div>
           {parseFloat(result.totalPrice) <= 0 ? (
             <div className="mt-0.5 font-medium text-amber-700">⚠ This order totals $0 — confirm that&apos;s intended (free/warranty) before sending.</div>
           ) : (
@@ -316,7 +434,7 @@ export default function OrderPanel({
       ) : (
         <button
           onClick={generate}
-          disabled={busy || validItems.length === 0 || !discountReady}
+          disabled={busy || validItems.length === 0 || !orderDiscValid || !lineDiscValid}
           className="mt-3 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-40"
         >
           {busy ? "Building link…" : "Generate checkout link"}

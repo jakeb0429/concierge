@@ -22,6 +22,7 @@ type Row = {
   frameName: string | null;
   frameColor: string | null;
   lensColor: string | null;
+  price: string | null;
   quantity: number;
   replenishment: string | null;
 };
@@ -35,7 +36,7 @@ export async function GET() {
   let rows: Row[] = [];
   try {
     rows = await prisma.$queryRawUnsafe<Row[]>(
-      `SELECT sku, name, "frameName", "frameColor", "lensColor", quantity, replenishment
+      `SELECT sku, name, "frameName", "frameColor", "lensColor", price::text AS price, quantity, replenishment
        FROM public."Product"
        WHERE "shopifyId" IS NOT NULL
          AND (quantity > 0 OR replenishment = 'Replenishment')
@@ -56,6 +57,9 @@ export async function GET() {
     return {
       sku: r.sku,
       label,
+      // MSRP / retail price the customer pays before any discount (Rheos `price`
+      // = the Shopify variant price; `expectedRetailPrice` is an unreliable 2x).
+      price: r.price != null ? Number(r.price) : null,
       // Lowercased haystack the picker matches against (name, sku, frame, colors).
       search: [label, r.sku, r.frameName, r.frameColor, r.lensColor].filter(Boolean).join(" ").toLowerCase(),
       inStock: r.quantity > 0,

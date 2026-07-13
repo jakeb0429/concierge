@@ -88,4 +88,20 @@ describe("POST /api/tickets/[id]/order", () => {
     expect(res.status).toBe(200);
     expect((await res.json()).invoiceUrl).toBe("https://x/invoices/abc");
   });
+
+  it("passes a per-line discount through to the order service", async () => {
+    const res = await POST(req({ items: [{ sku: "A", quantity: 1, discount: { value: 15, valueType: "PERCENTAGE" } }] }), params);
+    expect(res.status).toBe(200);
+    expect(createCheckoutLink).toHaveBeenCalledWith(
+      expect.objectContaining({
+        items: expect.arrayContaining([expect.objectContaining({ sku: "A", discount: { value: 15, valueType: "PERCENTAGE" } })]),
+      }),
+    );
+  });
+
+  it("rejects a per-line percentage discount over 100", async () => {
+    const res = await POST(req({ items: [{ sku: "A", quantity: 1, discount: { value: 150, valueType: "PERCENTAGE" } }] }), params);
+    expect(res.status).toBe(400);
+    expect(createCheckoutLink).not.toHaveBeenCalled();
+  });
 });

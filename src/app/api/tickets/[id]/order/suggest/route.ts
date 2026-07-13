@@ -133,10 +133,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     .filter((i) => (i.sku ? okSkus.has(i.sku.toLowerCase()) : !!(i.title && i.price)))
     .map((i) => {
       const cat = i.sku ? candidates.find((c) => c.sku.toLowerCase() === i.sku!.toLowerCase()) : null;
+      const cleanTitle = (cat?.name ?? "").replace(/^[A-Za-z ]+:/, "").replace(/\s*\|\s*/g, " / ").trim() || cat?.name;
       return {
         sku: i.sku,
-        title: i.sku ? cat?.name ?? undefined : i.title,
+        title: i.sku ? cleanTitle : i.title,
         price: i.sku ? undefined : i.price,
+        // MSRP for a catalog line (retail price); custom lines carry price instead.
+        msrp: i.sku ? (cat?.price != null ? Number(cat.price) : null) : null,
         quantity: i.quantity,
         reason: i.reason ?? "",
       };
