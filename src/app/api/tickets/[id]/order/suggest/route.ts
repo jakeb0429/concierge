@@ -137,9 +137,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       return {
         sku: i.sku,
         title: i.sku ? cleanTitle : i.title,
-        price: i.sku ? undefined : i.price,
-        // MSRP for a catalog line (retail price); custom lines carry price instead.
-        msrp: i.sku ? (cat?.price != null ? Number(cat.price) : null) : null,
+        // Custom lines carry their price as msrp; catalog lines' MSRP is derived
+        // from the live catalog in the panel (the real website price).
+        msrp: i.sku ? undefined : i.price,
         quantity: i.quantity,
         reason: i.reason ?? "",
       };

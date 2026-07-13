@@ -4,20 +4,22 @@ import { useEffect, useRef, useState } from "react";
 
 type DiscType = "PERCENTAGE" | "FIXED_AMOUNT";
 type LineDisc = { valueType: DiscType; value: string };
-type Item = { sku?: string; title?: string; price?: string; quantity: number; reason?: string; msrp?: number | null; discount?: LineDisc };
+// msrp = the rep's explicit unit price: a custom line's price, or a catalog
+// line's OVERRIDE. Undefined on a catalog line means "use the live catalog price".
+type Item = { sku?: string; title?: string; quantity: number; reason?: string; msrp?: string; discount?: LineDisc };
 type OrderResult = { invoiceUrl: string; name: string; subtotalPrice: string; totalTax: string; totalPrice: string };
 type Product = { sku: string; label: string; search: string; price: number | null; inStock: boolean; onReplen: boolean };
 
-// Categories where the order panel opens (and pre-fills) automatically.
 const AUTO = new Set(["warranty", "returns_exchange", "replacement_parts"]);
 const money = (n: number) => n.toFixed(2);
+const PRICE_RE = /^\d+(\.\d{1,2})?$/;
 
 /**
  * Build a Shopify checkout link for the customer from a ticket reply. AI
- * pre-fills the line items (for warranty / arm / exchange), the rep revises the
- * table (SKU · name · MSRP · qty · discount) and sets a discount per line OR for
- * the whole order, and the generated one-click link drops into the reply. The
- * Shopify draft order is created server-side via Birdseye.
+ * pre-fills the line items (for warranty / arm / exchange); the rep revises the
+ * table (SKU · name · MSRP · qty · discount), where MSRP is the live website
+ * price and is editable (an edit overrides that line's price). Discounts apply
+ * per line or to the whole order. The Shopify draft order is created via Birdseye.
  */
 export default function OrderPanel({
   ticketId,
@@ -46,8 +48,6 @@ export default function OrderPanel({
   const [pickerQuery, setPickerQuery] = useState("");
   const catalogLoaded = useRef(false);
 
-  // Any change to items/discount makes an already-inserted link stale: retract
-  // it from the reply and clear the result so the rep must regenerate.
   function invalidateLink() {
     setResult(null);
     if (lastInsertedRef.current) {
@@ -64,20 +64,32 @@ export default function OrderPanel({
       const d = await res.json().catch(() => ({}));
       if (res.ok && Array.isArray(d.products)) setCatalog(d.products);
     } catch {
-      /* picker just stays empty — custom lines still work */
+      /* picker stays empty — custom lines still work */
     }
   }
 
+  const catMap = new Map(catalog.map((p) => [p.sku.toLowerCase(), p] as const));
+  const catPrice = (it: Item): number | null => (it.sku ? catMap.get(it.sku.toLowerCase())?.price ?? null : null);
+  // The MSRP shown/edited: explicit override if set, else the live catalog price.
+  const msrpStr = (it: Item): string => (it.msrp != null && it.msrp !== "" ? it.msrp : catPrice(it) != null ? catPrice(it)!.toFixed(2) : "");
+  const unitPrice = (it: Item): number | null => {
+    const n = parseFloat(msrpStr(it));
+    return Number.isFinite(n) && n > 0 ? n : null;
+  };
+  const isOverride = (it: Item): boolean => {
+    if (!it.sku || it.msrp == null || it.msrp.trim() === "") return false;
+    const cp = catPrice(it);
+    return cp == null || Math.abs(parseFloat(it.msrp) - cp) >= 0.005;
+  };
+
   const pquery = pickerQuery.trim().toLowerCase();
-  const matches = pquery
-    ? catalog.filter((p) => pquery.split(/\s+/).every((w) => p.search.includes(w))).slice(0, 25)
-    : [];
+  const matches = pquery ? catalog.filter((p) => pquery.split(/\s+/).every((w) => p.search.includes(w))).slice(0, 25) : [];
 
   function pickProduct(p: Product) {
     setItems((prev) => {
       const idx = prev.findIndex((it) => it.sku?.toLowerCase() === p.sku.toLowerCase());
       if (idx >= 0) return prev.map((it, i) => (i === idx ? { ...it, quantity: Math.min(999, it.quantity + 1) } : it));
-      return [...prev, { sku: p.sku, title: p.label, quantity: 1, msrp: p.price }];
+      return [...prev, { sku: p.sku, title: p.label, quantity: 1 }]; // MSRP derived from the live catalog
     });
     setPickerQuery("");
     invalidateLink();
@@ -87,6 +99,7 @@ export default function OrderPanel({
     if (suggesting) return;
     setSuggesting(true);
     setError(null);
+    loadCatalog(); // so suggested catalog lines show their live MSRP
     try {
       const res = await fetch(`/api/tickets/${ticketId}/order/suggest`, { method: "POST" });
       const d = await res.json().catch(() => ({}));
@@ -104,7 +117,6 @@ export default function OrderPanel({
     }
   }
 
-  // Auto pre-fill once, for warranty/arm/exchange tickets.
   useEffect(() => {
     if (auto && open && !didSuggest.current) {
       didSuggest.current = true;
@@ -114,12 +126,6 @@ export default function OrderPanel({
   }, [auto, open]);
 
   // --- money math (indicative — the authoritative total comes from Shopify) ---
-  const PRICE_RE = /^\d+(\.\d{1,2})?$/;
-  const unitPrice = (it: Item): number | null => {
-    if (it.sku) return typeof it.msrp === "number" ? it.msrp : null;
-    const p = parseFloat(it.price ?? "");
-    return Number.isFinite(p) && p > 0 ? p : null;
-  };
   const parseDisc = (d: LineDisc | undefined): { discount: { valueType: DiscType; value: number } | null; valid: boolean } => {
     if (!d || d.value.trim() === "") return { discount: null, valid: true };
     const v = Number(d.value);
@@ -130,14 +136,11 @@ export default function OrderPanel({
     if (!d) return base;
     return d.valueType === "PERCENTAGE" ? Math.max(0, base * (1 - d.value / 100)) : Math.max(0, base - d.value);
   };
-  const lineBase = (it: Item): number | null => {
-    const u = unitPrice(it);
-    return u == null ? null : u * it.quantity;
-  };
   const lineNet = (it: Item): number | null => {
-    const b = lineBase(it);
-    if (b == null) return null;
-    return discountMode === "line" ? applyDisc(b, parseDisc(it.discount).discount) : b;
+    const u = unitPrice(it);
+    if (u == null) return null;
+    const base = u * it.quantity;
+    return discountMode === "line" ? applyDisc(base, parseDisc(it.discount).discount) : base;
   };
 
   let subtotal = 0;
@@ -153,9 +156,12 @@ export default function OrderPanel({
       : null;
   const estTotal = discountMode === "order" ? applyDisc(subtotal, orderDisc) : subtotal;
 
-  const validItems = items.filter(
-    (i) => i.quantity >= 1 && (i.sku?.trim() || (i.title?.trim() && i.price != null && PRICE_RE.test(i.price ?? "") && parseFloat(i.price ?? "0") > 0)),
-  );
+  const validItems = items.filter((i) => {
+    if (i.quantity < 1) return false;
+    const m = i.msrp?.trim();
+    if (i.sku) return !m || (PRICE_RE.test(m) && parseFloat(m) > 0); // empty -> uses catalog price
+    return !!(i.title?.trim() && m && PRICE_RE.test(m) && parseFloat(m) > 0);
+  });
   const orderDiscValid =
     discountMode !== "order" ||
     orderType === "" ||
@@ -169,9 +175,15 @@ export default function OrderPanel({
     try {
       const body: Record<string, unknown> = {
         items: validItems.map((i) => {
-          const base = i.sku ? { sku: i.sku, quantity: i.quantity } : { title: i.title, price: i.price, quantity: i.quantity };
-          const ld = discountMode === "line" ? parseDisc(i.discount).discount : null;
-          return ld ? { ...base, discount: ld } : base;
+          const disc = discountMode === "line" ? parseDisc(i.discount).discount : null;
+          const m = i.msrp?.trim();
+          // Unedited catalog line -> send the SKU (Shopify's canonical price).
+          // Custom line OR overridden catalog line -> a custom line at the set price.
+          const line =
+            i.sku && !isOverride(i)
+              ? { sku: i.sku, quantity: i.quantity }
+              : { title: i.title || i.sku, price: m && m !== "" ? m : catPrice(i)?.toFixed(2) ?? "", quantity: i.quantity };
+          return disc ? { ...line, discount: disc } : line;
         }),
       };
       if (discountMode === "order" && orderType !== "" && orderValue.trim() !== "") {
@@ -218,16 +230,13 @@ export default function OrderPanel({
     invalidateLink();
   }
   function addCustom() {
-    setItems((prev) => [...prev, { title: "", price: "", quantity: 1 }]);
+    setItems((prev) => [...prev, { title: "", quantity: 1, msrp: "" }]);
     invalidateLink();
   }
 
   if (!open) {
     return (
-      <button
-        onClick={() => setOpen(true)}
-        className="mt-3 rounded-lg border border-neutral-300 px-3 py-1.5 text-xs text-neutral-600 hover:bg-neutral-50"
-      >
+      <button onClick={() => setOpen(true)} className="mt-3 rounded-lg border border-neutral-300 px-3 py-1.5 text-xs text-neutral-600 hover:bg-neutral-50">
         + Build a Shopify order
       </button>
     );
@@ -259,7 +268,6 @@ export default function OrderPanel({
             </thead>
             <tbody>
               {items.map((it, idx) => {
-                const unit = unitPrice(it);
                 const net = lineNet(it);
                 const dv = parseDisc(it.discount);
                 return (
@@ -268,27 +276,22 @@ export default function OrderPanel({
                       {it.sku ? (
                         <div className="max-w-[180px] truncate font-medium text-neutral-700" title={it.title ?? it.sku}>{it.title ?? it.sku}</div>
                       ) : (
-                        <input
-                          value={it.title ?? ""}
-                          onChange={(e) => patch(idx, { title: e.target.value })}
-                          placeholder="Custom line (e.g. Replacement arm)"
-                          className="w-40 rounded border border-neutral-200 bg-white px-2 py-1"
-                        />
+                        <input value={it.title ?? ""} onChange={(e) => patch(idx, { title: e.target.value })} placeholder="Custom line (e.g. Replacement arm)" className="w-40 rounded border border-neutral-200 bg-white px-2 py-1" />
                       )}
                       {it.reason && <div className="mt-0.5 max-w-[200px] truncate text-[10px] text-neutral-400">{it.reason}</div>}
                     </td>
                     <td className="px-2 py-1.5 font-mono text-[11px] text-neutral-500">{it.sku ?? "custom"}</td>
-                    <td className="px-2 py-1.5 text-right tabular-nums text-neutral-600">
-                      {it.sku ? (
-                        unit != null ? `$${money(unit)}` : "—"
-                      ) : (
+                    <td className="px-2 py-1.5 text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        <span className="text-neutral-400">$</span>
                         <input
-                          value={it.price ?? ""}
-                          onChange={(e) => patch(idx, { price: e.target.value })}
-                          placeholder="6.00"
-                          className="w-16 rounded border border-neutral-200 bg-white px-1.5 py-1 text-right"
+                          value={msrpStr(it)}
+                          onChange={(e) => patch(idx, { msrp: e.target.value })}
+                          placeholder="0.00"
+                          className="w-16 rounded border border-neutral-200 bg-white px-1.5 py-1 text-right tabular-nums"
                         />
-                      )}
+                      </div>
+                      {isOverride(it) && <div className="text-right text-[9px] text-amber-600">custom price</div>}
                     </td>
                     <td className="px-2 py-1.5">
                       <div className="flex items-center justify-center gap-1">
@@ -300,27 +303,16 @@ export default function OrderPanel({
                     {discountMode === "line" && (
                       <td className="px-2 py-1.5">
                         <div className="flex items-center gap-1">
-                          <select
-                            value={it.discount?.valueType ?? "PERCENTAGE"}
-                            onChange={(e) => setLineDisc(idx, { valueType: e.target.value as DiscType })}
-                            className="rounded border border-neutral-200 bg-white px-1 py-1"
-                          >
+                          <select value={it.discount?.valueType ?? "PERCENTAGE"} onChange={(e) => setLineDisc(idx, { valueType: e.target.value as DiscType })} className="rounded border border-neutral-200 bg-white px-1 py-1">
                             <option value="PERCENTAGE">%</option>
                             <option value="FIXED_AMOUNT">$</option>
                           </select>
-                          <input
-                            value={it.discount?.value ?? ""}
-                            onChange={(e) => setLineDisc(idx, { value: e.target.value })}
-                            placeholder="0"
-                            className={`w-12 rounded border bg-white px-1.5 py-1 ${dv.valid ? "border-neutral-200" : "border-red-300"}`}
-                          />
+                          <input value={it.discount?.value ?? ""} onChange={(e) => setLineDisc(idx, { value: e.target.value })} placeholder="0" className={`w-12 rounded border bg-white px-1.5 py-1 ${dv.valid ? "border-neutral-200" : "border-red-300"}`} />
                         </div>
                       </td>
                     )}
                     <td className="px-2 py-1.5 text-right font-medium tabular-nums text-neutral-700">{net != null ? `$${money(net)}` : "—"}</td>
-                    <td className="pl-1 text-right">
-                      <button onClick={() => removeItem(idx)} className="text-neutral-400 hover:text-red-500">✕</button>
-                    </td>
+                    <td className="pl-1 text-right"><button onClick={() => removeItem(idx)} className="text-neutral-400 hover:text-red-500">✕</button></td>
                   </tr>
                 );
               })}
@@ -328,9 +320,7 @@ export default function OrderPanel({
           </table>
         </div>
       )}
-      {suggested && items.length === 0 && (
-        <p className="text-xs text-neutral-400">No items yet — search for a product below, or add a custom line.</p>
-      )}
+      {suggested && items.length === 0 && <p className="text-xs text-neutral-400">No items yet — search for a product below, or add a custom line.</p>}
 
       {/* searchable product picker — filters the orderable catalog by name or SKU */}
       <div className="relative mt-2">
@@ -347,19 +337,13 @@ export default function OrderPanel({
               <div className="px-3 py-2 text-xs text-neutral-400">No available product matches “{pickerQuery}”.</div>
             ) : (
               matches.map((p) => (
-                <button
-                  key={p.sku}
-                  onClick={() => pickProduct(p)}
-                  className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-xs hover:bg-neutral-50"
-                >
+                <button key={p.sku} onClick={() => pickProduct(p)} className="flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-xs hover:bg-neutral-50">
                   <span className="min-w-0 truncate">
                     <span className="font-medium">{p.label}</span>
                     <span className="text-neutral-400"> · {p.sku}</span>
                     {p.price != null && <span className="text-neutral-400"> · ${money(p.price)}</span>}
                   </span>
-                  <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] ${p.inStock ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>
-                    {p.inStock ? "in stock" : "on replen"}
-                  </span>
+                  <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] ${p.inStock ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>{p.inStock ? "in stock" : "on replen"}</span>
                 </button>
               ))
             )}
@@ -369,9 +353,7 @@ export default function OrderPanel({
 
       <div className="mt-2 flex gap-2 text-xs">
         <button onClick={addCustom} className="rounded border border-neutral-300 px-2 py-1 text-neutral-600 hover:bg-neutral-50">+ Custom line</button>
-        {!suggested && !suggesting && (
-          <button onClick={suggest} className="rounded border border-neutral-300 px-2 py-1 text-neutral-600 hover:bg-neutral-50">Suggest with AI</button>
-        )}
+        {!suggested && !suggesting && <button onClick={suggest} className="rounded border border-neutral-300 px-2 py-1 text-neutral-600 hover:bg-neutral-50">Suggest with AI</button>}
       </div>
 
       {/* discount: whole-order or per-line */}
@@ -379,33 +361,20 @@ export default function OrderPanel({
         <span className="text-neutral-500">Discount:</span>
         <div className="flex overflow-hidden rounded-lg border border-neutral-200">
           {(["order", "line"] as const).map((m) => (
-            <button
-              key={m}
-              onClick={() => { setDiscountMode(m); invalidateLink(); }}
-              className={`px-2 py-1 ${discountMode === m ? "bg-emerald-600 text-white" : "bg-white text-neutral-600 hover:bg-neutral-50"}`}
-            >
+            <button key={m} onClick={() => { setDiscountMode(m); invalidateLink(); }} className={`px-2 py-1 ${discountMode === m ? "bg-emerald-600 text-white" : "bg-white text-neutral-600 hover:bg-neutral-50"}`}>
               {m === "order" ? "Whole order" : "Per line"}
             </button>
           ))}
         </div>
         {discountMode === "order" ? (
           <>
-            <select
-              value={orderType}
-              onChange={(e) => { setOrderType(e.target.value as "" | DiscType); invalidateLink(); }}
-              className="rounded border border-neutral-200 bg-white px-1.5 py-1"
-            >
+            <select value={orderType} onChange={(e) => { setOrderType(e.target.value as "" | DiscType); invalidateLink(); }} className="rounded border border-neutral-200 bg-white px-1.5 py-1">
               <option value="">None</option>
               <option value="PERCENTAGE">% off</option>
               <option value="FIXED_AMOUNT">$ off</option>
             </select>
             {orderType !== "" && (
-              <input
-                value={orderValue}
-                onChange={(e) => { setOrderValue(e.target.value); invalidateLink(); }}
-                placeholder={orderType === "PERCENTAGE" ? "50" : "6.00"}
-                className={`w-20 rounded border bg-white px-2 py-1 ${orderDiscValid ? "border-neutral-200" : "border-red-300"}`}
-              />
+              <input value={orderValue} onChange={(e) => { setOrderValue(e.target.value); invalidateLink(); }} placeholder={orderType === "PERCENTAGE" ? "50" : "6.00"} className={`w-20 rounded border bg-white px-2 py-1 ${orderDiscValid ? "border-neutral-200" : "border-red-300"}`} />
             )}
           </>
         ) : (
@@ -422,9 +391,7 @@ export default function OrderPanel({
 
       {result ? (
         <div className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
-          <div className="font-medium">
-            Order {result.name} · ${result.subtotalPrice} + ${result.totalTax} tax = <span className="underline">${result.totalPrice}</span>
-          </div>
+          <div className="font-medium">Order {result.name} · ${result.subtotalPrice} + ${result.totalTax} tax = <span className="underline">${result.totalPrice}</span></div>
           {parseFloat(result.totalPrice) <= 0 ? (
             <div className="mt-0.5 font-medium text-amber-700">⚠ This order totals $0 — confirm that&apos;s intended (free/warranty) before sending.</div>
           ) : (
@@ -433,11 +400,7 @@ export default function OrderPanel({
           <button onClick={invalidateLink} className="mt-1 text-emerald-700 underline">Rebuild</button>
         </div>
       ) : (
-        <button
-          onClick={generate}
-          disabled={busy || validItems.length === 0 || !orderDiscValid || !lineDiscValid}
-          className="mt-3 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-40"
-        >
+        <button onClick={generate} disabled={busy || validItems.length === 0 || !orderDiscValid || !lineDiscValid} className="mt-3 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-40">
           {busy ? "Building link…" : "Generate checkout link"}
         </button>
       )}
