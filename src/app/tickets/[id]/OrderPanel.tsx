@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 type DiscType = "PERCENTAGE" | "FIXED_AMOUNT";
 type LineDisc = { valueType: DiscType; value: string };
 type Item = { sku?: string; title?: string; price?: string; quantity: number; reason?: string; msrp?: number | null; discount?: LineDisc };
-type OrderResult = { invoiceUrl: string; name: string; totalPrice: string };
+type OrderResult = { invoiceUrl: string; name: string; subtotalPrice: string; totalTax: string; totalPrice: string };
 type Product = { sku: string; label: string; search: string; price: number | null; inStock: boolean; onReplen: boolean };
 
 // Categories where the order panel opens (and pre-fills) automatically.
@@ -190,7 +190,7 @@ export default function OrderPanel({
       const linkText = `You can complete your order securely here:\n${d.invoiceUrl}`;
       onLink(lastInsertedRef.current, linkText); // replace any prior link — never stack two
       lastInsertedRef.current = linkText;
-      setResult({ invoiceUrl: d.invoiceUrl, name: d.name, totalPrice: d.totalPrice });
+      setResult({ invoiceUrl: d.invoiceUrl, name: d.name, subtotalPrice: d.subtotalPrice, totalTax: d.totalTax, totalPrice: d.totalPrice });
     } catch {
       setError("Couldn't reach the order service.");
     } finally {
@@ -412,10 +412,9 @@ export default function OrderPanel({
           <span className="text-neutral-400">set a discount on each line above</span>
         )}
         <span className="ml-auto text-neutral-600">
-          Subtotal ${money(subtotal)}
+          Est. ${money(estTotal)} before tax
           {anyUnknown && <span className="text-neutral-400"> (+ unpriced lines)</span>}
-          {" · "}
-          <span className="font-medium">Est. total ${money(estTotal)}</span>
+          <span className="text-neutral-400"> · tax added at checkout</span>
         </span>
       </div>
 
@@ -423,7 +422,9 @@ export default function OrderPanel({
 
       {result ? (
         <div className="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
-          <div className="font-medium">Order {result.name} · charged total ${result.totalPrice}</div>
+          <div className="font-medium">
+            Order {result.name} · ${result.subtotalPrice} + ${result.totalTax} tax = <span className="underline">${result.totalPrice}</span>
+          </div>
           {parseFloat(result.totalPrice) <= 0 ? (
             <div className="mt-0.5 font-medium text-amber-700">⚠ This order totals $0 — confirm that&apos;s intended (free/warranty) before sending.</div>
           ) : (

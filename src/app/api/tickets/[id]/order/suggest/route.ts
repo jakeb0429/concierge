@@ -73,7 +73,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   if (detected.productFamily && tenant.slug === "rheos") {
     try {
       candidates = await prisma.$queryRawUnsafe<Candidate[]>(
-        `SELECT sku, name, price::text AS price, "frameColor", "lensColor"
+        `SELECT sku, name, COALESCE("expectedRetailPrice", price)::text AS price, "frameColor", "lensColor"
          FROM public."Product"
          WHERE quantity > 0 AND "shopifyId" IS NOT NULL
            AND (replenishment IS NULL OR replenishment NOT IN ('Clearance','Gone forever','Gone Forever','Discontinued','Inactive'))

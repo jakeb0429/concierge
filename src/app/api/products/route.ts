@@ -36,7 +36,11 @@ export async function GET() {
   let rows: Row[] = [];
   try {
     rows = await prisma.$queryRawUnsafe<Row[]>(
-      `SELECT sku, name, "frameName", "frameColor", "lensColor", price::text AS price, quantity, replenishment
+      // MSRP = "expectedRetailPrice" (the retail price the customer pays, and what
+      // Shopify charges), NOT "price" (which is the wholesale/cost, ~half). Fall
+      // back to price only if the retail price is missing.
+      `SELECT sku, name, "frameName", "frameColor", "lensColor",
+              COALESCE("expectedRetailPrice", price)::text AS price, quantity, replenishment
        FROM public."Product"
        WHERE "shopifyId" IS NOT NULL
          AND (quantity > 0 OR replenishment = 'Replenishment')

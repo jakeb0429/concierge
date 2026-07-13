@@ -29,9 +29,12 @@ export interface CheckoutItem {
 export interface CheckoutResult {
   invoiceUrl: string;
   name: string;
+  /** Pre-tax merchandise total (after discounts). */
+  subtotalPrice: string;
+  /** Estimated sales tax. */
+  totalTax: string;
+  /** Grand total the customer pays (subtotal + tax). */
   totalPrice: string;
-  /** SKUs that didn't resolve to a Shopify variant (order built from the rest). */
-  notFound: string[];
 }
 
 export async function createCheckoutLink(params: {
@@ -69,7 +72,8 @@ export async function createCheckoutLink(params: {
   return {
     invoiceUrl: data.invoiceUrl,
     name: data.name ?? "",
+    subtotalPrice: data.subtotalPrice ?? "",
+    totalTax: data.totalTax ?? "",
     totalPrice: data.totalPrice ?? "",
-    notFound: data.notFound ?? [],
   };
 }

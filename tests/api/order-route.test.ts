@@ -28,7 +28,7 @@ beforeEach(() => {
   sessionUser.mockResolvedValue({ id: "rep1", email: "rep@x.com" });
   prisma.ticket.findFirst.mockResolvedValue({ id: "tk1", customer: { email: "kris@x.com" } });
   prisma.auditEvent.create.mockResolvedValue({});
-  createCheckoutLink.mockResolvedValue({ invoiceUrl: "https://x/invoices/abc", name: "#D1", totalPrice: "74.12", notFound: [] });
+  createCheckoutLink.mockResolvedValue({ invoiceUrl: "https://x/invoices/abc", name: "#D1", subtotalPrice: "68.00", totalTax: "6.12", totalPrice: "74.12" });
 });
 
 describe("POST /api/tickets/[id]/order", () => {
