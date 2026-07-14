@@ -59,10 +59,29 @@ function Box({ title, rows, empty }: { title: string; rows: QRow[]; empty?: stri
 
 /** Admin-only scope switcher: view your own queue, the whole team's, or step
  *  through one teammate's. Server-rendered links — no client JS, every view is
- *  a shareable URL. */
-function ScopeBar({ who, users }: { who: string; users: { id: string; label: string }[] }) {
+ *  a shareable URL. Each chip carries that person's OPEN-question count so the
+ *  load is visible at a glance; teammates sort busiest-first. */
+function ScopeBar({
+  who,
+  users,
+  allCount,
+  unassignedCount,
+}: {
+  who: string;
+  users: { id: string; label: string; count: number }[];
+  allCount: number;
+  unassignedCount: number;
+}) {
   const chip = (active: boolean) =>
-    `rounded-full px-3 py-1 text-xs ${active ? "bg-gold text-white" : "border border-neutral-200 text-neutral-600 hover:bg-neutral-50"}`;
+    `inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs ${active ? "bg-gold text-white" : "border border-neutral-200 text-neutral-600 hover:bg-neutral-50"}`;
+  const countBadge = (n: number, active: boolean) =>
+    n > 0 ? (
+      <span
+        className={`rounded-full px-1.5 text-[10px] font-semibold leading-4 ${active ? "bg-white/25 text-white" : "bg-neutral-100 text-neutral-700"}`}
+      >
+        {n}
+      </span>
+    ) : null;
   return (
     <div className="mb-4 flex flex-wrap items-center gap-1.5">
       <span className="mr-1 text-[11px] font-semibold uppercase tracking-wide text-warm-grey">View</span>
@@ -70,11 +89,16 @@ function ScopeBar({ who, users }: { who: string; users: { id: string; label: str
         Mine
       </Link>
       <Link href="/questions?who=all" className={chip(who === "all")}>
-        Everyone
+        Everyone {countBadge(allCount, who === "all")}
       </Link>
+      {unassignedCount > 0 && (
+        <Link href="/questions?who=unassigned" className={chip(who === "unassigned")}>
+          Unassigned {countBadge(unassignedCount, who === "unassigned")}
+        </Link>
+      )}
       {users.map((u) => (
         <Link key={u.id} href={`/questions?who=${u.id}`} className={chip(who === u.id)}>
-          {u.label}
+          {u.label} {countBadge(u.count, who === u.id)}
         </Link>
       ))}
     </div>
@@ -100,11 +124,36 @@ export default async function Questions({ searchParams }: { searchParams: Promis
   } as const;
 
   // Admin-only scope. Non-admins are pinned to "me" no matter what the URL says.
-  const users = admin
-    ? (await cachedTenantUsers(tenant.id)).map((u) => ({ id: u.id, label: u.name ?? u.email.split("@")[0] }))
-    : [];
+  // Open-question counts ride on the scope chips (one cheap groupBy) so the
+  // team's load is scannable; teammates sort busiest-first.
+  let users: { id: string; label: string; count: number }[] = [];
+  let allCount = 0;
+  let unassignedCount = 0;
+  if (admin) {
+    const [tenantUsers, openByAssignee] = await Promise.all([
+      cachedTenantUsers(tenant.id),
+      prisma.ticketQuestion.groupBy({
+        by: ["assigneeId"],
+        where: { tenantId: tenant.id, status: "open" },
+        _count: { _all: true },
+      }),
+    ]);
+    const countFor = new Map(openByAssignee.map((g) => [g.assigneeId, g._count._all]));
+    unassignedCount = countFor.get(null) ?? 0;
+    allCount = openByAssignee.reduce((sum, g) => sum + g._count._all, 0);
+    users = tenantUsers
+      .map((u) => ({
+        id: u.id,
+        label: u.name ?? u.email.split("@")[0],
+        count: countFor.get(u.id) ?? 0,
+      }))
+      .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label, undefined, { sensitivity: "base" }));
+  }
   const rawWho = (await searchParams).who ?? "me";
-  const who = admin && (rawWho === "all" || users.some((u) => u.id === rawWho)) ? rawWho : "me";
+  const who =
+    admin && (rawWho === "all" || rawWho === "unassigned" || users.some((u) => u.id === rawWho))
+      ? rawWho
+      : "me";
 
   const header = (
     <div className="mb-4 flex items-baseline justify-between">
@@ -113,9 +162,11 @@ export default async function Questions({ searchParams }: { searchParams: Promis
     </div>
   );
 
-  // ADMIN SCOPE — the whole team's queue, or one teammate's, grouped by status.
+  // ADMIN SCOPE — the whole team's queue, one teammate's, or the unassigned
+  // pool ("anyone" questions have no per-person view otherwise).
   if (who !== "me") {
-    const assigneeWhere = who === "all" ? {} : { assigneeId: who };
+    const assigneeWhere =
+      who === "all" ? {} : who === "unassigned" ? { assigneeId: null } : { assigneeId: who };
     const [active, recentClosed] = await Promise.all([
       prisma.ticketQuestion.findMany({
         where: { tenantId: tenant.id, status: { in: ["open", "answered"] }, ...assigneeWhere },
@@ -132,12 +183,17 @@ export default async function Questions({ searchParams }: { searchParams: Promis
     ]);
     const open = active.filter((q) => q.status === "open");
     const answered = active.filter((q) => q.status === "answered");
-    const whoLabel = who === "all" ? "the whole team" : (users.find((u) => u.id === who)?.label ?? "this teammate");
+    const whoLabel =
+      who === "all"
+        ? "the whole team"
+        : who === "unassigned"
+          ? "the unassigned pool (open to anyone)"
+          : (users.find((u) => u.id === who)?.label ?? "this teammate");
 
     return (
       <div>
         {header}
-        <ScopeBar who={who} users={users} />
+        <ScopeBar who={who} users={users} allCount={allCount} unassignedCount={unassignedCount} />
         <p className="mb-3 -mt-1 text-xs text-neutral-400">Showing questions for {whoLabel}.</p>
         <Box title="Open" rows={open} empty="No open questions here." />
         <Box title="Answered — awaiting close" rows={answered} />
@@ -180,7 +236,7 @@ export default async function Questions({ searchParams }: { searchParams: Promis
   return (
     <div>
       {header}
-      {admin && <ScopeBar who="me" users={users} />}
+      {admin && <ScopeBar who="me" users={users} allCount={allCount} unassignedCount={unassignedCount} />}
       <Box title="Waiting on you" rows={waiting} empty="Nothing waiting on you." />
       <Box title="Open for anyone" rows={openTeam} />
       <Box title="You asked" rows={mine} />
