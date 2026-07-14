@@ -9,9 +9,10 @@ const { prisma, sessionUser, getCurrentTenant, sendEmail, baseUrl } = vi.hoisted
   prisma: {
     ticket: { findFirst: vi.fn() },
     user: { findFirst: vi.fn() },
-    ticketQuestion: { create: vi.fn(), findFirst: vi.fn(), update: vi.fn() },
+    ticketQuestion: { create: vi.fn(), findFirst: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
     ticketQuestionReply: { create: vi.fn() },
     auditEvent: { create: vi.fn() },
+    $transaction: vi.fn(),
   },
   sessionUser: vi.fn(),
   getCurrentTenant: vi.fn(),
@@ -30,6 +31,7 @@ vi.mock("@/lib/base-url", () => ({ baseUrl }));
 const { POST: ASK } = await import("@/app/api/tickets/[id]/questions/route");
 const { POST: REPLY } = await import("@/app/api/questions/[id]/replies/route");
 const { PATCH: STATUS } = await import("@/app/api/questions/[id]/route");
+const { POST: REASSIGN } = await import("@/app/api/questions/[id]/reassign/route");
 
 const req = (url: string, method: string, body: unknown) =>
   new Request(`http://localhost:3014${url}`, { method, body: JSON.stringify(body) });
@@ -40,6 +42,7 @@ beforeEach(() => {
   getCurrentTenant.mockResolvedValue({ id: "t1", slug: "stingray" });
   sessionUser.mockResolvedValue({ id: "rep1", email: "rep@x.com", tenantId: "t1", role: "brand_admin" });
   prisma.auditEvent.create.mockResolvedValue({});
+  prisma.$transaction.mockImplementation((ops: Promise<unknown>[]) => Promise.all(ops));
   sendEmail.mockResolvedValue(true);
   baseUrl.mockReturnValue("https://concierge.test");
 });
@@ -231,5 +234,140 @@ describe("PATCH /api/questions/[id] (close/reopen)", () => {
     prisma.ticketQuestion.findFirst.mockResolvedValue({ id: "q1", ticketId: "tk1", tenantId: "t1", askedById: "rep1" });
     const res = await STATUS(req("/api/questions/q1", "PATCH", { status: "closed" }), params("q1"));
     expect(res.status).toBe(200);
+  });
+});
+
+describe("POST /api/questions/[id]/reassign", () => {
+  // assignee = jim; asker = rep1 (the seeded session user is rep1/brand_admin).
+  const question = {
+    id: "q1",
+    ticketId: "tk1",
+    body: "Who can help with the flag graphic?",
+    askedById: "rep1",
+    assigneeId: "jim",
+    status: "open",
+    ticket: { id: "tk1", subject: "Graphics", customer: { displayName: "Al" } },
+  };
+  // The signed-in user for these is jim (the current assignee), unless overridden.
+  beforeEach(() => {
+    sessionUser.mockResolvedValue({ id: "jim", email: "jim@x.com", tenantId: "t1", role: "agent" });
+  });
+
+  it("401s with no session", async () => {
+    sessionUser.mockResolvedValue(null);
+    const res = await REASSIGN(req("/api/questions/q1/reassign", "POST", { assigneeId: "dave" }), params("q1"));
+    expect(res.status).toBe(401);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("400s a body with no assignee before touching the DB", async () => {
+    const res = await REASSIGN(req("/api/questions/q1/reassign", "POST", { comment: "here" }), params("q1"));
+    expect(res.status).toBe(400);
+    expect(prisma.ticketQuestion.findFirst).not.toHaveBeenCalled();
+  });
+
+  it("404s a question outside the session tenant", async () => {
+    prisma.ticketQuestion.findFirst.mockResolvedValue(null);
+    const res = await REASSIGN(req("/api/questions/q1/reassign", "POST", { assigneeId: "dave" }), params("q1"));
+    expect(res.status).toBe(404);
+  });
+
+  it("400s a closed question", async () => {
+    prisma.ticketQuestion.findFirst.mockResolvedValue({ ...question, status: "closed" });
+    const res = await REASSIGN(req("/api/questions/q1/reassign", "POST", { assigneeId: "dave" }), params("q1"));
+    expect(res.status).toBe(400);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("403s someone who is neither the assignee, the asker, nor an admin", async () => {
+    sessionUser.mockResolvedValue({ id: "stranger", email: "s@x.com", tenantId: "t1", role: "agent" });
+    prisma.ticketQuestion.findFirst.mockResolvedValue(question);
+    const res = await REASSIGN(req("/api/questions/q1/reassign", "POST", { assigneeId: "dave" }), params("q1"));
+    expect(res.status).toBe(403);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("400s a no-op reassign to the current assignee", async () => {
+    prisma.ticketQuestion.findFirst.mockResolvedValue(question);
+    const res = await REASSIGN(req("/api/questions/q1/reassign", "POST", { assigneeId: "jim" }), params("q1"));
+    expect(res.status).toBe(400);
+    expect(prisma.user.findFirst).not.toHaveBeenCalled();
+  });
+
+  it("400s an unknown / cross-tenant teammate", async () => {
+    prisma.ticketQuestion.findFirst.mockResolvedValue(question);
+    prisma.user.findFirst.mockResolvedValue(null); // tenant-scoped lookup finds nothing
+    const res = await REASSIGN(req("/api/questions/q1/reassign", "POST", { assigneeId: "intruder" }), params("q1"));
+    expect(res.status).toBe(400);
+    expect(prisma.user.findFirst).toHaveBeenCalledWith({
+      where: { id: "intruder", tenantId: "t1" },
+      select: { id: true, email: true, name: true },
+    });
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("the assignee hands off with a note: reopens to the new person, logs the note, audits, and emails", async () => {
+    prisma.ticketQuestion.findFirst.mockResolvedValue(question);
+    prisma.user.findFirst.mockResolvedValue({ id: "dave", email: "dave@x.com", name: "Dave" });
+    prisma.ticketQuestion.update.mockResolvedValue({ id: "q1" });
+    prisma.ticketQuestionReply.create.mockResolvedValue({ id: "note1" });
+    const res = await REASSIGN(
+      req("/api/questions/q1/reassign", "POST", { assigneeId: "dave", comment: "more your area" }),
+      params("q1")
+    );
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, assigneeId: "dave" });
+    // status returns to "open" so it lands in Dave's "Waiting on you".
+    expect(prisma.ticketQuestion.update).toHaveBeenCalledWith({
+      where: { id: "q1" },
+      data: { assigneeId: "dave", status: "open" },
+    });
+    // the handoff note is a visible reply authored by the reassigner.
+    expect(prisma.ticketQuestionReply.create).toHaveBeenCalledWith({
+      data: { tenantId: "t1", questionId: "q1", authorId: "jim", body: "↪ Reassigned to Dave: more your area" },
+    });
+    expect(prisma.auditEvent.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: "question_reassigned",
+        entity: "ticket:tk1",
+        actorId: "jim",
+        meta: expect.objectContaining({ from: "jim", to: "dave", hasComment: true }),
+      }),
+    });
+    expect(sendEmail).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: ["dave@x.com"],
+        text: expect.stringContaining("https://concierge.test/tickets/tk1/qa"),
+      })
+    );
+  });
+
+  it("an admin can reassign a question they neither asked nor own", async () => {
+    sessionUser.mockResolvedValue({ id: "boss", email: "boss@x.com", tenantId: "t1", role: "brand_admin" });
+    prisma.ticketQuestion.findFirst.mockResolvedValue(question);
+    prisma.user.findFirst.mockResolvedValue({ id: "dave", email: "dave@x.com", name: "Dave" });
+    prisma.ticketQuestion.update.mockResolvedValue({ id: "q1" });
+    prisma.ticketQuestionReply.create.mockResolvedValue({ id: "note1" });
+    const res = await REASSIGN(req("/api/questions/q1/reassign", "POST", { assigneeId: "dave" }), params("q1"));
+    expect(res.status).toBe(200);
+    // no comment → the note is just the handoff line.
+    expect(prisma.ticketQuestionReply.create).toHaveBeenCalledWith({
+      data: { tenantId: "t1", questionId: "q1", authorId: "boss", body: "↪ Reassigned to Dave" },
+    });
+  });
+
+  it("escapes user text in the notification's HTML part", async () => {
+    prisma.ticketQuestion.findFirst.mockResolvedValue({ ...question, subject: "x", body: 'Click <a href="https://evil.example">here</a>?' });
+    prisma.user.findFirst.mockResolvedValue({ id: "dave", email: "dave@x.com", name: "Dave" });
+    prisma.ticketQuestion.update.mockResolvedValue({ id: "q1" });
+    prisma.ticketQuestionReply.create.mockResolvedValue({ id: "note1" });
+    const res = await REASSIGN(
+      req("/api/questions/q1/reassign", "POST", { assigneeId: "dave", comment: "<b>note</b>" }),
+      params("q1")
+    );
+    expect(res.status).toBe(200);
+    const { html } = sendEmail.mock.calls[0][0];
+    expect(html).not.toContain('<a href="https://evil.example">');
+    expect(html).toContain("&lt;b&gt;note&lt;/b&gt;");
   });
 });

@@ -19,6 +19,7 @@ const ACTION_LABEL: Record<string, string> = {
   ticket_resolved: "ticket resolved",
   ticket_archived: "ticket archived",
   ticket_reassigned: "ticket reassigned",
+  question_reassigned: "question reassigned",
   ticket_recategorized: "ticket recategorized",
   auto_assigned: "auto-assigned to specialist",
   provider_archived: "archived in the mailbox",

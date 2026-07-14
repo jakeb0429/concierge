@@ -1,7 +1,8 @@
 # Concierge — Handoff & Transition Document
 
 > Written 2026-07-02 after the initial build sprint (scaffold → production in ~36 hours).
-> Live at **https://concierge.scribechs.com** · Repo **github.com/jakeb0429/concierge** (private)
+> Live at **https://concierge.scribechs.com** · Repo **github.com/jakeb0429/concierge** (**public** —
+> keep customer names OUT of commit messages; the auto-mode classifier blocks pushes that leak them)
 > Audience: Jake, future contributors, and future Claude sessions.
 
 ---
@@ -104,7 +105,7 @@ embeddings for entries created outside the app).
 | `RHEOS_GMAIL_CLIENT_EMAIL/PRIVATE_KEY` | service account `concierge-gmail@rheos-floating-s…` w/ domain-wide delegation, scope `gmail.modify` | impersonates hello@ AND wholesale@ |
 | `HUBSPOT_TOKEN` | history mining, product catalog | copied from rheos-inventory |
 | `SHOPIFY_SHOP/CLIENT_ID/CLIENT_SECRET/API_VERSION` | **Dev Dashboard client credentials** — tokens minted per call, 24 h expiry, `read_all_orders` granted | THIS is why old `shpat_` tokens kept "dying"; there is nothing static to rotate anymore |
-| `VOYAGE_API_KEY` | embeddings (voyage-3-large, 1024-dim) | account has NO billing card → 3 req/min throttle |
+| `VOYAGE_API_KEY` | embeddings (voyage-3-large, 1024-dim) | billing card added 2026-07-12 → 3 req/min throttle LIFTED; semantic recall verified |
 | `MAILGUN_API_KEY/DOMAIN`, `EMAIL_FROM` | magic-link sign-in email | domain justforfun.scribechs.com |
 | `AUTH_SECRET`, `AUTH_URL`, `AUTH_ALLOWLIST` | auth (allowlist gates magic-link; now incl. dev@scribechs.com) | **`AUTH_URL` must stay set** — Auth.js under Next 16 ignores proxy Host headers; losing it regresses sign-in redirects to localhost |
 | `CONCIERGE_LIVE_SEND` | `"true"` = replies actually transmit | flip to anything else for log-only soft mode |
@@ -359,8 +360,9 @@ half mechanical.
    signed-in user could approve). Fine at current team size; tighten before adding reps.
 7. **Single-tenant hardcode** — `getCurrentTenant()` returns Rheos. The schema is multi-tenant
    throughout; the resolver is the one seam to replace at Stingray onboarding.
-8. **Voyage throttle** (no billing card): 3 req/min. Drafting retrieval uses 1 embed call per
-   draft — fine solo, will queue with several concurrent reps.
+8. **[RESOLVED 2026-07-12]** ~~Voyage throttle (no billing card): 3 req/min~~ — billing card
+   added, throttle lifted, semantic recall verified. Drafting retrieval uses 1 embed call per
+   draft; no longer queues under concurrent reps.
 9. **PM2 single instance, no CI** — deploys are manual/rsync; GitHub is source-of-truth but
    nothing auto-deploys on push.
 

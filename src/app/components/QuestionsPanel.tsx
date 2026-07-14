@@ -44,17 +44,43 @@ export default function QuestionsPanel({
   meId,
   users,
   questions,
+  isAdmin = false,
 }: {
   ticketId: string;
   meId: string | null;
   users: TeamUser[];
   questions: QuestionRow[];
+  isAdmin?: boolean;
 }) {
   const router = useRouter();
   const [ask, setAsk] = useState("");
   const [askWho, setAskWho] = useState("");
   const [replyDrafts, setReplyDrafts] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
+  // Which question's reassign form is open, plus its pending picks.
+  const [reassignFor, setReassignFor] = useState<string | null>(null);
+  const [reassignTo, setReassignTo] = useState("");
+  const [reassignComment, setReassignComment] = useState("");
+
+  function openReassign(qid: string) {
+    setReassignFor((cur) => (cur === qid ? null : qid));
+    setReassignTo("");
+    setReassignComment("");
+  }
+
+  async function submitReassign(qid: string) {
+    if (busy || !reassignTo) return;
+    if (
+      await call(`/api/questions/${qid}/reassign`, "POST", {
+        assigneeId: reassignTo,
+        comment: reassignComment.trim() || undefined,
+      })
+    ) {
+      setReassignFor(null);
+      setReassignTo("");
+      setReassignComment("");
+    }
+  }
 
   async function call(url: string, method: string, body: object) {
     setBusy(true);
@@ -115,27 +141,90 @@ export default function QuestionsPanel({
                 )}{" "}
                 · {fmt(q.createdAt)}
               </span>
-              {meId === q.askedById && q.status !== "closed" && (
-                <button
-                  onClick={() => call(`/api/questions/${q.id}`, "PATCH", { status: "closed" })}
-                  disabled={busy}
-                  className="ml-auto rounded-lg border border-neutral-200 px-2 py-0.5 hover:bg-neutral-50 disabled:opacity-40"
-                  title="Got what you needed — clear it from the team's queue"
-                >
-                  Close
-                </button>
-              )}
-              {meId === q.askedById && q.status === "closed" && (
-                <button
-                  onClick={() => call(`/api/questions/${q.id}`, "PATCH", { status: "open" })}
-                  disabled={busy}
-                  className="ml-auto rounded-lg border border-neutral-200 px-2 py-0.5 hover:bg-neutral-50 disabled:opacity-40"
-                >
-                  Reopen
-                </button>
-              )}
+              <span className="ml-auto flex items-center gap-1.5">
+                {q.status !== "closed" &&
+                  (meId === q.assigneeId || meId === q.askedById || isAdmin) && (
+                    <button
+                      onClick={() => openReassign(q.id)}
+                      disabled={busy}
+                      className="rounded-lg border border-neutral-200 px-2 py-0.5 hover:bg-neutral-50 disabled:opacity-40"
+                      title="Hand this off to a different teammate"
+                    >
+                      Reassign
+                    </button>
+                  )}
+                {meId === q.askedById && q.status !== "closed" && (
+                  <button
+                    onClick={() => call(`/api/questions/${q.id}`, "PATCH", { status: "closed" })}
+                    disabled={busy}
+                    className="rounded-lg border border-neutral-200 px-2 py-0.5 hover:bg-neutral-50 disabled:opacity-40"
+                    title="Got what you needed — clear it from the team's queue"
+                  >
+                    Close
+                  </button>
+                )}
+                {meId === q.askedById && q.status === "closed" && (
+                  <button
+                    onClick={() => call(`/api/questions/${q.id}`, "PATCH", { status: "open" })}
+                    disabled={busy}
+                    className="rounded-lg border border-neutral-200 px-2 py-0.5 hover:bg-neutral-50 disabled:opacity-40"
+                  >
+                    Reopen
+                  </button>
+                )}
+              </span>
             </div>
             <p className="whitespace-pre-wrap text-sm text-neutral-800">{q.body}</p>
+
+            {reassignFor === q.id && q.status !== "closed" && (
+              <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50/60 p-2.5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-[11px] font-medium text-neutral-600">Reassign to</span>
+                  <select
+                    value={reassignTo}
+                    onChange={(e) => setReassignTo(e.target.value)}
+                    className="rounded-lg border border-neutral-200 px-2 py-1.5 text-xs text-neutral-700"
+                  >
+                    <option value="">choose a teammate…</option>
+                    {users
+                      .filter((u) => u.id !== q.assigneeId)
+                      .map((u) => (
+                        <option key={u.id} value={u.id}>
+                          {u.label}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+                <input
+                  value={reassignComment}
+                  onChange={(e) => setReassignComment(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey && reassignTo) {
+                      e.preventDefault();
+                      submitReassign(q.id);
+                    }
+                  }}
+                  placeholder="Add a note for them (optional), e.g. why it's more their area"
+                  className="mt-2 w-full rounded-lg border border-neutral-200 px-2.5 py-1.5 text-sm"
+                />
+                <div className="mt-2 flex gap-2">
+                  <button
+                    onClick={() => submitReassign(q.id)}
+                    disabled={busy || !reassignTo}
+                    className="rounded-lg bg-neutral-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-neutral-700 disabled:opacity-40"
+                  >
+                    Reassign
+                  </button>
+                  <button
+                    onClick={() => setReassignFor(null)}
+                    disabled={busy}
+                    className="rounded-lg border border-neutral-200 px-3 py-1.5 text-xs text-neutral-600 hover:bg-neutral-50 disabled:opacity-40"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
 
             {q.replies.length > 0 && (
               <div className="mt-2 space-y-1.5 border-l-2 border-neutral-100 pl-3">

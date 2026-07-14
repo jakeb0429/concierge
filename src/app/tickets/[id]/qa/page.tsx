@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { getCurrentTenant } from "@/lib/tenant";
-import { sessionUser } from "@/lib/roles";
+import { sessionUser, isAdminRole } from "@/lib/roles";
 import { cleanEmailText } from "@/lib/email-clean";
 import { cachedTenantUsers } from "@/lib/team-cache";
 import QuestionsPanel from "@/app/components/QuestionsPanel";
@@ -78,6 +78,7 @@ export default async function TicketQA({ params }: { params: Promise<{ id: strin
       <QuestionsPanel
         ticketId={ticket.id}
         meId={me?.id ?? null}
+        isAdmin={isAdminRole(me?.role)}
         users={users.map((u) => ({ id: u.id, label: u.name ?? u.email.split("@")[0] }))}
         questions={questions.map((q) => ({
           id: q.id,

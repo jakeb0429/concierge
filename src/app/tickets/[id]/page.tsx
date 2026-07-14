@@ -8,7 +8,7 @@ import { getCustomerInsight } from "@/lib/customer-insight";
 import { notesForTicket } from "@/lib/notes";
 import { extractProductMention } from "@/lib/product-extract";
 import { getCurrentTenant } from "@/lib/tenant";
-import { sessionUser } from "@/lib/roles";
+import { sessionUser, isAdminRole } from "@/lib/roles";
 import { cachedTenantUsers } from "@/lib/team-cache";
 import TicketWorkspace from "./TicketWorkspace";
 
@@ -213,6 +213,7 @@ export default async function TicketDetail({ params }: { params: Promise<{ id: s
         detectedFamily={pm.productFamily}
         handledEvidence={handledEvidence}
         meId={me?.id ?? null}
+        isAdmin={isAdminRole(me?.role)}
         questions={questions.map((q) => {
           const label = (u: { name: string | null; email: string }) => u.name ?? u.email.split("@")[0];
           return {

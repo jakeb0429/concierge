@@ -116,6 +116,7 @@ export default function TicketWorkspace({
   detectedFamily = null,
   handledEvidence = null,
   meId = null,
+  isAdmin = false,
   questions = [],
 }: {
   ticket: Ticket;
@@ -133,6 +134,7 @@ export default function TicketWorkspace({
   detectedFamily?: string | null;
   handledEvidence?: string[] | null;
   meId?: string | null;
+  isAdmin?: boolean;
   questions?: QuestionRow[];
 }) {
   const router = useRouter();
@@ -614,7 +616,7 @@ export default function TicketWorkspace({
 
       <ZoneLabel dot="bg-amber-400" text="Added context" hint="facts your team pinned — these ground the draft" />
       {/* internal Q&A — ask a teammate; they answer from the simple view */}
-      <QuestionsPanel ticketId={ticket.id} meId={meId} users={assign?.users ?? []} questions={questions} />
+      <QuestionsPanel ticketId={ticket.id} meId={meId} isAdmin={isAdmin} users={assign?.users ?? []} questions={questions} />
       {/* rep-pinned facts: this ticket, this customer, or a product */}
       <NotesPanel key={contextNotes.length} notes={contextNotes} ticketId={ticket.id} customerId={ticket.customerId} />
       {/* citations + teach the Brain — knowledge capture, not composing, so it
