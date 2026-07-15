@@ -90,7 +90,7 @@ export function triageDeterministic(
   const domain = email.split("@")[1] ?? "";
   if (/^(no-?reply|do-?not-?reply|notifications?|alerts?|mailer-daemon|postmaster)@/.test(email))
     return "automated_notification";
-  if (/(^|\.)(hubspot|shipstation|shopify|klaviyo|stripe|paypal|google|mailchimp)(mail|email|notifications?)?\.(com|net)$/.test(domain))
+  if (/(^|\.)(hubspot|shipstation|shopify|klaviyo|stripe|paypal|google|mailchimp|facebook|proofpoint(essentials)?)(mail|email|notifications?)?\.(com|net)$/.test(domain))
     return "automated_notification";
   if (brand.internalDomains.includes(domain)) return "internal";
   if (subject && /^(fwd:\s*new voicemail|out of office|automatic reply|delivery status)/i.test(subject))

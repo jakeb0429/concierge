@@ -1,5 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import { triage, brandContextFor } from "../src/lib/triage";
+import { isRepeatNoiseSender } from "../src/lib/noise-suppress";
 import { autoAssign } from "../src/lib/assign";
 import { extractProductMention } from "../src/lib/product-extract";
 import { shouldReopenOnInbound } from "../src/lib/reopen";
@@ -127,6 +128,12 @@ async function intakeMailbox(tenantId: string, tenantSlug: string, channelId: st
       ticketId = existing.id;
     } else {
       const t = await triage(fromEmail, subject, text, brandContextFor(tenantSlug));
+      // Repeat digest/newsletter sender → no new ticket at all (the first
+      // noise thread already left an archived ticket as the audit trail).
+      if (t.isNoise && (await isRepeatNoiseSender(prisma, tenantId, customer.id, t.category))) {
+        skippedNoise.push(`${fromEmail} (${t.category}, repeat — suppressed)`);
+        continue;
+      }
       const pm = await extractProductMention(`${subject ?? ""}\n${text}`);
       const tags = [t.category, ...(pm.productFamily ? [`product:${pm.productFamily}`] : [])];
       const created = await prisma.ticket.create({

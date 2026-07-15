@@ -4,6 +4,7 @@ import { generateDraft } from "@/lib/brain/draft";
 import { appendPromoFooter, stripPromoFooter } from "@/lib/brain/promo-footer";
 import { cleanEmailText } from "@/lib/email-clean";
 import { getOrderContext, orderContextLines } from "@/lib/shipstation";
+import { getRegisteredBoats, boatContextLines } from "@/lib/boats";
 import { getCustomerInsight } from "@/lib/customer-insight";
 import { groundingNotes } from "@/lib/notes";
 import { findStockists, stockistLines, detectPlace } from "@/lib/stockists";
@@ -94,6 +95,15 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const orders = await getOrderContext(ticket.customer.email, ticket.tenantId);
   if (orders.length)
     liveContext.push(`Order status (fulfillment system): ${orderContextLines(orders).join(" | ")}`);
+  // Dealer-network registrations (Stingray boats via DealersCircle import).
+  // Tenants without dealers-circle rows get [] — no branching needed.
+  const boats = ticket.tenantId
+    ? await getRegisteredBoats(ticket.customer.email, ticket.tenantId).catch(() => [])
+    : [];
+  if (boats.length)
+    liveContext.push(
+      `Registered boats (dealer network records — this sender's email matches these registrations): ${boatContextLines(boats).join(" | ")}`
+    );
   const insight = await getCustomerInsight(ticket.customer.id).catch(() => null);
   if (insight) liveContext.push(`Customer read (for tone/relevance, not policy claims): ${insight}`);
   if (ticket.customer.purchaseChannel)

@@ -384,8 +384,9 @@ model CustomerOrder {
   orderedAt   DateTime
   totalAmount Decimal  @db.Decimal(12, 2)
   orderRef    String
-  source      String   // "shopify-live" | "hubspot-b2b" | ...
+  source      String   // "shopify-live" | "hubspot-b2b" | "dealers-circle" | ...
   refunded    Boolean  @default(false) // refunded or partially refunded
+  description String?  // human line for non-commerce orders (e.g. a registered boat: model, hull, dealer)
   // --- buyer + ship-to identity (Shopify import) — powers related-customer
   // matching: family members / alternate emails via shared name or address ---
   buyerName    String? // Shopify customer first+last (the account holder)
