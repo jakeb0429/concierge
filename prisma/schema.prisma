@@ -505,6 +505,29 @@ model ContextNote {
   @@schema("concierge")
 }
 
+/// A happy-hour deal in Charleston / Mount Pleasant for the digest's morning
+/// widget. Written by the daily scan cron (prisma/happy-hour-scan.ts — Claude
+/// + web search over restaurant announcements) and upserted by dedupeKey, so
+/// re-runs converge. Deliberately NOT tenant-scoped: it's one shared local
+/// feed for the team, not brand data.
+model HappyHourSpecial {
+  id          String   @id @default(cuid())
+  dedupeKey   String   @unique // normalized venue|deal — the idempotent upsert key
+  venue       String   // "The Grocery"
+  area        String   // "Charleston" | "Mount Pleasant"
+  deal        String   // "$5 martinis"
+  details     String?  @db.Text // schedule + fine print ("half off select appetizers, Mon-Fri 4-6pm")
+  kind        String   @default("recurring") // "special" = freshly announced/limited-time | "recurring" = standing happy hour
+  source      String?  // where it was spotted ("Instagram @thegrocerychs", "Eater Carolinas")
+  sourceUrl   String?
+  active      Boolean  @default(true) // manual kill switch for wrong or ended deals
+  firstSeenAt DateTime @default(now())
+  lastSeenAt  DateTime @default(now()) // scan re-stamps on every sighting; freshness filter reads this
+
+  @@index([active, lastSeenAt])
+  @@schema("concierge")
+}
+
 /// Who did what and when (drafts, edits, sends, promotions, rule actions).
 model AuditEvent {
   id        String   @id @default(cuid())

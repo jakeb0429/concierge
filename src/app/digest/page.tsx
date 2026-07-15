@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { getCurrentTenant } from "@/lib/tenant";
 import { sessionUser, isAdminRole } from "@/lib/roles";
 import { buildDigest, digestRecords, DRILL_TITLE, DRILL_KEYS, type DigestPeriod, type DrillKey } from "@/lib/digest";
+import { getHappyHourSpecials } from "@/lib/happy-hour";
 import { fmtDuration } from "@/lib/response-times";
 
 export const dynamic = "force-dynamic";
@@ -19,9 +20,10 @@ export default async function DigestPage({
   const { period: raw, show: rawShow } = await searchParams;
   const period: DigestPeriod = raw === "weekly" ? "weekly" : "daily";
   const show: DrillKey | null = (DRILL_KEYS as readonly string[]).includes(rawShow ?? "") ? (rawShow as DrillKey) : null;
-  const [d, records] = await Promise.all([
+  const [d, records, happyHour] = await Promise.all([
     buildDigest(tenant.id, period),
     show ? digestRecords(tenant.id, period, show) : Promise.resolve(null),
+    period === "daily" ? getHappyHourSpecials() : Promise.resolve([]),
   ]);
   const qs = period === "weekly" ? "?period=weekly" : "?";
   const drillHref = (key: DrillKey) =>
@@ -108,6 +110,46 @@ export default async function DigestPage({
         {tile("Training pending", d.trainingOpen, { drill: "training" })}
         {tile("Expired notes", d.expiredNotes, { drill: "expired" }, d.expiredNotes > 0 ? "amber" : undefined)}
       </div>
+
+      {/* the fun one — local happy hours, refreshed by the morning scan */}
+      {period === "daily" && (
+        <div className="mb-4 rounded-xl border border-neutral-200 bg-white p-4">
+          <div className="mb-2 flex items-baseline justify-between">
+            <div className="text-sm font-medium">Happy hour — Charleston &amp; Mount Pleasant</div>
+            <span className="text-xs text-neutral-400">spotted by the morning scan</span>
+          </div>
+          {happyHour.length ? (
+            <div className="divide-y divide-neutral-100">
+              {happyHour.map((s) => (
+                <div key={s.id} className="flex items-baseline gap-3 py-1.5 text-xs">
+                  <span className="w-36 flex-shrink-0 truncate font-medium text-neutral-800">
+                    {s.sourceUrl ? (
+                      <a href={s.sourceUrl} target="_blank" rel="noopener noreferrer" className="hover:underline">
+                        {s.venue}
+                      </a>
+                    ) : (
+                      s.venue
+                    )}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="text-neutral-700">{s.deal}</span>
+                    {s.details && <span className="text-neutral-400"> · {s.details}</span>}
+                    {s.source && <span className="text-neutral-300"> · via {s.source}</span>}
+                  </span>
+                  {s.kind === "special" && (
+                    <span className="flex-shrink-0 rounded-full bg-gold/15 px-2 py-0.5 font-semibold text-gold">NEW</span>
+                  )}
+                  <span className="flex-shrink-0 rounded-full bg-neutral-100 px-2 py-0.5 text-neutral-500">{s.area}</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-xs text-neutral-400">
+              Nothing on the board yet — the scan runs each morning around 6am ET.
+            </p>
+          )}
+        </div>
+      )}
 
       {show && records && (
         <div id="records" className="mb-4 rounded-xl border border-gold/40 bg-white p-4">
