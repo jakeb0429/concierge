@@ -32,6 +32,36 @@ export async function getRegisteredBoats(
   });
 }
 
+/**
+ * Name-based fallback for senders writing from a different address than the
+ * one on their registration (both real matches in the first live ticket batch
+ * did exactly that). Every name token must appear in buyerName — order-free,
+ * so "Matt Shelton" finds "Shelton, Matt". Callers must present results as
+ * unconfirmed ("registration under this name") — never as the sender's own.
+ */
+export async function getRegisteredBoatsByName(
+  displayName: string | null | undefined,
+  tenantId: string,
+  limit = 3
+): Promise<BoatRow[]> {
+  const tokens = (displayName ?? "")
+    .toLowerCase()
+    .split(/[^a-z]+/)
+    .filter((t) => t.length >= 2);
+  // A single token ("Melissa") matches far too many strangers — require two.
+  if (tokens.length < 2 || tokens.length > 5) return [];
+  return prisma.customerOrder.findMany({
+    where: {
+      tenantId,
+      source: DEALER_NETWORK_SOURCE,
+      AND: tokens.map((t) => ({ buyerName: { contains: t, mode: "insensitive" as const } })),
+    },
+    orderBy: { orderedAt: "desc" },
+    take: limit,
+    select: { orderRef: true, orderedAt: true, description: true },
+  });
+}
+
 const fmtDate = (d: Date) =>
   d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 

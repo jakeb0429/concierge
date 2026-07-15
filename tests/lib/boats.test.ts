@@ -3,7 +3,12 @@ import { describe, expect, it, vi } from "vitest";
 const findMany = vi.fn();
 vi.mock("@/lib/db", () => ({ prisma: { customerOrder: { findMany: (...a: unknown[]) => findMany(...a) } } }));
 
-import { getRegisteredBoats, boatContextLines, DEALER_NETWORK_SOURCE } from "@/lib/boats";
+import {
+  getRegisteredBoats,
+  getRegisteredBoatsByName,
+  boatContextLines,
+  DEALER_NETWORK_SOURCE,
+} from "@/lib/boats";
 
 describe("getRegisteredBoats", () => {
   it("queries dealers-circle rows scoped to the tenant, lowercased email", async () => {
@@ -19,6 +24,33 @@ describe("getRegisteredBoats", () => {
   it("returns [] for a blank email without querying", async () => {
     findMany.mockClear();
     expect(await getRegisteredBoats("   ", "tenant-1")).toEqual([]);
+    expect(findMany).not.toHaveBeenCalled();
+  });
+});
+
+describe("getRegisteredBoatsByName", () => {
+  it("matches every name token order-free ('Matt Shelton' finds 'Shelton, Matt')", async () => {
+    findMany.mockClear();
+    findMany.mockResolvedValueOnce([]);
+    await getRegisteredBoatsByName("Matt Shelton", "tenant-1");
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          tenantId: "tenant-1",
+          source: DEALER_NETWORK_SOURCE,
+          AND: [
+            { buyerName: { contains: "matt", mode: "insensitive" } },
+            { buyerName: { contains: "shelton", mode: "insensitive" } },
+          ],
+        }),
+      })
+    );
+  });
+
+  it("refuses single-token names — too many strangers share a first name", async () => {
+    findMany.mockClear();
+    expect(await getRegisteredBoatsByName("Melissa", "tenant-1")).toEqual([]);
+    expect(await getRegisteredBoatsByName(null, "tenant-1")).toEqual([]);
     expect(findMany).not.toHaveBeenCalled();
   });
 });

@@ -4,7 +4,7 @@ import { generateDraft } from "@/lib/brain/draft";
 import { appendPromoFooter, stripPromoFooter } from "@/lib/brain/promo-footer";
 import { cleanEmailText } from "@/lib/email-clean";
 import { getOrderContext, orderContextLines } from "@/lib/shipstation";
-import { getRegisteredBoats, boatContextLines } from "@/lib/boats";
+import { getRegisteredBoats, getRegisteredBoatsByName, boatContextLines } from "@/lib/boats";
 import { getCustomerInsight } from "@/lib/customer-insight";
 import { groundingNotes } from "@/lib/notes";
 import { findStockists, stockistLines, detectPlace } from "@/lib/stockists";
@@ -104,6 +104,18 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     liveContext.push(
       `Registered boats (dealer network records — this sender's email matches these registrations): ${boatContextLines(boats).join(" | ")}`
     );
+  else if (ticket.tenantId) {
+    // Owners often write from a different address than the one they
+    // registered with — surface name matches as UNCONFIRMED context only.
+    const byName = await getRegisteredBoatsByName(
+      ticket.customer.displayName,
+      ticket.tenantId
+    ).catch(() => []);
+    if (byName.length)
+      liveContext.push(
+        `Possible boat registrations under this sender's NAME (email did not match — treat as unconfirmed; verify hull or purchase details with the customer before relying on it): ${boatContextLines(byName).join(" | ")}`
+      );
+  }
   const insight = await getCustomerInsight(ticket.customer.id).catch(() => null);
   if (insight) liveContext.push(`Customer read (for tone/relevance, not policy claims): ${insight}`);
   if (ticket.customer.purchaseChannel)
