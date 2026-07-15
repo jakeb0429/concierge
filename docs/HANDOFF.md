@@ -91,6 +91,7 @@ repo `npm install` (the `.nosync` dir is machine-local by design) and copy `.env
 | 03:15 | `dsp-update.cjs` — recompute time-since-purchase | `/root/concierge-analytics.log` |
 | 03:30 | `detect-learning.ts` — mine Ledger → LearningSignal proposals | `/root/concierge-learning.log` |
 | 04:30 | `import-products.ts` — refresh product catalog/inventory/ProductFamily | `/root/concierge-products.log` |
+| 10:15 UTC | `happy-hour-scan.ts` — Claude + web search finds Charleston/Mt Pleasant happy-hour deals for the digest widget (before the 11:00 digest email) | `/root/concierge-happyhour.log` |
 
 Not yet scheduled (run manually when wanted): `enrich-inquiries.ts` (product mentions on new
 analytics rows), `mine-reply-playbooks.ts` (refresh playbooks), `embed-knowledge.ts` (backfill
@@ -161,6 +162,19 @@ this database project WITHOUT these defenses (59+ PM2 restarts historically) —
 
 ## 6. Feature inventory (all live)
 
+- **Happy hour widget — Charleston & Mount Pleasant (2026-07-15)** — the morning
+  digest's local perk. A daily cron (`prisma/happy-hour-scan.ts`, 10:15 UTC) has
+  Opus + the web-search server tool hunt for freshly announced deals (the motivating
+  example: The Grocery posting a $5 martini + half-off appetizers on Instagram) plus
+  standing weekly happy hours, evidence-required, and upserts them into
+  `HappyHourSpecial` (NOT tenant-scoped — one shared feed) keyed on a normalized
+  `dedupeKey`, so re-runs converge. Pure parse/freshness logic in
+  `src/lib/happy-hour.ts` (tests in `tests/domain/happy-hour.test.ts`): specials stay
+  on the board 7 days, recurring deals 28; `active=false` is the manual kill switch
+  for a wrong/ended row. Rendered as a card on `/digest` (daily view) and a section
+  in the daily digest email; both fail-soft — an empty scan leaves yesterday's rows,
+  and a DB error renders an empty widget, never a broken digest. **DEPLOY NOTE: run
+  `npm run db:migrate:deploy`** — migration `20260715120000_happy_hour_specials`.
 - **Ticket Q&A + Simple View (shipped 2026-07-11)** — internal question layer for
   onboarding teammates (Jake's flow: CS asks Jim "who can help with the American flag
   graphic?", Jim answers internally, CS folds it into the reply). Models
