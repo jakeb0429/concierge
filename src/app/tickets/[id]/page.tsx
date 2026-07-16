@@ -10,7 +10,9 @@ import { extractProductMention } from "@/lib/product-extract";
 import { getCurrentTenant } from "@/lib/tenant";
 import { sessionUser, isAdminRole } from "@/lib/roles";
 import { cachedTenantUsers } from "@/lib/team-cache";
+import { linkedOrders } from "@/lib/ticket-orders";
 import TicketWorkspace from "./TicketWorkspace";
+import LinkedOrdersPanel from "./LinkedOrdersPanel";
 
 export const dynamic = "force-dynamic";
 
@@ -62,6 +64,7 @@ export default async function TicketDetail({ params }: { params: Promise<{ id: s
     // seconds and used to block first paint; the workspace loads it client-side.
     cachedTenantUsers(ticket.tenantId),
   ]);
+  const ticketLinkedOrders = await linkedOrders(ticket.id);
   // Which product family this ticket is about (deterministic extractor) —
   // drives product-scoped notes and the composer's product option.
   const firstInboundMsg = ticket.messages.find((m) => m.direction === "inbound");
@@ -235,6 +238,7 @@ export default async function TicketDetail({ params }: { params: Promise<{ id: s
           };
         })}
       />
+      <LinkedOrdersPanel ticketId={ticket.id} initial={ticketLinkedOrders} />
     </div>
   );
 }

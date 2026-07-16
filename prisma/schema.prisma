@@ -131,11 +131,36 @@ model Customer {
   insightAt    DateTime?
   insightBasis Json?     // counts snapshot the cached insight was computed from
   createdAt   DateTime @default(now())
+  // --- associated profiles: the same person under multiple email addresses.
+  // Aliases point at one primary; the primary's primaryId stays null. Lookups
+  // (orders, boats, draft context) expand across the whole cluster.
+  primaryId String?
+  primary   Customer?  @relation("CustomerAlias", fields: [primaryId], references: [id])
+  aliases   Customer[] @relation("CustomerAlias")
 
   tickets Ticket[]
 
   @@unique([tenantId, email])
   @@index([tenantId, handle])
+  @@index([primaryId])
+  @@schema("concierge")
+}
+
+/// Rep-confirmed link between a ticket and an order (a boat registration or a
+/// commerce order) — added by order # / hull id, or via the customer-profile
+/// lookup. Authoritative for draft grounding, unlike email-matched guesses.
+model TicketOrder {
+  id              String        @id @default(cuid())
+  tenantId        String
+  ticketId        String
+  ticket          Ticket        @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  customerOrderId String
+  order           CustomerOrder @relation(fields: [customerOrderId], references: [id], onDelete: Cascade)
+  via             String        @default("manual") // "manual" | "lookup"
+  createdAt       DateTime      @default(now())
+
+  @@unique([ticketId, customerOrderId])
+  @@index([tenantId, ticketId])
   @@schema("concierge")
 }
 
@@ -168,9 +193,10 @@ model Ticket {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  messages  Message[]
-  drafts    Draft[]
-  questions TicketQuestion[]
+  messages     Message[]
+  drafts       Draft[]
+  questions    TicketQuestion[]
+  linkedOrders TicketOrder[]
 
   @@unique([tenantId, providerThreadId])
   @@index([tenantId, status])
@@ -395,6 +421,8 @@ model CustomerOrder {
   shipCity     String?
   shipState    String? // province_code
   shipZip      String?
+
+  ticketLinks TicketOrder[]
 
   @@unique([source, orderRef])
   @@index([email])

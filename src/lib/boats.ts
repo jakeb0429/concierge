@@ -18,14 +18,18 @@ export type BoatRow = {
 };
 
 export async function getRegisteredBoats(
-  email: string | null | undefined,
+  email: string | null | undefined | (string | null | undefined)[],
   tenantId: string,
   limit = 5
 ): Promise<BoatRow[]> {
-  const key = email?.trim().toLowerCase();
-  if (!key) return [];
+  const keys = [...new Set(
+    (Array.isArray(email) ? email : [email])
+      .map((e) => e?.trim().toLowerCase())
+      .filter((e): e is string => !!e)
+  )];
+  if (!keys.length) return [];
   return prisma.customerOrder.findMany({
-    where: { email: key, tenantId, source: DEALER_NETWORK_SOURCE },
+    where: { email: { in: keys }, tenantId, source: DEALER_NETWORK_SOURCE },
     orderBy: { orderedAt: "desc" },
     take: limit,
     select: { orderRef: true, orderedAt: true, description: true },

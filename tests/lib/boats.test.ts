@@ -16,7 +16,18 @@ describe("getRegisteredBoats", () => {
     await getRegisteredBoats("  Owner@Example.COM ", "tenant-1");
     expect(findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { email: "owner@example.com", tenantId: "tenant-1", source: DEALER_NETWORK_SOURCE },
+        where: { email: { in: ["owner@example.com"] }, tenantId: "tenant-1", source: DEALER_NETWORK_SOURCE },
+      })
+    );
+  });
+
+  it("accepts a cluster of emails and dedupes them", async () => {
+    findMany.mockClear();
+    findMany.mockResolvedValueOnce([]);
+    await getRegisteredBoats(["a@x.com", "A@X.com", null, "b@x.com"], "tenant-1");
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { email: { in: ["a@x.com", "b@x.com"] }, tenantId: "tenant-1", source: DEALER_NETWORK_SOURCE },
       })
     );
   });
