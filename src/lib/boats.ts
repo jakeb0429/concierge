@@ -15,6 +15,8 @@ export type BoatRow = {
   orderRef: string;
   orderedAt: Date;
   description: string | null;
+  shipState: string | null;
+  shipZip: string | null;
 };
 
 export async function getRegisteredBoats(
@@ -32,7 +34,7 @@ export async function getRegisteredBoats(
     where: { email: { in: keys }, tenantId, source: DEALER_NETWORK_SOURCE },
     orderBy: { orderedAt: "desc" },
     take: limit,
-    select: { orderRef: true, orderedAt: true, description: true },
+    select: { orderRef: true, orderedAt: true, description: true, shipState: true, shipZip: true },
   });
 }
 
@@ -62,7 +64,7 @@ export async function getRegisteredBoatsByName(
     },
     orderBy: { orderedAt: "desc" },
     take: limit,
-    select: { orderRef: true, orderedAt: true, description: true },
+    select: { orderRef: true, orderedAt: true, description: true, shipState: true, shipZip: true },
   });
 }
 

@@ -73,6 +73,8 @@ describe("boatContextLines", () => {
         orderRef: "PNYUS0KRB121",
         orderedAt: new Date("2021-05-22T00:00:00Z"),
         description: "2021 236CC · Hull PNYUS0KRB121 · delivered May 22, 2021 via Memphis Boat Center · original owner",
+        shipState: "TN",
+        shipZip: "38103",
       },
     ]);
     expect(lines).toHaveLength(1);
@@ -82,7 +84,7 @@ describe("boatContextLines", () => {
 
   it("falls back to the hull ref when description is missing", () => {
     const lines = boatContextLines([
-      { orderRef: "PNYUSJM0H020", orderedAt: new Date("2020-09-11T00:00:00Z"), description: null },
+      { orderRef: "PNYUSJM0H020", orderedAt: new Date("2020-09-11T00:00:00Z"), description: null, shipState: null, shipZip: null },
     ]);
     expect(lines[0]).toMatch(/^Hull PNYUSJM0H020/);
   });

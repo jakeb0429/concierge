@@ -7,6 +7,7 @@ import { getOrderContext, orderContextLines } from "@/lib/shipstation";
 import { getRegisteredBoats, getRegisteredBoatsByName, boatContextLines } from "@/lib/boats";
 import { linkedOrders } from "@/lib/ticket-orders";
 import { clusterEmails } from "@/lib/customer-links";
+import { territoryFor, repContextLine } from "@/lib/territories";
 import { getCustomerInsight } from "@/lib/customer-insight";
 import { groundingNotes } from "@/lib/notes";
 import { findStockists, stockistLines, detectPlace } from "@/lib/stockists";
@@ -112,11 +113,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const boats = ticket.tenantId
     ? await getRegisteredBoats(allEmails.length ? allEmails : ticket.customer.email, ticket.tenantId).catch(() => [])
     : [];
-  if (boats.length)
+  if (boats.length) {
     liveContext.push(
       `Registered boats (dealer network records — this sender's email matches these registrations): ${boatContextLines(boats).join(" | ")}`
     );
-  else if (ticket.tenantId) {
+    // Confirmed registration → we also know their factory service rep.
+    const terr = territoryFor(boats[0].shipState, boats[0].shipZip);
+    if (terr) liveContext.push(repContextLine(terr));
+  } else if (ticket.tenantId) {
     // Owners often write from a different address than the one they
     // registered with — surface name matches as UNCONFIRMED context only.
     const byName = await getRegisteredBoatsByName(
