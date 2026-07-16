@@ -1,5 +1,6 @@
 import { prisma } from "./db";
-import { computeResponseTimes, type ResponseTimes } from "./response-times";
+import { computeResponseTimes, computeReplyTrend, type ResponseTimes, type TrendPoint } from "./response-times";
+import { cleanEmailText } from "./email-clean";
 import { categoryLabel } from "./categories";
 import { INACTIVE_STATUSES } from "./ticket-status";
 
@@ -9,6 +10,32 @@ import { INACTIVE_STATUSES } from "./ticket-status";
  */
 
 export type DigestPeriod = "daily" | "weekly";
+
+export type UrgentTile = {
+  id: string;
+  subject: string | null;
+  customer: string;
+  category: string | null;
+  waitingMs: number;
+  preview: string;
+};
+
+/** Short human preview of a customer message: quoted history cut, security
+ *  banners stripped, whitespace collapsed, capped for a tile. */
+export function ticketPreview(raw: string | null | undefined, max = 170): string {
+  if (!raw) return "";
+  let t = "";
+  try {
+    t = cleanEmailText(raw);
+  } catch {
+    t = raw;
+  }
+  t = t
+    .replace(/caution:\s*this message was sent from outside[^.]*\.\s*please do not click[^.]*\.\s*/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return t.length > max ? t.slice(0, max - 1).trimEnd() + "…" : t;
+}
 
 export type DigestData = {
   tenantName: string;
@@ -28,6 +55,10 @@ export type DigestData = {
   expiredNotes: number;
   workload: { label: string; n: number }[];
   responseTimes: ResponseTimes;
+  /** open urgent tickets, oldest first — rendered as clickable tiles */
+  urgentTickets: UrgentTile[];
+  /** trailing per-day median first reply (14d daily / 30d weekly) */
+  replyTrend: TrendPoint[];
 };
 
 export async function buildDigest(tenantId: string, period: DigestPeriod): Promise<DigestData> {
@@ -47,6 +78,8 @@ export async function buildDigest(tenantId: string, period: DigestPeriod): Promi
     workloadRaw,
     users,
     responseTimes,
+    urgentRows,
+    replyTrend,
   ] = await Promise.all([
     prisma.tenant.findUniqueOrThrow({ where: { id: tenantId }, select: { name: true } }),
     prisma.ticket.findMany({
@@ -75,6 +108,25 @@ export async function buildDigest(tenantId: string, period: DigestPeriod): Promi
     }),
     prisma.user.findMany({ where: { tenantId }, select: { id: true, name: true, email: true } }),
     computeResponseTimes(tenantId, period === "daily" ? 7 : 30), // KPI window wider than the digest window
+    prisma.ticket.findMany({
+      where: { tenantId, status: { notIn: INACTIVE_STATUSES }, priority: "urgent" },
+      select: {
+        id: true,
+        subject: true,
+        category: true,
+        createdAt: true,
+        customer: { select: { displayName: true, email: true } },
+        messages: {
+          where: { direction: "inbound" },
+          orderBy: { sentAt: "desc" },
+          take: 1,
+          select: { text: true, sentAt: true },
+        },
+      },
+      orderBy: { createdAt: "asc" },
+      take: 12,
+    }),
+    computeReplyTrend(tenantId, period === "daily" ? 14 : 30),
   ]);
 
   const real = createdTickets.filter((t) => !t.tags.some((tag) => NOISE.includes(tag)));
@@ -102,6 +154,18 @@ export async function buildDigest(tenantId: string, period: DigestPeriod): Promi
       .map((w) => ({ label: userLabel.get(w.assigneeId!) ?? "?", n: w._count }))
       .sort((a, b) => b.n - a.n),
     responseTimes,
+    urgentTickets: urgentRows.map((t) => {
+      const last = t.messages[0];
+      return {
+        id: t.id,
+        subject: t.subject,
+        customer: t.customer.displayName ?? t.customer.email ?? "customer",
+        category: t.category,
+        waitingMs: Date.now() - (last?.sentAt ?? t.createdAt).getTime(),
+        preview: ticketPreview(last?.text),
+      };
+    }),
+    replyTrend,
   };
 }
 

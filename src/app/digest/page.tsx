@@ -88,13 +88,30 @@ export default async function DigestPage({
       </div>
       {d.newByCategory.length > 0 && (
         <div className="mb-4 rounded-xl border border-neutral-200 bg-white p-4 text-xs">
-          <div className="mb-2 text-sm font-medium">New inquiries by type</div>
-          <div className="flex flex-wrap gap-2">
-            {d.newByCategory.map((c) => (
-              <span key={c.category} className="rounded-full bg-neutral-100 px-2.5 py-1 text-neutral-600">
-                {c.label} · {c.n}
-              </span>
-            ))}
+          <div className="mb-3 text-sm font-medium">
+            New inquiries by type{" "}
+            <span className="text-xs font-normal text-neutral-400">· {d.periodLabel} · click a bar to open that view</span>
+          </div>
+          <div className="space-y-1.5">
+            {(() => {
+              const max = Math.max(...d.newByCategory.map((c) => c.n));
+              return d.newByCategory.map((c) => (
+                <Link
+                  key={c.category}
+                  href={`/?view=all&since=${window}&cat=${encodeURIComponent(c.category)}&sort=newest`}
+                  className="group flex items-center gap-2"
+                >
+                  <span className="w-36 flex-shrink-0 truncate text-neutral-500 group-hover:text-neutral-800">{c.label}</span>
+                  <span className="h-4 flex-1 rounded bg-neutral-100">
+                    <span
+                      className="block h-4 rounded bg-[var(--color-gold)] opacity-80 transition-opacity group-hover:opacity-100"
+                      style={{ width: `${Math.max((c.n / max) * 100, 3)}%` }}
+                    />
+                  </span>
+                  <span className="w-8 flex-shrink-0 text-right font-semibold tabular-nums">{c.n}</span>
+                </Link>
+              ));
+            })()}
           </div>
         </div>
       )}
@@ -108,6 +125,34 @@ export default async function DigestPage({
         {tile("Training pending", d.trainingOpen, { drill: "training" })}
         {tile("Expired notes", d.expiredNotes, { drill: "expired" }, d.expiredNotes > 0 ? "amber" : undefined)}
       </div>
+
+      {/* the urgent queue itself — one clickable tile per ticket */}
+      {d.urgentTickets.length > 0 && (
+        <>
+          <div className="mb-1 text-xs font-medium uppercase tracking-wide text-red-700">
+            Urgent — needs eyes ({d.urgentTickets.length})
+          </div>
+          <div className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
+            {d.urgentTickets.map((t) => (
+              <Link
+                key={t.id}
+                href={`/tickets/${t.id}`}
+                className="block rounded-xl border border-red-200 border-l-4 border-l-red-600 bg-white p-3 transition-colors hover:border-red-400"
+              >
+                <div className="mb-0.5 flex items-baseline justify-between gap-2">
+                  <span className="truncate text-sm font-semibold text-neutral-900">{t.subject ?? "(no subject)"}</span>
+                  <span className="flex-shrink-0 text-xs font-semibold text-red-700">{fmtDuration(t.waitingMs)}</span>
+                </div>
+                <div className="mb-1 truncate text-xs text-neutral-500">
+                  {t.customer}
+                  {t.category ? ` · ${t.category.replace(/_/g, " ")}` : ""}
+                </div>
+                {t.preview && <p className="line-clamp-2 text-xs leading-snug text-neutral-600">{t.preview}</p>}
+              </Link>
+            ))}
+          </div>
+        </>
+      )}
 
       {show && records && (
         <div id="records" className="mb-4 rounded-xl border border-gold/40 bg-white p-4">
@@ -141,6 +186,63 @@ export default async function DigestPage({
           ) : (
             <p className="text-xs text-neutral-400">Nothing in this bucket right now.</p>
           )}
+        </div>
+      )}
+
+      {/* trailing median first-reply, one bar per day */}
+      {d.replyTrend.some((p) => p.n > 0) && (
+        <div className="mb-4 rounded-xl border border-neutral-200 bg-white p-4">
+          <div className="mb-2 text-sm font-medium">
+            Median first reply, day by day{" "}
+            <span className="text-xs font-normal text-neutral-400">
+              · trailing {d.replyTrend.length} days · hover a bar for detail
+            </span>
+          </div>
+          {(() => {
+            const pts = d.replyTrend;
+            const W = 940;
+            const H = 140;
+            const PB = 18;
+            const max = Math.max(...pts.map((p) => p.medianMs ?? 0), 1);
+            const bw = W / pts.length;
+            const fmtDay = (day: string) =>
+              new Date(day + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" });
+            const labelEvery = Math.ceil(pts.length / 7);
+            return (
+              <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img" aria-label="Median first-reply time per day">
+                {[0.5, 1].map((f) => (
+                  <g key={f}>
+                    <line x1={0} x2={W} y1={H - PB - f * (H - PB - 14)} y2={H - PB - f * (H - PB - 14)} stroke="#f1f1ef" />
+                    <text x={2} y={H - PB - f * (H - PB - 14) - 3} fontSize={9} fill="#a3a3a3">
+                      {fmtDuration(max * f)}
+                    </text>
+                  </g>
+                ))}
+                {pts.map((p, i) => {
+                  const h = p.medianMs ? Math.max(((p.medianMs / max) * (H - PB - 14)), 3) : 0;
+                  const x = i * bw + bw * 0.18;
+                  return (
+                    <g key={p.day}>
+                      {p.n > 0 ? (
+                        <rect x={x} y={H - PB - h} width={bw * 0.64} height={h} rx={2} fill="var(--color-gold)" opacity={0.85}>
+                          <title>{`${fmtDay(p.day)} — median ${fmtDuration(p.medianMs)} · ${p.n} first repl${p.n === 1 ? "y" : "ies"}`}</title>
+                        </rect>
+                      ) : (
+                        <circle cx={x + bw * 0.32} cy={H - PB - 2} r={1.5} fill="#d4d4d4">
+                          <title>{`${fmtDay(p.day)} — no first replies`}</title>
+                        </circle>
+                      )}
+                      {i % labelEvery === 0 && (
+                        <text x={x + bw * 0.32} y={H - 5} fontSize={9} fill="#a3a3a3" textAnchor="middle">
+                          {fmtDay(p.day)}
+                        </text>
+                      )}
+                    </g>
+                  );
+                })}
+              </svg>
+            );
+          })()}
         </div>
       )}
 
