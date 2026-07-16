@@ -44,17 +44,17 @@ const ZIP3_ZONE: Record<string, string> = {
   "244": "Carolinas", "245": "Carolinas",
   // MD — far west
   "215": "Carolinas", "217": "Carolinas",
-  // TN — east TN splits toward Southeast/Carolinas
-  "373": "Southeast", "374": "Southeast", "376": "Carolinas", "377": "Carolinas",
-  "378": "Southeast", "379": "Southeast", "380": "Southeast", "381": "Southeast",
-  "382": "Southeast", "383": "Southeast", "385": "Southeast",
-  // MN — northern lakes lean Midwest
-  "556": "Midwest", "557": "Midwest", "558": "Midwest", "565": "Midwest",
-  // MO — eastern MO leans Midwest
-  "630": "Midwest", "633": "Midwest", "636": "Midwest",
-  // OH — a couple of river-border zips lean elsewhere; dominant Midwest otherwise
-  // MS — coastal MS Southeast (dominant); northern MS leans Carolinas-managed accounts
-  "386": "Carolinas", "387": "Carolinas", "388": "Carolinas", "389": "Carolinas",
+  // TN — Nashville/Chattanooga Southeast, Knoxville-east Central (state default),
+  // Memphis west Carolinas (follows Memphis Boat Center's dealer assignment)
+  "370": "Southeast", "371": "Southeast", "373": "Southeast", "374": "Southeast",
+  "376": "Southeast", "382": "Southeast", "384": "Southeast", "385": "Southeast",
+  "372": "Carolinas", "380": "Carolinas", "381": "Carolinas", "383": "Carolinas",
+  // MN — Twin Cities Central (state default); northern lakes Midwest
+  "558": "Midwest", "559": "Midwest", "560": "Midwest", "566": "Midwest",
+  // MO — KC/Springfield Central (state default); St. Louis side Midwest
+  "630": "Midwest", "631": "Midwest", "633": "Midwest",
+  // MS — north/central MS follows Carolinas-managed accounts; gulf coast Southeast (state default)
+  "386": "Carolinas", "391": "Carolinas", "392": "Carolinas", "396": "Carolinas",
 };
 
 export type Territory = { zone: string; rep: string };
