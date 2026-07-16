@@ -66,7 +66,7 @@ export default function LinkedOrdersPanel({
     o.description ?? `#${o.orderRef}${o.totalAmount ? ` · $${o.totalAmount.toLocaleString()}` : ""}`;
 
   return (
-    <div className="mt-4 rounded-xl border border-neutral-200 bg-white p-4">
+    <div className="mb-3 rounded-xl border border-l-4 border-amber-200/70 border-l-amber-400 bg-amber-50/30 p-4">
       <div className="mb-1 flex items-baseline justify-between">
         <div className="text-sm font-medium">Orders on this ticket</div>
         <span className="text-xs text-neutral-400">
@@ -125,7 +125,7 @@ export default function LinkedOrdersPanel({
       {error && <p className="mt-2 text-xs text-red-700">{error}</p>}
 
       {candidates && candidates.length > 0 && (
-        <div className="mt-3 rounded-lg border border-neutral-100 bg-neutral-50 p-2">
+        <div className="mt-3 rounded-lg border border-amber-100 bg-white/70 p-2">
           <div className="mb-1 px-1 text-xs font-medium text-neutral-500">
             Found {candidates.length} — attach the one(s) this ticket is about
           </div>

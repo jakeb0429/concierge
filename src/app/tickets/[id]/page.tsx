@@ -237,8 +237,8 @@ export default async function TicketDetail({ params }: { params: Promise<{ id: s
             })),
           };
         })}
+        linkedOrdersSlot={<LinkedOrdersPanel ticketId={ticket.id} initial={ticketLinkedOrders} />}
       />
-      <LinkedOrdersPanel ticketId={ticket.id} initial={ticketLinkedOrders} />
     </div>
   );
 }

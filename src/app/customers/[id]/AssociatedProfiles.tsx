@@ -44,7 +44,7 @@ export default function AssociatedProfiles({
   const associable = relatedCandidates.filter((r) => !memberEmails.has(r.email.toLowerCase()));
 
   return (
-    <div className="mt-4 rounded-xl border border-neutral-200 bg-white p-4">
+    <div className="mt-4 rounded-xl border border-l-4 border-amber-200/70 border-l-amber-400 bg-amber-50/30 p-4">
       <div className="mb-1 text-sm font-medium">Associated profiles</div>
       <p className="mb-2 text-xs text-neutral-500">
         Same person, different email addresses. Orders, boats, and draft context are looked up across

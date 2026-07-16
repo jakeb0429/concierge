@@ -114,7 +114,7 @@ export default function QuestionsPanel({
   }
 
   return (
-    <div className="mb-3 rounded-xl border border-neutral-200 bg-white p-4">
+    <div className="mb-3 rounded-xl border border-l-4 border-amber-200/70 border-l-amber-400 bg-amber-50/30 p-4">
       <div className="mb-2 flex items-baseline justify-between">
         <span className="text-xs font-semibold uppercase tracking-wide text-warm-grey">Team Q&amp;A</span>
         <span className="text-[11px] text-neutral-400">internal only — the customer never sees this</span>

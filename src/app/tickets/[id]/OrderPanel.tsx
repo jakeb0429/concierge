@@ -243,7 +243,7 @@ export default function OrderPanel({
   }
 
   return (
-    <div className="mt-3 rounded-xl border border-l-4 border-neutral-200 border-l-emerald-400 bg-white p-4">
+    <div className="mt-3 rounded-xl border border-l-4 border-gold/30 border-l-gold/60 bg-cream/40 p-4">
       <div className="mb-2 flex items-center justify-between">
         <div className="text-xs font-medium text-emerald-800">Order → checkout link</div>
         <button onClick={() => setOpen(false)} className="text-xs text-neutral-400 hover:text-neutral-600">hide</button>
