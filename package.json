@@ -27,6 +27,7 @@
     "db:seed-sales-sources": "tsx prisma/seed-sales-sources.ts",
     "db:seed-stingray-brain": "tsx prisma/seed-stingray-brain.ts",
     "send-digest": "tsx prisma/send-digest.ts",
+    "db:inventory-valuation": "tsx prisma/inventory-valuation.ts",
     "db:detect-handled": "tsx prisma/detect-handled.ts",
     "db:migrate:new": "prisma migrate diff --from-schema-datasource prisma/schema.prisma --to-schema-datamodel prisma/schema.prisma --script",
     "db:migrate:deploy": "prisma migrate deploy",
