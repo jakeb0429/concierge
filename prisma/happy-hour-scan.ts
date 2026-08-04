@@ -53,7 +53,9 @@ Fields: venue (name only), area ("Charleston" or "Mount Pleasant"), deal (short 
 
 const REQUEST_OPTS = { timeout: 240_000, maxRetries: 2 }; // bounded — never hang the cron
 
-async function runScan(): Promise<string | null> {
+type ScanOutput = { text: string; stopReason: string | null };
+
+async function runScan(): Promise<ScanOutput | null> {
   const today = new Date().toLocaleDateString("en-US", {
     timeZone: "America/New_York",
     weekday: "long",
@@ -69,7 +71,10 @@ async function runScan(): Promise<string | null> {
     anthropic.messages.create(
       {
         model: CLAUDE_MODEL,
-        max_tokens: 4000,
+        // Generous: this budget covers thinking + search summaries + the final
+        // JSON. 4k proved too small — the first production run truncated before
+        // the JSON block and parsed to nothing.
+        max_tokens: 16000,
         thinking: { type: "adaptive" },
         system: SYSTEM,
         tools: [WEB_SEARCH_TOOL as unknown as Anthropic.Messages.ToolUnion],
@@ -88,10 +93,11 @@ async function runScan(): Promise<string | null> {
     console.error("happy-hour-scan: model refused the request");
     return null;
   }
-  return res.content
+  const text = res.content
     .filter((b): b is Anthropic.TextBlock => b.type === "text")
     .map((b) => b.text)
     .join("\n");
+  return { text, stopReason: res.stop_reason };
 }
 
 async function main() {
@@ -100,12 +106,18 @@ async function main() {
     return;
   }
 
-  const text = await runScan();
-  if (!text) return;
+  const out = await runScan();
+  if (!out) return;
 
-  const specials = parseSpecials(text);
+  const specials = parseSpecials(out.text);
   if (!specials.length) {
-    console.log("happy-hour-scan: no parseable deals in the model output — existing rows stand");
+    // Diagnosable, not silent: say why nothing parsed. stop_reason "max_tokens"
+    // = budget truncation; "pause_turn" = search loop never finished; an output
+    // tail with no json fence = prompt drift.
+    console.log(
+      `happy-hour-scan: no parseable deals (stop_reason=${out.stopReason ?? "?"}, ${out.text.length} chars of text) — existing rows stand`
+    );
+    console.log(`--- output tail ---\n${out.text.slice(-600)}\n--- end tail ---`);
     return;
   }
 
