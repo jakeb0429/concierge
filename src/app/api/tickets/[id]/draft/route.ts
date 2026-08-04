@@ -4,6 +4,10 @@ import { generateDraft } from "@/lib/brain/draft";
 import { appendPromoFooter, stripPromoFooter } from "@/lib/brain/promo-footer";
 import { cleanEmailText } from "@/lib/email-clean";
 import { getOrderContext, orderContextLines } from "@/lib/shipstation";
+import { getRegisteredBoats, getRegisteredBoatsByName, boatContextLines } from "@/lib/boats";
+import { linkedOrders } from "@/lib/ticket-orders";
+import { clusterEmails } from "@/lib/customer-links";
+import { territoryFor, repContextLine } from "@/lib/territories";
 import { getCustomerInsight } from "@/lib/customer-insight";
 import { groundingNotes } from "@/lib/notes";
 import { findStockists, stockistLines, detectPlace } from "@/lib/stockists";
@@ -94,6 +98,40 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const orders = await getOrderContext(ticket.customer.email, ticket.tenantId);
   if (orders.length)
     liveContext.push(`Order status (fulfillment system): ${orderContextLines(orders).join(" | ")}`);
+  // Rep-confirmed orders on this ticket — the strongest grounding there is.
+  const repLinked = await linkedOrders(ticket.id).catch(() => []);
+  if (repLinked.length)
+    liveContext.push(
+      `Orders the rep linked to THIS ticket (confirmed — this is what the conversation is about): ${repLinked
+        .map((l) => l.description ?? `#${l.orderRef}${l.totalAmount ? ` ($${l.totalAmount.toLocaleString()})` : ""}`)
+        .join(" | ")}`
+    );
+  // Dealer-network registrations (Stingray boats via DealersCircle import),
+  // looked up across every email associated with this customer's profile.
+  // Tenants without dealers-circle rows get [] — no branching needed.
+  const allEmails = await clusterEmails(ticket.customerId).catch(() => []);
+  const boats = ticket.tenantId
+    ? await getRegisteredBoats(allEmails.length ? allEmails : ticket.customer.email, ticket.tenantId).catch(() => [])
+    : [];
+  if (boats.length) {
+    liveContext.push(
+      `Registered boats (dealer network records — this sender's email matches these registrations): ${boatContextLines(boats).join(" | ")}`
+    );
+    // Confirmed registration → we also know their factory service rep.
+    const terr = territoryFor(boats[0].shipState, boats[0].shipZip);
+    if (terr) liveContext.push(repContextLine(terr));
+  } else if (ticket.tenantId) {
+    // Owners often write from a different address than the one they
+    // registered with — surface name matches as UNCONFIRMED context only.
+    const byName = await getRegisteredBoatsByName(
+      ticket.customer.displayName,
+      ticket.tenantId
+    ).catch(() => []);
+    if (byName.length)
+      liveContext.push(
+        `Possible boat registrations under this sender's NAME (email did not match — treat as unconfirmed; verify hull or purchase details with the customer before relying on it): ${boatContextLines(byName).join(" | ")}`
+      );
+  }
   const insight = await getCustomerInsight(ticket.customer.id).catch(() => null);
   if (insight) liveContext.push(`Customer read (for tone/relevance, not policy claims): ${insight}`);
   if (ticket.customer.purchaseChannel)

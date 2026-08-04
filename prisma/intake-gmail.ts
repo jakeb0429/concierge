@@ -1,6 +1,7 @@
 import { PrismaClient } from "@prisma/client";
 import { gmail_v1 } from "googleapis";
 import { triage, brandContextFor } from "../src/lib/triage";
+import { isRepeatNoiseSender } from "../src/lib/noise-suppress";
 import { autoAssign } from "../src/lib/assign";
 import { gmailFor, extractAttachments } from "../src/lib/gmail-client";
 import { extractProductMention } from "../src/lib/product-extract";
@@ -209,6 +210,12 @@ async function intakeMailbox(tenantId: string, tenantSlug: string, channelId: st
       ticketId = existing.id;
     } else {
       const t = await triage(from.email!, subject, text, brandContextFor(tenantSlug));
+      // Repeat digest/newsletter sender → no new ticket at all (the first
+      // noise thread already left an archived ticket as the audit trail).
+      if (t.isNoise && (await isRepeatNoiseSender(prisma, tenantId, customer.id, t.category))) {
+        skippedNoise.push(`${from.email} (${t.category}, repeat — suppressed)`);
+        continue;
+      }
       // Tag detected product mentions so the queue shows what the ticket is about.
       const pm = await extractProductMention(`${subject ?? ""}\n${text}`);
       const tags = [t.category, ...(pm.productFamily ? [`product:${pm.productFamily}`] : [])];

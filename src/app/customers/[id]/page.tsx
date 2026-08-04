@@ -5,8 +5,10 @@ import { statusChip, statusLabel } from "@/lib/ui";
 import { getCurrentTenant } from "@/lib/tenant";
 import { getCustomerInsight } from "@/lib/customer-insight";
 import { findRelatedCustomers } from "@/lib/related-customers";
+import { identityCluster } from "@/lib/customer-links";
 import { nowMs } from "@/lib/time";
 import CustomerFacts from "./CustomerFacts";
+import AssociatedProfiles from "./AssociatedProfiles";
 import NotesPanel from "@/app/components/NotesPanel";
 
 export const dynamic = "force-dynamic";
@@ -28,10 +30,17 @@ export default async function CustomerProfile({ params }: { params: Promise<{ id
   const customer = await prisma.customer.findFirst({ where: { id, tenantId: tenant.id } });
   if (!customer) notFound();
   const email = customer.email?.toLowerCase();
+  // Orders span the identity cluster — every email address associated with this person.
+  const cluster = await identityCluster(customer.id);
+  const clusterEmailList = cluster.emails.length ? cluster.emails : email ? [email] : [];
 
   const [orders, inquiries, tickets] = await Promise.all([
-    email
-      ? prisma.customerOrder.findMany({ where: { email, tenantId: tenant.id }, orderBy: { orderedAt: "desc" }, take: 100 })
+    clusterEmailList.length
+      ? prisma.customerOrder.findMany({
+          where: { email: { in: clusterEmailList }, tenantId: tenant.id },
+          orderBy: { orderedAt: "desc" },
+          take: 100,
+        })
       : Promise.resolve([]),
     email
       ? prisma.analyticsInquiry.findMany({ where: { fromEmail: email, tenantId: tenant.id }, orderBy: { threadCreatedAt: "desc" }, take: 100 })
@@ -89,6 +98,12 @@ export default async function CustomerProfile({ params }: { params: Promise<{ id
         purchaseChannel={customer.purchaseChannel}
         channelName={customer.channelName}
         insight={insight}
+      />
+
+      <AssociatedProfiles
+        customerId={customer.id}
+        initialMembers={cluster.members}
+        relatedCandidates={related.map((r) => ({ customerId: r.customerId, email: r.email, name: r.name }))}
       />
 
       <div className="mt-3">

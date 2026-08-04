@@ -42,6 +42,19 @@ describe("triageDeterministic", () => {
   it("passes a normal gmail sender through to the model (null)", () => {
     expect(triageDeterministic("jane.doe@gmail.com", "Question about the Coopers", rheos)).toBeNull();
   });
+
+  it("flags Proofpoint quarantine digests as automated_notification (stingray's top noise)", () => {
+    expect(triageDeterministic("digest@proofpointessentials.com", "Quarantine Digest", stingray)).toBe(
+      "automated_notification"
+    );
+    expect(triageDeterministic("digest@proofpoint.com", null, stingray)).toBe("automated_notification");
+  });
+
+  it("flags facebookmail.com notifications as automated_notification", () => {
+    expect(triageDeterministic("notify@facebookmail.com", "New comment", stingray)).toBe(
+      "automated_notification"
+    );
+  });
 });
 
 describe("urgencyDeterministic", () => {

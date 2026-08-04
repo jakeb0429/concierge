@@ -44,6 +44,57 @@ export function fmtDuration(ms: number | null): string {
   return `${(h / 24).toFixed(1)}d`;
 }
 
+// ---------------------------------------------------------------------------
+// Trailing per-day median first-reply trend (the digest chart).
+
+export type TrendPoint = { day: string; n: number; medianMs: number | null };
+
+/** Bucket (replied-at, duration) pairs into one point per calendar day
+ *  (America/New_York), oldest→newest, covering every day in the window —
+ *  days with no replies carry n=0 / null so the chart shows the gap. */
+export function bucketDailyMedians(
+  items: { at: Date; ms: number }[],
+  days: number,
+  now: Date = new Date()
+): TrendPoint[] {
+  const dayOf = (d: Date) => d.toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+  const buckets = new Map<string, number[]>();
+  for (const it of items) {
+    const k = dayOf(it.at);
+    if (!buckets.has(k)) buckets.set(k, []);
+    buckets.get(k)!.push(it.ms);
+  }
+  const out: TrendPoint[] = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const k = dayOf(new Date(now.getTime() - i * 86_400_000));
+    const v = (buckets.get(k) ?? []).sort((a, b) => a - b);
+    out.push({ day: k, n: v.length, medianMs: percentile(v, 0.5) });
+  }
+  return out;
+}
+
+/** First-reply pairs over the trailing window, bucketed by the day the reply
+ *  went out. Noise excluded, same as the KPI computation above. */
+export async function computeReplyTrend(tenantId: string, days: number): Promise<TrendPoint[]> {
+  const since = new Date(Date.now() - days * 86_400_000);
+  const tickets = await prisma.ticket.findMany({
+    where: { tenantId, createdAt: { gte: since } },
+    select: {
+      tags: true,
+      messages: { orderBy: { sentAt: "asc" }, select: { direction: true, sentAt: true } },
+    },
+  });
+  const items: { at: Date; ms: number }[] = [];
+  for (const t of tickets) {
+    if (t.tags.some((tag) => NOISE_TAGS.has(tag))) continue;
+    const firstInbound = t.messages.find((m) => m.direction === "inbound");
+    if (!firstInbound) continue;
+    const firstReply = t.messages.find((m) => m.direction === "outbound" && m.sentAt >= firstInbound.sentAt);
+    if (firstReply) items.push({ at: firstReply.sentAt, ms: firstReply.sentAt.getTime() - firstInbound.sentAt.getTime() });
+  }
+  return bucketDailyMedians(items, days);
+}
+
 export async function computeResponseTimes(tenantId: string, sinceDays = 30): Promise<ResponseTimes> {
   const since = new Date(Date.now() - sinceDays * 86_400_000);
   const [tickets, resolutionEvents] = await Promise.all([

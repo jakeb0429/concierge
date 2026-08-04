@@ -88,8 +88,15 @@ type CustomerStats = {
 
 const STEER_CHIPS = ["Warmer", "Shorter", "More detail", "Add next steps", "More formal"];
 
-/** Zone label — the page reads as four color-coded bands: status (navy),
- *  system inputs (blue), added context (amber), the reply (gold). */
+/** Zone label — the page reads as five color-coded bands, and surface tint
+ *  says what KIND of thing you're looking at:
+ *    navy  = status (where the ticket is)          — white, read + one control
+ *    blue  = system facts (fetched automatically)  — white, read-only
+ *    amber = YOUR inputs (questions, pinned facts,
+ *            linked orders — anything a rep types) — amber-tinted surfaces
+ *    gold  = the reply (draft, steer, send)        — cream-tinted surfaces
+ *    grey  = the conversation thread               — white, read-only
+ *  White = read. Tinted = you act here. */
 function ZoneLabel({ dot, text, hint }: { dot: string; text: string; hint?: string }) {
   return (
     <div className="mb-1.5 mt-5 flex items-center gap-2 first:mt-0">
@@ -103,6 +110,7 @@ function ZoneLabel({ dot, text, hint }: { dot: string; text: string; hint?: stri
 export default function TicketWorkspace({
   ticket,
   messages,
+  linkedOrdersSlot,
   initialDraft,
   sentDraftId: sentDraftIdProp,
   customerStats,
@@ -119,6 +127,7 @@ export default function TicketWorkspace({
   isAdmin = false,
   questions = [],
 }: {
+  linkedOrdersSlot?: React.ReactNode;
   ticket: Ticket;
   messages: Msg[];
   initialDraft: Draft | null;
@@ -528,7 +537,7 @@ export default function TicketWorkspace({
 
       {statusNoteBar}
 
-      <ZoneLabel dot="bg-scribe-blue" text="System inputs" hint="orders, history, fulfillment — fetched automatically" />
+      <ZoneLabel dot="bg-scribe-blue" text="System facts" hint="orders, history, fulfillment — fetched automatically, read-only" />
       {/* likely already handled — evidence from orders/fulfillment */}
       {handledEvidence && handledEvidence.length > 0 && !sent && (
         <div className="mb-3 rounded-xl border border-teal-200 bg-teal-50 px-4 py-2.5 text-sm text-teal-800">
@@ -614,11 +623,13 @@ export default function TicketWorkspace({
         </div>
       )}
 
-      <ZoneLabel dot="bg-amber-400" text="Added context" hint="facts your team pinned — these ground the draft" />
+      <ZoneLabel dot="bg-amber-400" text="Your inputs" hint="questions to teammates + facts you add — amber surfaces are where you type; they ground the draft" />
       {/* internal Q&A — ask a teammate; they answer from the simple view */}
       <QuestionsPanel ticketId={ticket.id} meId={meId} isAdmin={isAdmin} users={assign?.users ?? []} questions={questions} />
       {/* rep-pinned facts: this ticket, this customer, or a product */}
       <NotesPanel key={contextNotes.length} notes={contextNotes} ticketId={ticket.id} customerId={ticket.customerId} />
+      {/* rep-confirmed order links — added here so every rep-entered surface lives in one amber band */}
+      {linkedOrdersSlot}
       {/* citations + teach the Brain — knowledge capture, not composing, so it
           stays available after the reply is sent */}
       <TeachBrain ticketId={ticket.id} draftId={draft?.draftId ?? null} citations={draft?.citations ?? []} />
@@ -633,12 +644,12 @@ export default function TicketWorkspace({
         />
       )}
 
+      <ZoneLabel dot="bg-gold" text="The reply" hint="grounded draft — you confirm before anything sends" />
       {/* guided returns (Phase A) — eligibility check + return-grounded draft,
           offered on returns/exchange tickets until the reply goes out */}
       {ticket.categoryKey === "returns_exchange" && !sent && (
         <>
-          <ZoneLabel dot="bg-violet-400" text="Return / exchange" hint="eligibility from order history — you confirm before anything is promised" />
-          <div className="mb-1 rounded-xl border border-l-4 border-neutral-200 border-l-violet-400 bg-white px-4 py-3">
+          <div className="mb-1 rounded-xl border border-l-4 border-neutral-200 border-l-gold bg-white px-4 py-3">
             {returnVerdict ? (
               <div
                 className={`rounded-lg px-3 py-2 text-sm ${
@@ -670,7 +681,7 @@ export default function TicketWorkspace({
                 <button
                   onClick={() => generate(undefined, { startReturn: true })}
                   disabled={generating}
-                  className="rounded-lg bg-violet-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-violet-700 disabled:opacity-50"
+                  className="rounded-lg bg-gold px-3 py-1.5 text-sm font-medium text-white hover:bg-gold-dark disabled:opacity-50"
                 >
                   {generating ? "Checking eligibility…" : "Start return/exchange"}
                 </button>
@@ -685,9 +696,8 @@ export default function TicketWorkspace({
         </>
       )}
 
-      <ZoneLabel dot="bg-gold" text="The reply" hint="grounded draft — you confirm before anything sends" />
       {/* the reply — first and full width; everything a rep needs to answer */}
-      <div className="rounded-xl border border-l-4 border-neutral-200 border-l-gold bg-white p-4">
+      <div className="rounded-xl border border-l-4 border-gold/40 border-l-gold bg-cream/50 p-4">
         <div className="mb-2 flex items-center justify-between">
           <div className="text-xs text-neutral-400">
             {status === "awaiting_internal" ? "Awaiting a teammate" : sent ? "Sent" : "First draft · edit inline"}
@@ -767,8 +777,8 @@ export default function TicketWorkspace({
 
       {/* steer */}
       {!sent && (
-        <div className="mt-3 rounded-xl border border-neutral-300 bg-white p-4">
-          <div className="mb-2 text-xs text-neutral-400">
+        <div className="mt-3 rounded-xl border border-l-4 border-gold/30 border-l-gold/60 bg-cream/40 p-4">
+          <div className="mb-2 text-xs text-neutral-500">
             Steer the draft — changes tone and emphasis, not the facts
           </div>
           <div className="mb-2 flex flex-wrap gap-2">
@@ -987,7 +997,7 @@ function TeachBrain({
     `v${c.version ?? 1}${c.sourceRef ? ` · ${c.sourceRef}` : ""}`;
 
   return (
-    <div className="mt-3 rounded-xl border border-neutral-200 bg-white p-4">
+    <div className="mt-3 rounded-xl border border-l-4 border-amber-200/70 border-l-amber-400 bg-amber-50/30 p-4">
       {citations.length > 0 && (
         <>
           <div className="mb-2 text-xs text-neutral-400">
