@@ -1,7 +1,8 @@
+import fs from "node:fs";
 import { PrismaClient } from "@prisma/client";
 import type Anthropic from "@anthropic-ai/sdk";
 import { anthropic, CLAUDE_MODEL } from "../src/lib/anthropic";
-import { parseSpecials } from "../src/lib/happy-hour";
+import { getHappyHourSpecials, parseSpecials } from "../src/lib/happy-hour";
 
 /**
  * Happy-hour scan — Charleston & Mount Pleasant, for the digest's morning
@@ -53,7 +54,9 @@ Fields: venue (name only), area ("Charleston" or "Mount Pleasant"), deal (short 
 
 const REQUEST_OPTS = { timeout: 240_000, maxRetries: 2 }; // bounded — never hang the cron
 
-async function runScan(): Promise<string | null> {
+type ScanOutput = { text: string; stopReason: string | null };
+
+async function runScan(): Promise<ScanOutput | null> {
   const today = new Date().toLocaleDateString("en-US", {
     timeZone: "America/New_York",
     weekday: "long",
@@ -69,7 +72,10 @@ async function runScan(): Promise<string | null> {
     anthropic.messages.create(
       {
         model: CLAUDE_MODEL,
-        max_tokens: 4000,
+        // Generous: this budget covers thinking + search summaries + the final
+        // JSON. 4k proved too small — the first production run truncated before
+        // the JSON block and parsed to nothing.
+        max_tokens: 16000,
         thinking: { type: "adaptive" },
         system: SYSTEM,
         tools: [WEB_SEARCH_TOOL as unknown as Anthropic.Messages.ToolUnion],
@@ -88,10 +94,43 @@ async function runScan(): Promise<string | null> {
     console.error("happy-hour-scan: model refused the request");
     return null;
   }
-  return res.content
+  const text = res.content
     .filter((b): b is Anthropic.TextBlock => b.type === "text")
     .map((b) => b.text)
     .join("\n");
+  return { text, stopReason: res.stop_reason };
+}
+
+/**
+ * Snapshot the current board to a JSON file for OTHER apps on this box —
+ * the morning-announcements app reads it from its data/ dir. Runs even when
+ * the scan itself came up empty (the file stays fresh from existing rows).
+ * Opt-in via HAPPY_HOUR_EXPORT_PATH; failures never sink the scan.
+ */
+async function exportBoard() {
+  const exportPath = process.env.HAPPY_HOUR_EXPORT_PATH;
+  if (!exportPath) return;
+  try {
+    const board = await getHappyHourSpecials();
+    const payload = {
+      generatedAt: new Date().toISOString(),
+      areas: ["Charleston", "Mount Pleasant"],
+      specials: board.map((s) => ({
+        venue: s.venue,
+        area: s.area,
+        deal: s.deal,
+        details: s.details,
+        kind: s.kind,
+        source: s.source,
+        sourceUrl: s.sourceUrl,
+        lastSeenAt: s.lastSeenAt.toISOString(),
+      })),
+    };
+    fs.writeFileSync(exportPath, JSON.stringify(payload, null, 2));
+    console.log(`happy-hour-scan: exported ${board.length} deals to ${exportPath}`);
+  } catch (err) {
+    console.error("happy-hour-scan: export failed (non-fatal):", err);
+  }
 }
 
 async function main() {
@@ -100,12 +139,22 @@ async function main() {
     return;
   }
 
-  const text = await runScan();
-  if (!text) return;
+  const out = await runScan();
+  if (!out) {
+    await exportBoard();
+    return;
+  }
 
-  const specials = parseSpecials(text);
+  const specials = parseSpecials(out.text);
   if (!specials.length) {
-    console.log("happy-hour-scan: no parseable deals in the model output — existing rows stand");
+    // Diagnosable, not silent: say why nothing parsed. stop_reason "max_tokens"
+    // = budget truncation; "pause_turn" = search loop never finished; an output
+    // tail with no json fence = prompt drift.
+    console.log(
+      `happy-hour-scan: no parseable deals (stop_reason=${out.stopReason ?? "?"}, ${out.text.length} chars of text) — existing rows stand`
+    );
+    console.log(`--- output tail ---\n${out.text.slice(-600)}\n--- end tail ---`);
+    await exportBoard();
     return;
   }
 
@@ -131,6 +180,7 @@ async function main() {
     console.log(`  ${existing ? "seen again" : "NEW"} [${s.kind}] ${s.venue} (${s.area}): ${s.deal}`);
   }
   console.log(`happy-hour-scan: ${created} new, ${refreshed} re-stamped (${specials.length} total)`);
+  await exportBoard();
 }
 
 main()
