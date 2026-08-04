@@ -1,7 +1,8 @@
+import fs from "node:fs";
 import { PrismaClient } from "@prisma/client";
 import type Anthropic from "@anthropic-ai/sdk";
 import { anthropic, CLAUDE_MODEL } from "../src/lib/anthropic";
-import { parseSpecials } from "../src/lib/happy-hour";
+import { getHappyHourSpecials, parseSpecials } from "../src/lib/happy-hour";
 
 /**
  * Happy-hour scan — Charleston & Mount Pleasant, for the digest's morning
@@ -100,6 +101,38 @@ async function runScan(): Promise<ScanOutput | null> {
   return { text, stopReason: res.stop_reason };
 }
 
+/**
+ * Snapshot the current board to a JSON file for OTHER apps on this box —
+ * the morning-announcements app reads it from its data/ dir. Runs even when
+ * the scan itself came up empty (the file stays fresh from existing rows).
+ * Opt-in via HAPPY_HOUR_EXPORT_PATH; failures never sink the scan.
+ */
+async function exportBoard() {
+  const exportPath = process.env.HAPPY_HOUR_EXPORT_PATH;
+  if (!exportPath) return;
+  try {
+    const board = await getHappyHourSpecials();
+    const payload = {
+      generatedAt: new Date().toISOString(),
+      areas: ["Charleston", "Mount Pleasant"],
+      specials: board.map((s) => ({
+        venue: s.venue,
+        area: s.area,
+        deal: s.deal,
+        details: s.details,
+        kind: s.kind,
+        source: s.source,
+        sourceUrl: s.sourceUrl,
+        lastSeenAt: s.lastSeenAt.toISOString(),
+      })),
+    };
+    fs.writeFileSync(exportPath, JSON.stringify(payload, null, 2));
+    console.log(`happy-hour-scan: exported ${board.length} deals to ${exportPath}`);
+  } catch (err) {
+    console.error("happy-hour-scan: export failed (non-fatal):", err);
+  }
+}
+
 async function main() {
   if (!process.env.ANTHROPIC_API_KEY) {
     console.log("happy-hour-scan: ANTHROPIC_API_KEY missing — skipped");
@@ -107,7 +140,10 @@ async function main() {
   }
 
   const out = await runScan();
-  if (!out) return;
+  if (!out) {
+    await exportBoard();
+    return;
+  }
 
   const specials = parseSpecials(out.text);
   if (!specials.length) {
@@ -118,6 +154,7 @@ async function main() {
       `happy-hour-scan: no parseable deals (stop_reason=${out.stopReason ?? "?"}, ${out.text.length} chars of text) — existing rows stand`
     );
     console.log(`--- output tail ---\n${out.text.slice(-600)}\n--- end tail ---`);
+    await exportBoard();
     return;
   }
 
@@ -143,6 +180,7 @@ async function main() {
     console.log(`  ${existing ? "seen again" : "NEW"} [${s.kind}] ${s.venue} (${s.area}): ${s.deal}`);
   }
   console.log(`happy-hour-scan: ${created} new, ${refreshed} re-stamped (${specials.length} total)`);
+  await exportBoard();
 }
 
 main()
