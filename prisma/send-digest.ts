@@ -1,7 +1,8 @@
 import { PrismaClient } from "@prisma/client";
 import { buildDigest, type DigestPeriod, type DigestData } from "../src/lib/digest";
+import { getHappyHourSpecials, type HappyHourItem } from "../src/lib/happy-hour";
 import { fmtDuration } from "../src/lib/response-times";
-import { sendEmail } from "../src/lib/email";
+import { sendEmail, escapeHtml } from "../src/lib/email";
 
 /**
  * Emailed operational digest — the same numbers as /digest, delivered.
@@ -19,7 +20,7 @@ const APP = "https://concierge.scribechs.com";
 const GOLD = "#a8882e";
 const GREY = "#7a7470";
 
-function textReport(d: DigestData): string {
+function textReport(d: DigestData, happyHour: HappyHourItem[]): string {
   return [
     `${d.tenantName} — ${period} digest (${d.periodLabel})`,
     ``,
@@ -42,12 +43,22 @@ function textReport(d: DigestData): string {
         ]
       : []),
     ...(d.workload.length ? [``, `WORKLOAD`, ...d.workload.map((w) => `  ${w.label}: ${w.n} open`)] : []),
+    ...(happyHour.length
+      ? [
+          ``,
+          `HAPPY HOUR — CHARLESTON & MOUNT PLEASANT`,
+          ...happyHour.map(
+            (s) =>
+              `  ${s.kind === "special" ? "NEW " : ""}${s.venue} (${s.area}): ${s.deal}${s.details ? ` — ${s.details}` : ""}`
+          ),
+        ]
+      : []),
     ``,
     `Full view: ${APP}/digest${period === "weekly" ? "?period=weekly" : ""}`,
   ].join("\n");
 }
 
-function htmlReport(d: DigestData): string {
+function htmlReport(d: DigestData, happyHour: HappyHourItem[]): string {
   const h2 = (t: string) =>
     `<h2 style="font:bold 12px Arial;color:${GOLD};text-transform:uppercase;letter-spacing:1.5px;border-bottom:1px solid #ddd;padding-bottom:6px;margin:22px 0 10px">${t}</h2>`;
   const row = (k: string, v: string, tone = "#111") =>
@@ -85,6 +96,23 @@ function htmlReport(d: DigestData): string {
         `<table style="border-collapse:collapse">${d.workload.map((w) => row(w.label, `${w.n} open`)).join("")}</table>`
       : ""
   }
+  ${
+    happyHour.length
+      ? h2("Happy hour — Charleston &amp; Mount Pleasant") +
+        happyHour
+          .map(
+            (s) =>
+              `<div style="font:13px Arial;color:#444;padding:3px 0">${
+                s.kind === "special"
+                  ? `<span style="font:bold 10px Arial;color:${GOLD};letter-spacing:1px">NEW</span> `
+                  : ""
+              }<b style="color:#111">${escapeHtml(s.venue)}</b> <span style="color:${GREY}">(${escapeHtml(s.area)})</span> — ${escapeHtml(s.deal)}${
+                s.details ? `<span style="color:${GREY}"> · ${escapeHtml(s.details)}</span>` : ""
+              }</div>`
+          )
+          .join("")
+      : ""
+  }
   <p style="font:12px Arial;margin-top:22px"><a href="${APP}/digest${period === "weekly" ? "?period=weekly" : ""}" style="color:#2e74b5">Open the live digest →</a></p>
 </div>`;
 }
@@ -94,6 +122,9 @@ async function main() {
     .split(",")
     .map((e) => e.trim())
     .filter(Boolean);
+
+  // Happy hour rides the DAILY digest only (it's the morning-announcements bit).
+  const happyHour = period === "daily" ? await getHappyHourSpecials() : [];
 
   const tenants = await prisma.tenant.findMany({ select: { id: true, name: true, slug: true } });
   for (const t of tenants) {
@@ -107,8 +138,8 @@ async function main() {
     const sent = await sendEmail({
       to: recipients,
       subject: `${d.tenantName} ${period} digest — ${d.newTickets} new, ${d.needsReply} need a reply (${stamp})`,
-      text: textReport(d),
-      html: htmlReport(d),
+      text: textReport(d, happyHour),
+      html: htmlReport(d, happyHour),
     });
     console.log(`${t.slug}: ${period} digest ${sent ? "sent" : "stub-logged"} to ${recipients.join(", ")}.`);
   }
