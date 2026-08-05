@@ -91,7 +91,7 @@ repo `npm install` (the `.nosync` dir is machine-local by design) and copy `.env
 | 03:15 | `dsp-update.cjs` — recompute time-since-purchase | `/root/concierge-analytics.log` |
 | 03:30 | `detect-learning.ts` — mine Ledger → LearningSignal proposals | `/root/concierge-learning.log` |
 | 04:30 | `import-products.ts` — refresh product catalog/inventory/ProductFamily | `/root/concierge-products.log` |
-| 10:15 UTC | `happy-hour-scan.ts` — Claude + web search finds Charleston/Mt Pleasant happy-hour deals for the digest widget (before the 11:00 digest email) | `/root/concierge-happyhour.log` |
+| 10:15 UTC | `happy-hour-scan.ts` — Claude + web search finds Charleston/Mt Pleasant happy-hour deals; feeds the morning-announcements app's JSON (`HAPPY_HOUR_EXPORT_PATH`) + the digest widget, ahead of the 11:00 digest email | `/root/concierge-happyhour.log` |
 
 Not yet scheduled (run manually when wanted): `enrich-inquiries.ts` (product mentions on new
 analytics rows), `mine-reply-playbooks.ts` (refresh playbooks), `embed-knowledge.ts` (backfill
@@ -110,6 +110,7 @@ embeddings for entries created outside the app).
 | `MAILGUN_API_KEY/DOMAIN`, `EMAIL_FROM` | magic-link sign-in email | domain justforfun.scribechs.com |
 | `AUTH_SECRET`, `AUTH_URL`, `AUTH_ALLOWLIST` | auth (allowlist gates magic-link; now incl. dev@scribechs.com) | **`AUTH_URL` must stay set** — Auth.js under Next 16 ignores proxy Host headers; losing it regresses sign-in redirects to localhost |
 | `CONCIERGE_LIVE_SEND` | `"true"` = replies actually transmit | flip to anything else for log-only soft mode |
+| `HAPPY_HOUR_EXPORT_PATH` | happy-hour scan also snapshots the board as JSON here | prod: `/opt/morning-announcements/data/happy-hour.json` (feeds the announcements app); unset = no export |
 
 ## 5. Runbooks
 
@@ -120,6 +121,18 @@ git add -A && git commit && git push
 rsync -az --delete --exclude node_modules --exclude '*.nosync' --exclude .next --exclude .git --exclude .env ./ root@72.61.177.29:/opt/concierge/
 ssh root@72.61.177.29 'bash /opt/concierge/scripts/deploy-birdseye.sh'
 ```
+**⚠️ DEPLOY SAFETY (incident 2026-08-04):** `rsync --delete` mirrors whatever
+directory you run it from. On the office iMac, `~/Documents/GitHub/concierge`
+was a stub (not a real checkout — `git status` failed), and deploying from it
+DELETED the app source on the server (only the excluded `.env`/`node_modules`/
+`.next` survived; PM2 kept serving the old build). Rules: (1) `git status`
+must succeed in the deploy dir before any rsync — if it doesn't, fresh-clone
+from GitHub and deploy from that (the iMac now uses `~/Desktop/concierge-deploy`;
+its iCloud symlink setup from §"Local dev layout" is still unfixed); (2) paste
+ssh/rsync commands ONE AT A TIME — anything pasted while a remote command runs
+is swallowed as its stdin, not queued (this silently ate a migration once);
+(3) `#` comments in pasted zsh lines are NOT comments interactively — they break
+the command.
 
 **Auth broken / redirects wrong** → `curl -s https://concierge.scribechs.com/api/auth/providers`
 — the `callbackUrl` in the response must be the live domain. If it says localhost, check
@@ -162,19 +175,33 @@ this database project WITHOUT these defenses (59+ PM2 restarts historically) —
 
 ## 6. Feature inventory (all live)
 
-- **Happy hour widget — Charleston & Mount Pleasant (2026-07-15)** — the morning
-  digest's local perk. A daily cron (`prisma/happy-hour-scan.ts`, 10:15 UTC) has
-  Opus + the web-search server tool hunt for freshly announced deals (the motivating
-  example: The Grocery posting a $5 martini + half-off appetizers on Instagram) plus
-  standing weekly happy hours, evidence-required, and upserts them into
-  `HappyHourSpecial` (NOT tenant-scoped — one shared feed) keyed on a normalized
-  `dedupeKey`, so re-runs converge. Pure parse/freshness logic in
-  `src/lib/happy-hour.ts` (tests in `tests/domain/happy-hour.test.ts`): specials stay
-  on the board 7 days, recurring deals 28; `active=false` is the manual kill switch
-  for a wrong/ended row. Rendered as a card on `/digest` (daily view) and a section
-  in the daily digest email; both fail-soft — an empty scan leaves yesterday's rows,
-  and a DB error renders an empty widget, never a broken digest. **DEPLOY NOTE: run
-  `npm run db:migrate:deploy`** — migration `20260715120000_happy_hour_specials`.
+- **Happy hour feed — Charleston & Mount Pleasant (built 2026-07-15, LIVE 2026-08-05)**
+  — Concierge is the PRODUCER; the primary consumer is the separate
+  **morning-announcements app** (its own repo `jakeb0429/morning-announcements`,
+  `/opt/morning-announcements` on birdseye, PM2 process `announcements`, Express :3015,
+  served at **justforfun.scribechs.com/announcements** — nothing to do with
+  concierge.scribechs.com). A daily cron (`prisma/happy-hour-scan.ts`, 10:15 UTC)
+  has Opus + the web-search server tool hunt for freshly announced deals (the
+  motivating example: The Grocery posting a $5 martini + half-off appetizers on
+  Instagram) plus standing weekly happy hours, evidence-required, and upserts them
+  into `HappyHourSpecial` (NOT tenant-scoped — one shared feed) keyed on a normalized
+  `dedupeKey`, so re-runs converge. Migration `20260715120000_happy_hour_specials`
+  applied to prod 2026-08-04. **The model calls are STREAMED** (`.stream()` +
+  `finalMessage()`, 10-min guard, heartbeat log per search round) — run 1 died
+  truncating a 4k `max_tokens` budget (now 16k), run 2 died on the non-streaming
+  4-min request timeout; parse failures log stop_reason + output tail to
+  `/root/concierge-happyhour.log`. When `HAPPY_HOUR_EXPORT_PATH` is set (prod:
+  `/opt/morning-announcements/data/happy-hour.json`) every run — including empty
+  ones — snapshots the fresh board as JSON for the announcements app's happy-hour
+  module (specials first, capped at 8, `generatedAt` stamped; the module treats
+  >48h-old files as stale). Pure parse/freshness logic in `src/lib/happy-hour.ts`
+  (tests in `tests/domain/happy-hour.test.ts`): specials stay on the board 7 days,
+  recurring 28; `active=false` is the manual kill switch for a wrong/ended row.
+  Concierge's own surfaces are secondary: a card on `/digest` (daily view) and a
+  section in the daily digest email; everything fail-soft — an empty scan leaves
+  yesterday's rows, a DB error renders an empty widget, a missing export path skips
+  the export, and the announcements module renders nothing rather than break the
+  edition. First live scan (2026-08-05) found 10 real deals across both areas.
 - **Ticket Q&A + Simple View (shipped 2026-07-11)** — internal question layer for
   onboarding teammates (Jake's flow: CS asks Jim "who can help with the American flag
   graphic?", Jim answers internally, CS folds it into the reply). Models
