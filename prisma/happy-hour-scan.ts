@@ -52,7 +52,9 @@ End your reply with EXACTLY ONE fenced json block (and no other fenced blocks) s
 \`\`\`
 Fields: venue (name only), area ("Charleston" or "Mount Pleasant"), deal (short — the headline offer), details (schedule/fine print, optional), kind ("special" or "recurring"), source (where you saw it, optional), sourceUrl (optional). Up to 10 entries; an empty list is a valid answer.`;
 
-const REQUEST_OPTS = { timeout: 240_000, maxRetries: 2 }; // bounded — never hang the cron
+// Bounded but roomy: the timeout guards connection/idle, not total stream
+// duration — a healthy long generation keeps the stream alive past it.
+const REQUEST_OPTS = { timeout: 600_000, maxRetries: 1 };
 
 type ScanOutput = { text: string; stopReason: string | null };
 
@@ -68,25 +70,33 @@ async function runScan(): Promise<ScanOutput | null> {
     { role: "user", content: `Today is ${today}. Find current happy hour deals and fresh specials in Charleston and Mount Pleasant, SC.` },
   ];
 
+  // STREAMED, not create(): a search-heavy Opus turn can generate for longer
+  // than any sane non-streaming request timeout (production run 2 died on
+  // APIConnectionTimeoutError at 4 min x 3 attempts). Streaming keeps the
+  // connection alive while tokens flow; finalMessage() gives the whole thing.
   const create = () =>
-    anthropic.messages.create(
-      {
-        model: CLAUDE_MODEL,
-        // Generous: this budget covers thinking + search summaries + the final
-        // JSON. 4k proved too small — the first production run truncated before
-        // the JSON block and parsed to nothing.
-        max_tokens: 16000,
-        thinking: { type: "adaptive" },
-        system: SYSTEM,
-        tools: [WEB_SEARCH_TOOL as unknown as Anthropic.Messages.ToolUnion],
-        messages,
-      },
-      REQUEST_OPTS
-    );
+    anthropic.messages
+      .stream(
+        {
+          model: CLAUDE_MODEL,
+          // Generous: this budget covers thinking + search summaries + the final
+          // JSON. 4k proved too small — the first production run truncated before
+          // the JSON block and parsed to nothing.
+          max_tokens: 16000,
+          thinking: { type: "adaptive" },
+          system: SYSTEM,
+          tools: [WEB_SEARCH_TOOL as unknown as Anthropic.Messages.ToolUnion],
+          messages,
+        },
+        REQUEST_OPTS
+      )
+      .finalMessage();
 
+  console.log("happy-hour-scan: searching (round 1)...");
   let res = await create();
   // Server-side tool loops can pause; resume by echoing the assistant turn.
   for (let hop = 0; res.stop_reason === "pause_turn" && hop < 6; hop++) {
+    console.log(`happy-hour-scan: continuing search (round ${hop + 2})...`);
     messages = [...messages, { role: "assistant", content: res.content }];
     res = await create();
   }
